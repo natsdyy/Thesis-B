@@ -93,6 +93,7 @@
   const showItemConfirmationModal = ref(false);
   const selectedMenuItem = ref(null);
   const itemQuantity = ref(1);
+  const isAddingToOrder = ref(false);
 
   // Computed
   const currentBranch = computed(() => branchContextStore.currentBranch);
@@ -239,17 +240,71 @@
       return;
     }
 
-    // Add item with specified quantity
-    const success = posStore.addItemToOrder(
-      selectedMenuItem.value,
-      itemQuantity.value
-    );
-    if (!success) {
-      console.warn('Failed to add item to order');
-    }
+    // Before adding, refresh item stock from server to avoid stale availability
+    // and prevent ordering items that are already consumed by another order.
+    // This re-fetches the menu and updates local stock quantities.
+    (async () => {
+      isAddingToOrder.value = true;
+      try {
+        const q = router.currentRoute.value.query || {};
+        const menuId = q.menuId ? Number(q.menuId) : undefined;
+        const itemCodes = q.codes
+          ? String(q.codes)
+              .split(',')
+              .map((s) => s.trim())
+              .filter(Boolean)
+          : [];
+        const branchId = currentBranch.value?.id || user.value?.branch_id;
 
-    // Close modal and reset
-    closeItemConfirmationModal();
+        await posStore.fetchMenuItems({
+          menuId,
+          itemCodes,
+          branchId,
+          reset: true,
+        });
+
+        // Get the latest stock for the selected item
+        const latest = posStore.menuItems?.find(
+          (mi) => mi.id === selectedMenuItem.value.id
+        );
+
+        if (!latest || Number(latest.stock_quantity || 0) <= 0) {
+          alert('This item is no longer available.');
+          closeItemConfirmationModal();
+          return;
+        }
+
+        // Sync modal view with latest stock
+        selectedMenuItem.value.stock_quantity = Number(
+          latest.stock_quantity || 0
+        );
+
+        if (itemQuantity.value > selectedMenuItem.value.stock_quantity) {
+          alert('Requested quantity exceeds available stock.');
+          itemQuantity.value = selectedMenuItem.value.stock_quantity;
+          return;
+        }
+
+        // Add item with specified quantity
+        const success = posStore.addItemToOrder(
+          selectedMenuItem.value,
+          itemQuantity.value
+        );
+        if (!success) {
+          console.warn('Failed to add item to order');
+          alert('Unable to add item to order due to stock constraints.');
+          return;
+        }
+
+        // Close modal and reset
+        closeItemConfirmationModal();
+      } catch (e) {
+        console.error('Failed to validate latest stock:', e);
+        alert('Unable to validate stock. Please try again.');
+      } finally {
+        isAddingToOrder.value = false;
+      }
+    })();
   };
 
   const closeItemConfirmationModal = () => {
@@ -447,10 +502,9 @@
       showOrderCompleteModal.value = true;
       paymentInput.value = '';
 
-      // Do not re-fetch menu items here; keep locally reserved stock visible
-      // so the UI reflects deducted quantities while the order is Processing.
-      // Only refresh dashboard stats.
-      await fetchTodayStats();
+      // Immediately refresh POS data so menu stock reflects the processed order
+      // and prevents creating a new order with already-consumed stock.
+      await refreshPOSData();
     } catch (error) {
       console.error('Error processing order:', error);
       const errorMessage =
@@ -468,6 +522,8 @@
     orderCompleteData.value = null;
     // Reset order for new transaction
     resetOrder();
+    // Ensure stock and menu are up to date after completing an order
+    refreshPOSData();
   };
 
   const closeOrderConfirmationModal = () => {
@@ -1106,7 +1162,7 @@
           <div class="flex justify-center">
             <button
               @click="router.push('/branch/dashboard')"
-              class="btn btn-outline btn-sm sm:btn-md mt-4 font-thin"
+              class="btn btn-sm sm:btn-md mt-4 font-thin"
             >
               <span class="text-sm sm:text-base">Return to Dashboard</span>
             </button>
@@ -1266,7 +1322,9 @@
                   'opacity-60 border-red-300 bg-red-50': item.is_expired,
                   'opacity-60 border-red-300 bg-red-50 cursor-not-allowed':
                     !item.is_expired &&
-                    parseFloat(item.stock_quantity || 0) === 0,
+                    parseFloat(
+                      (item.available_stock ?? item.stock_quantity) || 0
+                    ) === 0,
                   'border-orange-300 bg-orange-50':
                     item.is_expiring_soon && !item.is_expired,
                   'border-green-300 !bg-green-50':
@@ -1278,17 +1336,25 @@
                     !item.is_expired &&
                     !item.is_expiring_soon &&
                     (!item.promo_info || !item.promo_info.is_active) &&
-                    parseFloat(item.stock_quantity || 0) > 0 &&
-                    parseFloat(item.stock_quantity || 0) <= 10,
+                    parseFloat(
+                      (item.available_stock ?? item.stock_quantity) || 0
+                    ) > 0 &&
+                    parseFloat(
+                      (item.available_stock ?? item.stock_quantity) || 0
+                    ) <= 10,
                   'cursor-pointer':
                     !item.is_expired &&
-                    parseFloat(item.stock_quantity || 0) > 0,
+                    parseFloat(
+                      (item.available_stock ?? item.stock_quantity) || 0
+                    ) > 0,
                   'cursor-not-allowed':
                     item.is_expired ||
-                    parseFloat(item.stock_quantity || 0) === 0,
+                    parseFloat(
+                      (item.available_stock ?? item.stock_quantity) || 0
+                    ) === 0,
                 }"
                 @click="
-                  item.stock_quantity > 0 &&
+                  (item.available_stock ?? item.stock_quantity) > 0 &&
                   !item.is_expired &&
                   handleAddToOrder(item)
                 "
@@ -1323,11 +1389,25 @@
                   </div>
                 </div>
 
+                <!-- Reserved Quantity Badge (visible when > 0) -->
+                <div
+                  v-if="(item.reserved_processing_quantity || 0) > 0"
+                  class="absolute top-2 left-2 z-20"
+                >
+                  <div
+                    class="bg-amber-500 text-white px-2 md:px-3 py-0.5 md:py-1 rounded-full text-[10px] md:text-xs font-medium shadow"
+                  >
+                    Reserved: {{ item.reserved_processing_quantity }}
+                  </div>
+                </div>
+
                 <!-- Out of Stock Overlay -->
                 <div
                   v-if="
                     !item.is_expired &&
-                    parseFloat(item.stock_quantity || 0) === 0
+                    parseFloat(
+                      (item.available_stock ?? item.stock_quantity) || 0
+                    ) === 0
                   "
                   class="absolute inset-0 bg-red-500/20 flex items-center justify-center z-10"
                 >
@@ -1373,8 +1453,12 @@
                     !item.is_expired &&
                     !item.is_expiring_soon &&
                     (!item.promo_info || !item.promo_info.is_active) &&
-                    parseFloat(item.stock_quantity || 0) > 0 &&
-                    parseFloat(item.stock_quantity || 0) <= 10
+                    parseFloat(
+                      (item.available_stock ?? item.stock_quantity) || 0
+                    ) > 0 &&
+                    parseFloat(
+                      (item.available_stock ?? item.stock_quantity) || 0
+                    ) <= 10
                   "
                   class="absolute top-2 md:top-3 right-2 md:right-3 z-10"
                 >
@@ -1394,15 +1478,27 @@
                     </h2>
                     <!-- Stock Badge -->
                     <span
-                      class="badge badge-sm md:badge-md border-none text-xs md:text-sm font-medium whitespace-nowrap"
+                      class="badge badge-sm md:badge-md border-none text-xs md:text-sm font-medium whitespace-nowrap flex-shrink-0"
                       :class="
                         item.is_expired
                           ? 'bg-red-500/20 text-red-600'
-                          : parseFloat(item.stock_quantity || 0) === 0
+                          : parseFloat(
+                                (item.available_stock ?? item.stock_quantity) ||
+                                  0
+                              ) === 0
                             ? 'bg-error/20 text-error'
-                            : parseFloat(item.stock_quantity || 0) <= 10
+                            : parseFloat(
+                                  (item.available_stock ??
+                                    item.stock_quantity) ||
+                                    0
+                                ) <= 10
                               ? 'bg-warning/20 text-warning'
                               : 'bg-success/20 text-success'
+                      "
+                      :title="
+                        (item.reserved_processing_quantity || 0) > 0
+                          ? `Reserved (processing): ${item.reserved_processing_quantity}`
+                          : ''
                       "
                     >
                       {{
@@ -1410,11 +1506,19 @@
                           ? 'EXPIRED'
                           : item.is_expiring_soon
                             ? 'EXPIRES SOON'
-                            : parseFloat(item.stock_quantity || 0) === 0
+                            : parseFloat(
+                                  (item.available_stock ??
+                                    item.stock_quantity) ||
+                                    0
+                                ) === 0
                               ? 'OUT OF STOCK'
-                              : parseFloat(item.stock_quantity || 0) <= 10
-                                ? `LOW STOCK: ${item.stock_quantity}`
-                                : `Stock: ${item.stock_quantity}`
+                              : parseFloat(
+                                    (item.available_stock ??
+                                      item.stock_quantity) ||
+                                      0
+                                  ) <= 10
+                                ? `LOW STOCK: ${item.available_stock ?? item.stock_quantity}`
+                                : `Stock: ${item.available_stock ?? item.stock_quantity}`
                       }}
                     </span>
                   </div>
@@ -1422,18 +1526,24 @@
                   <!-- Price Button -->
                   <button
                     @click.stop="handleAddToOrder(item)"
-                    :disabled="item.stock_quantity <= 0 || item.is_expired"
+                    :disabled="
+                      (item.available_stock ?? item.stock_quantity) <= 0 ||
+                      item.is_expired
+                    "
                     class="btn btn-sm w-full font-medium mt-3"
                     :class="
                       item.is_expired
                         ? 'btn-disabled bg-red-100 text-red-500'
-                        : item.stock_quantity > 0
+                        : (item.available_stock ?? item.stock_quantity) > 0
                           ? 'bg-primaryColor text-white'
                           : 'btn-disabled'
                     "
                   >
                     <template v-if="item.is_expired">EXPIRED</template>
-                    <template v-else-if="item.stock_quantity <= 0"
+                    <template
+                      v-else-if="
+                        (item.available_stock ?? item.stock_quantity) <= 0
+                      "
                       >Out of Stock</template
                     >
                     <template v-else>
@@ -1908,7 +2018,7 @@
           >
             <button
               @click="closeOrderConfirmationModal"
-              class="flex-1 btn btn-outline btn-sm sm:btn-md touch-manipulation font-thin"
+              class="flex-1 btn btn-sm sm:btn-md touch-manipulation font-thin"
             >
               Cancel
             </button>
@@ -2331,7 +2441,12 @@
                   {{ parseFloat(selectedMenuItem?.price || 0).toFixed(2) }}
                 </p>
                 <p class="text-xs text-gray-500">
-                  Stock: {{ selectedMenuItem?.stock_quantity || 0 }}
+                  Available:
+                  {{
+                    (selectedMenuItem?.available_stock ??
+                      selectedMenuItem?.stock_quantity) ||
+                    0
+                  }}
                 </p>
               </div>
             </div>
@@ -2353,7 +2468,11 @@
                 v-model.number="itemQuantity"
                 type="number"
                 min="1"
-                :max="selectedMenuItem?.stock_quantity || 999"
+                :max="
+                  (selectedMenuItem?.available_stock ??
+                    selectedMenuItem?.stock_quantity) ||
+                  999
+                "
                 class="w-20 text-center text-lg font-semibold border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primaryColor focus:border-transparent"
                 @input="validateQuantity"
                 @keydown="handleEnterKeyDown"
@@ -2362,7 +2481,10 @@
               <button
                 @click="updateItemQuantity(1)"
                 :disabled="
-                  itemQuantity >= (selectedMenuItem?.stock_quantity || 999)
+                  itemQuantity >=
+                  ((selectedMenuItem?.available_stock ??
+                    selectedMenuItem?.stock_quantity) ||
+                    999)
                 "
                 class="btn btn-circle btn-sm bg-primaryColor text-white disabled:bg-gray-300"
               >
@@ -2370,7 +2492,12 @@
               </button>
             </div>
             <p class="text-xs text-gray-500 text-center mt-2">
-              Available: {{ selectedMenuItem?.stock_quantity || 0 }}
+              Available:
+              {{
+                (selectedMenuItem?.available_stock ??
+                  selectedMenuItem?.stock_quantity) ||
+                0
+              }}
             </p>
           </div>
 
@@ -2398,9 +2525,14 @@
           </button>
           <button
             @click="confirmAddToOrder"
-            class="flex-1 btn bg-primaryColor text-white btn-sm sm:btn-md touch-manipulation font-thin hover:bg-primaryColor/80"
+            :disabled="isAddingToOrder"
+            class="flex-1 btn bg-primaryColor text-white btn-sm sm:btn-md touch-manipulation font-thin hover:bg-primaryColor/80 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Add to Order
+            <span
+              v-if="isAddingToOrder"
+              class="loading loading-spinner loading-sm mr-2"
+            ></span>
+            {{ isAddingToOrder ? 'Adding...' : 'Add to Order' }}
           </button>
         </div>
       </div>

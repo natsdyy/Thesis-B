@@ -154,10 +154,15 @@
             </button>
             <button
               @click="openAnnouncementModal"
-              class="text-white hover:text-orange-300 transition-all duration-300 p-2 rounded-full hover:bg-white/10"
+              class="relative text-white hover:text-orange-300 transition-all duration-300 p-2 rounded-full hover:bg-white/10"
               title="View Announcements"
+              aria-label="View Announcements"
             >
               <Megaphone class="w-5 h-5" />
+              <span
+                v-if="hasActiveAnnouncements"
+                class="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full shadow"
+              ></span>
             </button>
           </div>
         </div>
@@ -253,11 +258,23 @@
           </span>
         </a>
         <button
-          @click="openAnnouncementModal(); closeMobileMenu();"
+          @click="
+            openAnnouncementModal();
+            closeMobileMenu();
+          "
           class="block w-full text-left py-3 sm:py-3 px-3 sm:px-4 text-white hover:text-orange-300 hover:bg-green-700 rounded-lg transition-all duration-300 font-medium text-base sm:text-lg"
         >
           <span class="flex items-center">
-            <Bell class="w-4 h-4 sm:w-5 sm:h-5 mr-3" />
+            <span class="relative mr-3">
+              <font-awesome-icon
+                icon="fa-solid fa-bullhorn"
+                class="w-4 h-4 sm:w-5 sm:h-5"
+              />
+              <span
+                v-if="hasActiveAnnouncements"
+                class="absolute -top-0.5 -right-0.5 w-2 h-2 bg-red-500 rounded-full shadow"
+              ></span>
+            </span>
             Announcements
           </span>
         </button>
@@ -695,23 +712,32 @@
                 We're proud to serve our community across multiple locations:
               </p>
               <div v-if="isLoadingBranches" class="flex justify-center py-4">
-                <div class="loading loading-spinner loading-sm text-green-600"></div>
+                <div
+                  class="loading loading-spinner loading-sm text-green-600"
+                ></div>
               </div>
               <div
                 v-else-if="branches.length > 0"
                 class="grid grid-cols-1 sm:grid-cols-2 gap-1 sm:gap-2 text-xs sm:text-sm text-gray-700"
               >
-                <div 
-                  v-for="(branch, index) in branches" 
+                <div
+                  v-for="(branch, index) in branches"
                   :key="branch.id"
                   class="flex items-center animate-fade-in-up"
                   :style="{ animationDelay: `${index * 0.1}s` }"
                 >
-                  <span class="w-2 h-2 bg-green-500 rounded-full mr-2 animate-pulse"></span>
-                  <span class="transition-all duration-300 hover:text-green-600">{{ branch.name }}, Philippines</span>
+                  <span
+                    class="w-2 h-2 bg-green-500 rounded-full mr-2 animate-pulse"
+                  ></span>
+                  <span class="transition-all duration-300 hover:text-green-600"
+                    >{{ branch.name }}, Philippines</span
+                  >
                 </div>
               </div>
-              <div v-else class="text-xs sm:text-sm text-gray-500 italic py-2 animate-fade-in">
+              <div
+                v-else
+                class="text-xs sm:text-sm text-gray-500 italic py-2 animate-fade-in"
+              >
                 No branches available at the moment.
               </div>
             </div>
@@ -1013,17 +1039,17 @@
                 class="bg-white rounded-xl sm:rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 card-hover flex-shrink-0 w-[85vw] max-w-[320px] snap-start flex flex-col animate-fade-in-up"
                 :style="{ animationDelay: `${index * 0.15}s` }"
               >
-              <div class="h-40 sm:h-48 overflow-hidden">
-                <img
-                  :src="
-                    resolvePublicUrl(branch.image_url) ||
-                    '/src/assets/crm/default-branch.png'
-                  "
-                  :alt="branch.name"
-                  class="w-full h-full object-cover hover:scale-110 transition-transform duration-300 animate-image-fade-in"
-                  :style="{ animationDelay: `${index * 0.15 + 0.2}s` }"
-                  loading="lazy"
-                />
+                <div class="h-40 sm:h-48 overflow-hidden">
+                  <img
+                    :src="
+                      resolvePublicUrl(branch.image_url) ||
+                      '/src/assets/crm/default-branch.png'
+                    "
+                    :alt="branch.name"
+                    class="w-full h-full object-cover hover:scale-110 transition-transform duration-300 animate-image-fade-in"
+                    :style="{ animationDelay: `${index * 0.15 + 0.2}s` }"
+                    loading="lazy"
+                  />
                 </div>
                 <div class="p-4 sm:p-6 flex flex-col flex-1">
                   <h3 class="text-lg sm:text-xl font-bold text-green-800 mb-2">
@@ -2270,6 +2296,9 @@
 
   // Announcements state
   const activeAnnouncements = ref([]);
+  const hasActiveAnnouncements = computed(() => {
+    return (activeAnnouncements.value?.length || 0) > 0;
+  });
 
   // Watch for announcements changes to debug
   watch(
@@ -2535,7 +2564,9 @@
     isAnnouncementModalOpen.value = false;
     if (activeAnnouncements.value.length > 0) {
       // Mark all shown announcements as seen
-      const seenIds = JSON.parse(sessionStorage.getItem('seenAnnouncementIds') || '[]');
+      const seenIds = JSON.parse(
+        sessionStorage.getItem('seenAnnouncementIds') || '[]'
+      );
       activeAnnouncements.value.forEach((announcement) => {
         if (!seenIds.includes(announcement.id)) {
           seenIds.push(announcement.id);
@@ -2616,19 +2647,35 @@
 
         // Sort announcements by display_order (ascending)
         const sortedAnnouncements = allAnnouncements.sort((a, b) => {
-          const orderA = a.display_order !== null && a.display_order !== undefined ? a.display_order : 999;
-          const orderB = b.display_order !== null && b.display_order !== undefined ? b.display_order : 999;
+          const orderA =
+            a.display_order !== null && a.display_order !== undefined
+              ? a.display_order
+              : 999;
+          const orderB =
+            b.display_order !== null && b.display_order !== undefined
+              ? b.display_order
+              : 999;
           return orderA - orderB;
         });
 
         console.log('Total announcements:', sortedAnnouncements.length);
-        console.log('Announcements sorted by display_order:', sortedAnnouncements.map(a => ({ id: a.id, title: a.title, display_order: a.display_order })));
+        console.log(
+          'Announcements sorted by display_order:',
+          sortedAnnouncements.map((a) => ({
+            id: a.id,
+            title: a.title,
+            display_order: a.display_order,
+          }))
+        );
 
         // Show all active announcements (ordered by display_order)
         if (sortedAnnouncements.length > 0) {
           activeAnnouncements.value = sortedAnnouncements;
-          
-          console.log('Showing all active announcements:', activeAnnouncements.value.map(a => a.title));
+
+          console.log(
+            'Showing all active announcements:',
+            activeAnnouncements.value.map((a) => a.title)
+          );
           console.log('Modal will open in 1 second. Current state:', {
             isAnnouncementModalOpen: isAnnouncementModalOpen.value,
             announcementsCount: activeAnnouncements.value.length,

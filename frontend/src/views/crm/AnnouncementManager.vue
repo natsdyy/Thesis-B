@@ -1,23 +1,27 @@
 <template>
   <div class="p-6">
     <div class="mb-6">
-      <h1 class="text-3xl font-bold text-gray-900 mb-2">Announcement Management</h1>
-      <p class="text-gray-600">Manage announcements and promotions displayed on the homepage</p>
+      <h1 class="text-3xl font-bold text-gray-900 mb-2">
+        Announcement Management
+      </h1>
+      <p class="text-gray-600">
+        Manage announcements and promotions displayed on the homepage
+      </p>
     </div>
 
     <!-- Stats Cards -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
       <div class="stat bg-base-100 shadow rounded-lg">
         <div class="stat-title">Active Announcements</div>
-        <div class="stat-value text-success">{{ stats.active_announcements }}</div>
+        <div class="stat-value text-success">
+          {{ stats.active_announcements }}
+        </div>
       </div>
       <div class="stat bg-base-100 shadow rounded-lg">
         <div class="stat-title">Inactive Announcements</div>
-        <div class="stat-value text-warning">{{ stats.inactive_announcements }}</div>
-      </div>
-      <div class="stat bg-base-100 shadow rounded-lg">
-        <div class="stat-title">Total Announcements</div>
-        <div class="stat-value text-primary">{{ stats.total_announcements }}</div>
+        <div class="stat-value text-warning">
+          {{ stats.inactive_announcements }}
+        </div>
       </div>
     </div>
 
@@ -41,13 +45,21 @@
       <div class="flex gap-2">
         <button
           class="btn text-white hover:opacity-90 active:opacity-80 font-thin"
-          style="background-color: var(--color-primaryColor); border-color: var(--color-primaryColor);"
+          style="
+            background-color: var(--color-primaryColor);
+            border-color: var(--color-primaryColor);
+          "
           @click="openCreateModal"
+          v-if="!isViewOnly"
         >
           <Plus :size="20" class="mr-2" />
           Add Announcement
         </button>
-        <button class="btn btn-ghost" @click="loadAnnouncements" :disabled="loading">
+        <button
+          class="btn btn-ghost"
+          @click="loadAnnouncements"
+          :disabled="loading"
+        >
           <RefreshCw :size="20" :class="{ 'animate-spin': loading }" />
         </button>
       </div>
@@ -58,7 +70,10 @@
       <span class="loading loading-spinner loading-lg"></span>
     </div>
 
-    <div v-else-if="!loading && filteredAnnouncements.length === 0" class="text-center py-12 text-gray-500">
+    <div
+      v-else-if="!loading && filteredAnnouncements.length === 0"
+      class="text-center py-12 text-gray-500"
+    >
       No announcements found
     </div>
 
@@ -69,14 +84,19 @@
           v-for="announcement in paginatedAnnouncements"
           :key="announcement.id"
           class="card bg-base-100 shadow hover:shadow-lg transition-shadow"
+          @click="openViewModal(announcement)"
         >
           <div class="card-body">
             <div class="flex items-start justify-between mb-2">
-              <h2 class="card-title text-lg flex-1">{{ announcement.title }}</h2>
+              <h2 class="card-title text-lg flex-1">
+                {{ announcement.title }}
+              </h2>
               <span
                 :class="[
                   'badge badge-sm',
-                  announcement.is_active ? 'badge-success' : 'badge-warning',
+                  announcement.is_active
+                    ? 'bg-success/20 text-success font-medium'
+                    : 'bg-warning/20 text-warning font-medium',
                 ]"
               >
                 {{ announcement.is_active ? 'Active' : 'Inactive' }}
@@ -88,10 +108,12 @@
             </p>
 
             <div class="flex flex-wrap gap-2 mb-3">
-              <span class="badge badge-sm badge-info">
+              <span class="badge badge-sm bg-info/20 text-info font-medium">
                 {{ formatAnnouncementType(announcement.announcement_type) }}
               </span>
-              <span class="badge badge-sm badge-secondary">
+              <span
+                class="badge badge-sm bg-secondary/20 text-secondary font-medium"
+              >
                 {{ formatContentFormat(announcement.content_format) }}
               </span>
             </div>
@@ -114,19 +136,23 @@
               </div>
             </div>
 
-            <div class="card-actions justify-end mt-auto pt-4 border-t border-gray-200">
+            <div
+              class="card-actions justify-end mt-auto pt-4 border-t border-gray-200"
+            >
               <button
                 class="btn btn-sm btn-ghost"
-                @click="openEditModal(announcement)"
+                @click.stop="openEditModal(announcement)"
                 title="Edit"
+                v-if="!isViewOnly"
               >
                 <Edit :size="16" />
                 <span class="ml-1">Edit</span>
               </button>
               <button
                 class="btn btn-sm btn-ghost text-error"
-                @click="confirmDelete(announcement)"
+                @click.stop="confirmDelete(announcement)"
                 title="Delete"
+                v-if="!isViewOnly"
               >
                 <Trash2 :size="16" />
                 <span class="ml-1">Delete</span>
@@ -143,8 +169,10 @@
       >
         <div class="text-sm text-gray-600">
           Showing {{ (currentPage - 1) * itemsPerPage + 1 }} to
-          {{ Math.min(currentPage * itemsPerPage, filteredAnnouncements.length) }} of
-          {{ filteredAnnouncements.length }} announcements
+          {{
+            Math.min(currentPage * itemsPerPage, filteredAnnouncements.length)
+          }}
+          of {{ filteredAnnouncements.length }} announcements
         </div>
         <div class="join">
           <button
@@ -186,11 +214,12 @@
     />
 
     <!-- Delete Confirmation Modal -->
-    <dialog ref="deleteModal" class="modal">
+    <dialog ref="deleteModal" class="modal" v-if="!isViewOnly">
       <div class="modal-box">
         <h3 class="font-bold text-lg mb-4">Delete Announcement</h3>
         <p class="mb-4">
-          Are you sure you want to delete this announcement? This action cannot be undone.
+          Are you sure you want to delete this announcement? This action cannot
+          be undone.
         </p>
         <div class="bg-base-200 p-4 rounded mb-4">
           <p class="font-medium">{{ deletingAnnouncement?.title }}</p>
@@ -215,6 +244,13 @@
       </form>
     </dialog>
 
+    <!-- View Modal -->
+    <AnnouncementModal
+      :isOpen="isViewModalOpen"
+      :announcements="viewAnnouncements"
+      @close="closeViewModal"
+    />
+
     <!-- Toast -->
     <div
       v-if="toast.show"
@@ -230,10 +266,13 @@
 
 <script setup>
   import { ref, onMounted, computed } from 'vue';
+  import { storeToRefs } from 'pinia';
   import { Plus, Search, RefreshCw, Edit, Trash2 } from 'lucide-vue-next';
   import announcementService from '../../services/announcementService.js';
   import { apiConfig } from '../../config/api.js';
   import AnnouncementFormModal from '../../components/crm/AnnouncementFormModal.vue';
+  import AnnouncementModal from '../../components/crm/AnnouncementModal.vue';
+  import { useAuthStore } from '../../stores/authStore.js';
 
   const announcements = ref([]);
   const loading = ref(false);
@@ -245,11 +284,21 @@
   const editingAnnouncement = ref(null);
   const deletingAnnouncement = ref(null);
   const isFormModalOpen = ref(false);
+  const isViewModalOpen = ref(false);
+  const viewAnnouncements = ref([]);
 
   const toast = ref({
     show: false,
     message: '',
     type: 'success',
+  });
+
+  // Role-based view-only flag
+  const authStore = useAuthStore();
+  const { user } = storeToRefs(authStore);
+  const isViewOnly = computed(() => {
+    const role = user.value?.role || user.value?.position || '';
+    return role === 'Chairman of the Board';
   });
 
   const stats = computed(() => {
@@ -268,7 +317,8 @@
     return announcements.value.filter(
       (announcement) =>
         announcement.title.toLowerCase().includes(query) ||
-        (announcement.subtitle && announcement.subtitle.toLowerCase().includes(query)) ||
+        (announcement.subtitle &&
+          announcement.subtitle.toLowerCase().includes(query)) ||
         (announcement.description &&
           announcement.description.toLowerCase().includes(query))
     );
@@ -331,6 +381,16 @@
   const closeModal = () => {
     isFormModalOpen.value = false;
     editingAnnouncement.value = null;
+  };
+
+  const openViewModal = (announcement) => {
+    viewAnnouncements.value = [announcement];
+    isViewModalOpen.value = true;
+  };
+
+  const closeViewModal = () => {
+    isViewModalOpen.value = false;
+    viewAnnouncements.value = [];
   };
 
   const handleFormSubmit = async (formData) => {
@@ -481,7 +541,6 @@
     return formats[format] || format;
   };
 
-
   const showToast = (message, type = 'success') => {
     toast.value = { show: true, message, type };
     setTimeout(() => {
@@ -494,18 +553,4 @@
   });
 </script>
 
-<style scoped>
-  .badge-success {
-    @apply bg-green-100 text-green-800;
-  }
-  .badge-warning {
-    @apply bg-yellow-100 text-yellow-800;
-  }
-  .badge-info {
-    @apply bg-blue-100 text-blue-800;
-  }
-  .badge-secondary {
-    @apply bg-gray-100 text-gray-800;
-  }
-</style>
-
+<style scoped></style>

@@ -32,6 +32,8 @@ export const usePOSStore = defineStore('pos', () => {
   const error = ref(null);
   const orderHistory = ref([]);
   const currentBranchId = ref(null);
+  // Map of menu_item_id -> quantity currently reserved by 'processing' orders (today)
+  const processingReservations = ref({});
 
   // Selected transaction for void/refund operations
   const selectedTransaction = ref(null);
@@ -210,6 +212,11 @@ export const usePOSStore = defineStore('pos', () => {
 
       const apiItems = Array.isArray(resp?.data) ? resp.data : [];
 
+      // Refresh reservations from orders that are already processing for today
+      if (branchId) {
+        await refreshProcessingReservations(branchId);
+      }
+
       // Map API rows to POS-friendly structure
       const mapped = apiItems.map((it) => {
         const today = new Date().toISOString().split('T')[0];
@@ -226,12 +233,18 @@ export const usePOSStore = defineStore('pos', () => {
             tomorrowStr &&
           !isExpired;
 
+        const reservedQty = Number(processingReservations.value[it.id] || 0);
+        const branchStock = Number(it.branch_stock ?? 0) || 0;
+        const available = Math.max(0, branchStock - reservedQty);
+
         return {
           id: it.id,
           name: it.menu_item_name || it.item_name,
           price: parseFloat(it.selling_price || 0),
           category: it.category,
-          stock_quantity: Number(it.branch_stock ?? 0) || 0,
+          stock_quantity: branchStock,
+          reserved_processing_quantity: reservedQty,
+          available_stock: available,
           image_url: formatImageUrl(it.image_url),
           description: it.description || '',
           item_code: it.item_code,
@@ -312,7 +325,12 @@ export const usePOSStore = defineStore('pos', () => {
   };
 
   const addItemToOrder = (menuItem, quantity = 1) => {
-    if (menuItem.stock_quantity < quantity || quantity <= 0) {
+    const available =
+      menuItem.available_stock != null
+        ? Number(menuItem.available_stock)
+        : Number(menuItem.stock_quantity);
+
+    if (available < quantity || quantity <= 0) {
       return false;
     }
 
@@ -335,8 +353,32 @@ export const usePOSStore = defineStore('pos', () => {
       });
     }
 
-    // Update stock quantity
-    menuItem.stock_quantity -= quantity;
+    // Update local available and stock to reflect reservation (selected object)
+    if (menuItem.available_stock != null) {
+      menuItem.available_stock = Math.max(
+        0,
+        Number(menuItem.available_stock) - quantity
+      );
+    }
+    menuItem.stock_quantity = Math.max(
+      0,
+      Number(menuItem.stock_quantity) - quantity
+    );
+
+    // Also update the canonical item inside the store list by id
+    const listItem = menuItems.value.find((mi) => mi.id === menuItem.id);
+    if (listItem && listItem !== menuItem) {
+      if (listItem.available_stock != null) {
+        listItem.available_stock = Math.max(
+          0,
+          Number(listItem.available_stock) - quantity
+        );
+      }
+      listItem.stock_quantity = Math.max(
+        0,
+        Number(listItem.stock_quantity) - quantity
+      );
+    }
 
     return true;
   };
@@ -353,6 +395,9 @@ export const usePOSStore = defineStore('pos', () => {
       const menuItem = menuItems.value.find((mi) => mi.id === itemId);
       if (menuItem) {
         menuItem.stock_quantity += item.quantity;
+        if (menuItem.available_stock != null) {
+          menuItem.available_stock += item.quantity;
+        }
       }
 
       currentOrder.value.items.splice(itemIndex, 1);
@@ -368,9 +413,24 @@ export const usePOSStore = defineStore('pos', () => {
 
       if (quantity <= 0) {
         removeItemFromOrder(itemId);
-      } else if (menuItem.stock_quantity >= quantityDifference) {
-        item.quantity = quantity;
-        menuItem.stock_quantity -= quantityDifference;
+      } else {
+        const available =
+          menuItem.available_stock != null
+            ? Number(menuItem.available_stock)
+            : Number(menuItem.stock_quantity);
+        if (available >= quantityDifference) {
+          item.quantity = quantity;
+          if (menuItem.available_stock != null) {
+            menuItem.available_stock = Math.max(
+              0,
+              Number(menuItem.available_stock) - quantityDifference
+            );
+          }
+          menuItem.stock_quantity = Math.max(
+            0,
+            Number(menuItem.stock_quantity) - quantityDifference
+          );
+        }
       }
     }
   };
@@ -575,6 +635,9 @@ export const usePOSStore = defineStore('pos', () => {
         const menuItem = menuItems.value.find((mi) => mi.id === orderItem.id);
         if (menuItem) {
           menuItem.stock_quantity += orderItem.quantity;
+          if (menuItem.available_stock != null) {
+            menuItem.available_stock += orderItem.quantity;
+          }
         }
       });
     }
@@ -767,6 +830,59 @@ export const usePOSStore = defineStore('pos', () => {
     } catch (err) {
       console.error('Error fetching order history:', err);
       return { data: [], pagination: { total: 0, limit: 20, offset: 0 } };
+    }
+  };
+
+  // Build a reservation map from today's processing orders so we can subtract
+  // them from displayed branch stock and block further ordering.
+  const refreshProcessingReservations = async (branchId) => {
+    try {
+      const today = new Date();
+      const start = new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        today.getDate(),
+        0,
+        0,
+        0,
+        0
+      ).toISOString();
+      const end = new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        today.getDate(),
+        23,
+        59,
+        59,
+        999
+      ).toISOString();
+
+      const { data: response } = await axios.get(
+        `${getApiUrl('/pos/orders')}?${new URLSearchParams({
+          branch_id: String(branchId),
+          status: 'processing',
+          limit: '1000',
+          offset: '0',
+          date_from: start,
+          date_to: end,
+        }).toString()}`,
+        { baseURL: apiConfig.baseURL, headers: { ...getAuthHeaders() } }
+      );
+
+      const orders = Array.isArray(response?.data) ? response.data : [];
+      const map = {};
+      for (const order of orders) {
+        const items = Array.isArray(order.items) ? order.items : [];
+        for (const it of items) {
+          const id = it.menu_item_id || it.id; // prefer menu_item_id if present
+          if (!id) continue;
+          map[id] = (map[id] || 0) + Number(it.quantity || 0);
+        }
+      }
+      processingReservations.value = map;
+    } catch (err) {
+      console.warn('Failed to refresh processing reservations:', err);
+      processingReservations.value = {};
     }
   };
 
@@ -1188,6 +1304,7 @@ export const usePOSStore = defineStore('pos', () => {
     orderHistory,
     pagination,
     hasMore,
+    processingReservations,
 
     // Getters
     filteredMenuItems,

@@ -1442,7 +1442,7 @@
                 <button
                   @click="nextPage"
                   :disabled="currentPage === totalPages"
-                  class="btn btn-sm btn-outline"
+                  class="btn btn-sm "
                   :class="{ 'btn-disabled': currentPage === totalPages }"
                 >
                   <span class="hidden sm:inline">Next</span>
@@ -1486,7 +1486,7 @@
           <div class="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
             <div class="flex gap-2">
               <button
-                class="btn btn-outline btn-sm font-thin flex-1 sm:flex-none"
+                class="btn  btn-sm font-thin flex-1 sm:flex-none"
                 @click="refreshData"
                 :disabled="posStore.loading"
               >
@@ -1495,7 +1495,7 @@
                 <span class="sm:hidden">Refresh</span>
               </button>
               <button
-                class="btn btn-outline btn-sm font-thin flex-1 sm:flex-none"
+                class="btn  btn-sm font-thin flex-1 sm:flex-none"
                 @click="exportRemitData"
                 :disabled="isExporting || posStore.loading"
               >

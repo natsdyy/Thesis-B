@@ -1050,8 +1050,10 @@
                 <td class="whitespace-nowrap">
                   {{ transaction.time }}
                 </td>
-                <td>
-                  <div class="font-semibold text-primaryColor">
+                <td class="whitespace-nowrap">
+                  <div
+                    class="font-semibold text-primaryColor inline-flex items-center gap-1"
+                  >
                     <font-awesome-icon icon="fa-solid fa-peso-sign" />{{
                       isNaN(transaction.amount)
                         ? '0.00'

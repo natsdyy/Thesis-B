@@ -1435,7 +1435,7 @@
 
     <!-- Add Branch Button -->
     <div v-if="!isBoardDirector" class="flex justify-end mb-6">
-      <button @click="openCreateModal" class="btn btn-outline btn-sm">
+      <button @click="openCreateModal" class="btn  btn-sm">
         <Plus class="w-4 h-4 mr-2" />
         Add Branch
       </button>
@@ -1968,7 +1968,7 @@
               <button
                 type="button"
                 @click="closeModal"
-                class="btn btn-outline btn-sm text-gray-600 hover:bg-gray-100 font-thin"
+                class="btn  btn-sm text-gray-600 hover:bg-gray-100 font-thin"
                 :disabled="branchStore.loading"
               >
                 <X class="w-4 h-4 mr-1" />

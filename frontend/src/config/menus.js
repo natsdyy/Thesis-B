@@ -76,7 +76,6 @@ export const menuItems = [
     icon: Package,
     route: '/scm/main-inventory',
     department: 'SCM',
-    managerOnly: true,
   },
   {
     name: 'Supply Request',
@@ -183,7 +182,6 @@ export const menuItems = [
     icon: Package,
     route: '/production/production-inventory',
     department: 'Production',
-    managerOnly: true,
   },
   {
     name: 'My Attendance',

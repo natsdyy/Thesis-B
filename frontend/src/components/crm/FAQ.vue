@@ -278,7 +278,7 @@
           </p>
           <a
             href="#contact"
-            class="btn btn-primary bg-green-600 hover:bg-green-700 text-white border-none px-8"
+            class="btn font-medium bg-green-600 hover:bg-green-700 text-white border-none px-8"
           >
             Contact Us
           </a>

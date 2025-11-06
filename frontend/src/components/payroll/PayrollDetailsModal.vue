@@ -384,6 +384,26 @@
 
               <!-- Financial Info -->
               <div class="space-y-2 mb-3">
+                <div
+                  v-if="
+                    Number(otherExpensesByEmployee[record.employee_id] || 0) > 0
+                  "
+                  class="flex justify-between items-center bg-warning/10 border border-warning/30 rounded-lg p-2"
+                >
+                  <span class="text-xs text-warning font-medium">
+                    Other Expense Remitted
+                  </span>
+                  <button
+                    @click="applyOtherExpenseToRecord(record)"
+                    class="text-xs text-warning font-semibold hover:underline"
+                  >
+                    Apply ₱{{
+                      formatCurrency(
+                        otherExpensesByEmployee[record.employee_id]
+                      )
+                    }}
+                  </button>
+                </div>
                 <div class="flex justify-between items-center">
                   <span class="text-xs text-gray-600">Gross Salary:</span>
                   <span class="text-sm font-medium text-gray-900">
@@ -529,6 +549,28 @@
                     <div>
                       <i class="fas fa-peso-sign mr-1"></i
                       >{{ formatCurrency(record.gross_salary) }}
+                    </div>
+                    <div
+                      v-if="
+                        Number(
+                          otherExpensesByEmployee[record.employee_id] || 0
+                        ) > 0
+                      "
+                      class="text-xs mt-1"
+                    >
+                      <button
+                        @click="applyOtherExpenseToRecord(record)"
+                        class="text-warning hover:text-warning/80 font-semibold"
+                        :title="`Other Expense: ₱${formatCurrency(otherExpensesByEmployee[record.employee_id])} (click to apply as additional earnings)`"
+                      >
+                        <i class="fas fa-peso-sign mr-0.5"></i>
+                        {{
+                          formatCurrency(
+                            otherExpensesByEmployee[record.employee_id]
+                          )
+                        }}
+                        <span class="text-gray-500"> Other Expense</span>
+                      </button>
                     </div>
                     <div
                       v-if="Number(record.rest_day_pay || 0) > 0"
@@ -778,6 +820,7 @@
       const showRecordEdit = ref(false);
       const showPayslipModal = ref(false);
       const selectedRecord = ref(null);
+      const otherExpensesByEmployee = ref({});
       const actionLoading = ref(false);
       const actionLoadingText = ref('');
       const balanceLoading = ref(false);
@@ -1014,6 +1057,12 @@
         showRecordEdit.value = true;
       };
 
+      const applyOtherExpenseToRecord = (record) => {
+        // Open edit modal; user can set additional earnings manually.
+        // This entry point exists from the 'Other Expense' indicator.
+        editRecord(record);
+      };
+
       const printPayslip = (record) => {
         console.log('printPayslip called with record:', record);
         selectedRecord.value = record;
@@ -1170,6 +1219,48 @@
       };
 
       // Fetch balance when modal opens
+      const fetchOtherExpenses = async () => {
+        try {
+          // Derive branch and month for query
+          const anyRecord = payrollStore.payrollRecords[0];
+          const branchId = anyRecord?.branch_id;
+          const from = payrollStore.selectedPeriod?.date_from;
+          const monthStr = from
+            ? new Date(from).toISOString().slice(0, 7)
+            : null;
+
+          if (!branchId || !monthStr) {
+            otherExpensesByEmployee.value = {};
+            return;
+          }
+
+          const url = getApiUrl(
+            `/branch-utilities-expenses?branch_id=${branchId}&expense_type=other&expense_month=${monthStr}&status=approved&limit=1000`
+          );
+          const res = await fetch(url, {
+            headers: {
+              Authorization: `Bearer ${localStorage.getItem('token')}`,
+            },
+          });
+          const data = await res.json();
+          if (!res.ok || !data.success)
+            throw new Error(data.message || 'Failed to load expenses');
+
+          const map = {};
+          const list = data.remittances || data.data || [];
+          for (const row of list) {
+            const empId = Number(row.submitted_by);
+            const amt = Number(row.amount || 0);
+            if (!empId || !amt) continue;
+            map[empId] = (map[empId] || 0) + amt;
+          }
+          otherExpensesByEmployee.value = map;
+        } catch (e) {
+          console.error('Failed to fetch other expenses:', e);
+          otherExpensesByEmployee.value = {};
+        }
+      };
+
       onMounted(async () => {
         if (showBalanceSummary.value) {
           balanceLoading.value = true;
@@ -1181,11 +1272,13 @@
             balanceLoading.value = false;
           }
         }
+        await fetchOtherExpenses();
       });
 
       return {
         payrollPeriod,
         payrollRecords,
+        otherExpensesByEmployee,
         statusSteps,
         isStepActive,
         canEdit,
@@ -1209,6 +1302,7 @@
         chairmanApprove,
         releasePayroll,
         closeModal,
+        applyOtherExpenseToRecord,
         showRecordDetails,
         showRecordEdit,
         showPayslipModal,

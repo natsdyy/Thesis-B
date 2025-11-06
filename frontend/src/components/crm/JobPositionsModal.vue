@@ -206,7 +206,7 @@
                       ) || position.is_active === false
                     "
                     :class="[
-                      'flex-1 px-3 sm:px-4 md:px-6 py-2 md:py-3 rounded-lg md:rounded-xl font-medium md:font-semibold transition-all duration-300 text-xs sm:text-sm md:text-base',
+                      'flex-1 px-3 sm:px-4 md:px-6 py-2 md:py-3 rounded-lg md:rounded-xl font-medium md:font-semibold transition-all duration-300 text-xs sm:text-sm md:text-base !font-medium',
                       (position.status === 'open' ||
                         position.job_status === 'open') &&
                       position.is_active !== false

@@ -321,13 +321,29 @@
               <span>{{ formatDate(announcement.valid_until) }}</span>
             </div>
 
-            <!-- Action Button (if link provided) -->
-            <div v-if="announcement?.action_link" class="pt-2">
+            <!-- Action Button -->
+            <div v-if="announcement" class="pt-2">
+              <!-- Hiring: open Job Positions modal instead of external link -->
+              <button
+                v-if="isHiringAnnouncement(announcement)"
+                @click="openJobPositionsModal"
+                class="btn btn-sm sm:btn-md group flex items-center space-x-2 px-4 py-2 rounded-lg text-white font-medium hover:opacity-90 transition-opacity"
+                style="background-color: var(--color-primaryColor)"
+              >
+                <span>{{ announcement.action_text || 'Apply Now' }}</span>
+                <font-awesome-icon
+                  icon="fa-solid fa-arrow-right"
+                  class="w-4 h-4 group-hover:translate-x-1 transition-transform"
+                />
+              </button>
+
+              <!-- Default behavior: follow action link if provided -->
               <a
+                v-else-if="announcement?.action_link"
                 :href="announcement.action_link"
                 target="_blank"
                 rel="noopener noreferrer"
-                class="btn btn-sm  sm:btn-md group flex items-center space-x-2 px-4 py-2 rounded-lg text-white font-medium hover:opacity-90 transition-opacity"
+                class="btn btn-sm sm:btn-md group flex items-center space-x-2 px-4 py-2 rounded-lg text-white font-medium hover:opacity-90 transition-opacity"
                 style="background-color: var(--color-primaryColor)"
               >
                 <span>{{ announcement.action_text || 'Learn More' }}</span>
@@ -358,7 +374,7 @@
     },
   });
 
-  const emit = defineEmits(['close']);
+  const emit = defineEmits(['close', 'open-job-positions']);
 
   const currentIndex = ref(0);
   const currentImageIndex = ref(0);
@@ -427,6 +443,10 @@
 
   const closeModal = () => {
     emit('close');
+  };
+
+  const openJobPositionsModal = () => {
+    emit('open-job-positions');
   };
 
   const previousAnnouncement = () => {
@@ -612,6 +632,34 @@
       if (item === 'video') return !!announcement.value?.video_url;
       return false;
     });
+  };
+
+  const isHiringAnnouncement = (a) => {
+    if (!a) return false;
+    const title = (a.title || '').toLowerCase();
+    const subtitle = (a.subtitle || '').toLowerCase();
+    const description = (a.description || '').toLowerCase();
+    // Common ways to mark hiring posts
+    if (
+      a.type === 'hiring' ||
+      a.category === 'hiring' ||
+      a.is_hiring === true ||
+      a.action_link === 'job-positions'
+    ) {
+      return true;
+    }
+    // Heuristic: title/subtitle/description contains keywords
+    const hiringKeywords = [
+      'we are hiring',
+      'hiring',
+      'apply now',
+      'recruitment',
+      'job opening',
+    ];
+    return hiringKeywords.some(
+      (kw) =>
+        title.includes(kw) || subtitle.includes(kw) || description.includes(kw)
+    );
   };
 
   // Cleanup on unmount

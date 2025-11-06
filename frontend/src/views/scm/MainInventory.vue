@@ -232,6 +232,11 @@
       authStore.userRole === 'Chairman of the Board'
   );
 
+  // Check if user is Staff in SCM department (view-only access)
+  const isSCMStaff = computed(
+    () => authStore.userRole === 'Staff' && authStore.userDepartment === 'SCM'
+  );
+
   // Access store values as computed properties
   const categories = computed(() => inventoryStore.categories);
   // Branch Distribution History state
@@ -1392,10 +1397,18 @@
 
   // Modal functions
   const openConsumptionModal = () => {
+    // Prevent Staff from opening consumption modal
+    if (isSCMStaff.value) {
+      return;
+    }
     modal.value = { type: 'consumption', show: true, item: null };
   };
 
   const openAdjustmentModal = () => {
+    // Prevent Staff from opening adjustment modal
+    if (isSCMStaff.value) {
+      return;
+    }
     modal.value = { type: 'adjustment', show: true, item: null };
   };
 
@@ -1432,10 +1445,18 @@
 
   // Batch-specific actions
   const consumeBatch = (batch) => {
+    // Prevent Staff from opening consumption modal
+    if (isSCMStaff.value) {
+      return;
+    }
     modal.value = { type: 'consumption', show: true, item: batch };
   };
 
   const adjustBatch = (batch) => {
+    // Prevent Staff from opening adjustment modal
+    if (isSCMStaff.value) {
+      return;
+    }
     modal.value = { type: 'adjustment', show: true, item: batch };
   };
 
@@ -1484,6 +1505,14 @@
 
   // Navigate to RequestSupply and preload items derived from related alerts
   const createSupplyRequestFromAlert = (alertItem) => {
+    // Prevent Staff from creating supply requests
+    if (isSCMStaff.value) {
+      showToast(
+        'error',
+        'You do not have permission to create supply requests'
+      );
+      return;
+    }
     // Build items from all low-stock alerts in the same category as the clicked alert
     const sameCategoryAlerts = (lowStockItems.value || []).filter(
       (x) => x.category_name === alertItem.category_name
@@ -1763,6 +1792,11 @@
 
   // Handle modal submissions
   const handleConsumption = async (consumptionData) => {
+    // Prevent Staff from consuming items
+    if (isSCMStaff.value) {
+      showToast('error', 'You do not have permission to consume items');
+      return;
+    }
     try {
       // Build confirmation details
       const isSingle = consumptionData.items.length === 1;
@@ -1818,6 +1852,11 @@
   };
 
   const handleAdjustment = async (adjustmentData) => {
+    // Prevent Staff from adjusting items
+    if (isSCMStaff.value) {
+      showToast('error', 'You do not have permission to adjust items');
+      return;
+    }
     try {
       const selected = currentInventory.value.find(
         (i) => i.id == adjustmentData.inventory_item_id
@@ -1899,7 +1938,7 @@
   // Refresh data
   const refreshData = async () => {
     try {
-      await Promise.all([
+      const promises = [
         inventoryStore.fetchCategories(),
         inventoryStore.fetchItemTypes(),
         inventoryStore.fetchCurrentInventory(),
@@ -1907,8 +1946,14 @@
         inventoryStore.fetchStats(),
         inventoryStore.fetchExpiringItems(),
         inventoryStore.fetchLowStockItems(),
-        inventoryStore.fetchRecentActivity(),
-      ]);
+      ];
+
+      // Only fetch recent activity if user is not Staff
+      if (!isSCMStaff.value) {
+        promises.push(inventoryStore.fetchRecentActivity());
+      }
+
+      await Promise.all(promises);
       showToast('success', 'Data refreshed successfully');
     } catch (error) {
       showToast('error', 'Failed to refresh data');
@@ -2047,6 +2092,10 @@
   };
 
   const openDistributionModal = (item) => {
+    // Prevent Staff from opening distribution modal
+    if (isSCMStaff.value) {
+      return;
+    }
     if (!item || !item.id) {
       console.error('Invalid item provided to openDistributionModal:', item);
       return;
@@ -2055,6 +2104,11 @@
   };
 
   const handleDistribution = async (distributionData) => {
+    // Prevent Staff from distributing items
+    if (isSCMStaff.value) {
+      showToast('error', 'You do not have permission to distribute items');
+      return;
+    }
     try {
       const isProduction = distributionInventoryType.value === 'production';
       const itemName = isProduction
@@ -2140,6 +2194,11 @@
 
   // Add-to-cart from modal (draft receipt)
   const handleAddToDistributionCart = (distributionData) => {
+    // Prevent Staff from adding to cart
+    if (isSCMStaff.value) {
+      showToast('error', 'You do not have permission to add items to cart');
+      return;
+    }
     try {
       const isProduction = distributionInventoryType.value === 'production';
       const name = isProduction
@@ -2196,6 +2255,14 @@
 
   // Draft checkout: process cart items and build receipt
   const checkoutDistributionDraft = async () => {
+    // Prevent Staff from checking out
+    if (isSCMStaff.value) {
+      showToast(
+        'error',
+        'You do not have permission to checkout distributions'
+      );
+      return;
+    }
     try {
       const cart = inventoryStore.distributionCart;
       if (!cart.branch_id || cart.items.length === 0) {
@@ -2448,7 +2515,7 @@
   // Lifecycle
   onMounted(async () => {
     try {
-      await Promise.all([
+      const promises = [
         inventoryStore.fetchCategories(),
         inventoryStore.fetchItemTypes(),
         inventoryStore.fetchCurrentInventory(),
@@ -2456,11 +2523,17 @@
         inventoryStore.fetchStats(),
         inventoryStore.fetchExpiringItems(),
         inventoryStore.fetchLowStockItems(),
-        inventoryStore.fetchRecentActivity(),
         fetchBranches(),
         fetchProductionInventory(),
         fetchDistributionHistory(1),
-      ]);
+      ];
+
+      // Only fetch recent activity if user is not Staff
+      if (!isSCMStaff.value) {
+        promises.push(inventoryStore.fetchRecentActivity());
+      }
+
+      await Promise.all(promises);
 
       // Handle query parameters for production integration
       handleQueryParameters();
@@ -2546,6 +2619,20 @@
       rejectionNotification.value.acknowledging = false;
     }
   };
+
+  // Watch for tab changes to prevent Staff from accessing restricted tabs
+  watch(activeTab, (newTab) => {
+    // Reset to overview tab if Staff tries to access restricted tabs
+    if (
+      isSCMStaff.value &&
+      (newTab === 'distribution' ||
+        newTab === 'Distribution History' ||
+        newTab === 'alerts')
+    ) {
+      activeTab.value = 'overview';
+      return;
+    }
+  });
 
   // Watch for search/filter changes to reset pagination
   watch([searchQuery, categoryFilter], () => {
@@ -2668,6 +2755,7 @@
         <span class="truncate">Inventory</span>
       </button>
       <button
+        v-if="!isSCMStaff"
         @click="activeTab = 'alerts'"
         class="tab flex-1 sm:flex-none min-w-0 text-xs sm:text-sm relative"
         :class="{ 'tab-active': activeTab === 'alerts' }"
@@ -2688,6 +2776,7 @@
         </span>
       </button>
       <button
+        v-if="!isSCMStaff"
         @click="activeTab = 'distribution'"
         class="tab flex-1 sm:flex-none min-w-0 text-xs sm:text-sm"
         :class="{ 'tab-active': activeTab === 'distribution' }"
@@ -2696,6 +2785,7 @@
         <span class="truncate">Distribution</span>
       </button>
       <button
+        v-if="!isSCMStaff"
         @click="activeTab = 'Distribution History'"
         class="tab flex-1 sm:flex-none min-w-0 text-xs sm:text-sm"
         :class="{ 'tab-active': activeTab === 'Distribution History' }"
@@ -3210,6 +3300,7 @@
 
           <!-- Enhanced Recent Activity -->
           <div
+            v-if="!isSCMStaff"
             class="card bg-gradient-to-br from-base-100 to-base-50 border border-gray-200 shadow-lg"
           >
             <div class="card-body p-6">
@@ -3609,7 +3700,6 @@
                         <th>Quantity</th>
                         <th>Expiry Date</th>
                         <th>Received Date</th>
-          
 
                         <th>Status</th>
                         <th>Actions</th>
@@ -3660,7 +3750,6 @@
                             {{ formatDate(batch.received_date) }}
                           </span>
                         </td>
-       
 
                         <td>
                           <span
@@ -3678,7 +3767,7 @@
                             <ul
                               class="dropdown-content menu p-2 shadow bg-base-100 rounded-box w-40 z-50"
                             >
-                              <li v-if="!isBoardMember">
+                              <li v-if="!isBoardMember && !isSCMStaff">
                                 <button
                                   @click="consumeBatch(batch)"
                                   class="text-sm"
@@ -3693,7 +3782,7 @@
                                   Consume
                                 </button>
                               </li>
-                              <li v-if="!isBoardMember">
+                              <li v-if="!isBoardMember && !isSCMStaff">
                                 <button
                                   @click="adjustBatch(batch)"
                                   class="text-sm"
@@ -3847,7 +3936,7 @@
         </div>
 
         <!-- Alerts Tab -->
-        <div v-if="activeTab === 'alerts'" class="space-y-6">
+        <div v-if="activeTab === 'alerts' && !isSCMStaff" class="space-y-6">
           <div
             class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4"
           >
@@ -4058,7 +4147,7 @@
                     View Item
                   </button>
                   <button
-                    v-if="!isBoardMember"
+                    v-if="!isBoardMember && !isSCMStaff"
                     class="btn btn-ghost btn-xs"
                     @click="createSupplyRequestFromAlert(item)"
                   >
@@ -4076,7 +4165,10 @@
         </div>
 
         <!-- Branch Distribution Tab -->
-        <div v-if="activeTab === 'distribution'" class="space-y-6">
+        <div
+          v-if="activeTab === 'distribution' && !isSCMStaff"
+          class="space-y-6"
+        >
           <div
             class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4"
           >
@@ -4286,7 +4378,7 @@
                           >
                         </div>
                         <div
-                          v-if="!isBoardMember"
+                          v-if="!isBoardMember && !isSCMStaff"
                           class="flex items-center justify-end mt-3"
                         >
                           <button
@@ -4339,7 +4431,7 @@
                       }}
                     </th>
                     <th
-                      v-if="!isBoardMember"
+                      v-if="!isBoardMember && !isSCMStaff"
                       class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
                     >
                       Actions
@@ -4442,7 +4534,10 @@
                       </div>
                       <div v-else>{{ item.unit_of_measure || 'N/A' }}</div>
                     </td>
-                    <td v-if="!isBoardMember" class="px-3 sm:px-6 py-4">
+                    <td
+                      v-if="!isBoardMember && !isSCMStaff"
+                      class="px-3 sm:px-6 py-4"
+                    >
                       <button
                         @click="openDistributionModal(item)"
                         class="btn btn-sm bg-primaryColor text-white font-thin border-none hover:bg-primaryColor/80"
@@ -4459,7 +4554,7 @@
                   </tr>
                   <tr v-if="paginatedDistributionInventory.length === 0">
                     <td
-                      :colspan="!isBoardMember ? 5 : 4"
+                      :colspan="!isBoardMember && !isSCMStaff ? 5 : 4"
                       class="text-center text-gray-400 py-6"
                     >
                       No items available for distribution
@@ -4533,7 +4628,10 @@
         </div>
 
         <!-- Distribution History Tab -->
-        <div v-if="activeTab === 'Distribution History'" class="space-y-6">
+        <div
+          v-if="activeTab === 'Distribution History' && !isSCMStaff"
+          class="space-y-6"
+        >
           <!-- Branch Distribution History -->
           <div class="card bg-base-100 border border-gray-200 mt-10">
             <div class="card-body p-4">
@@ -4807,7 +4905,10 @@
     </dialog>
 
     <!-- Floating actions container (bottom-left corner) -->
-    <div class="fixed bottom-6 right-6 z-40 flex flex-col gap-3">
+    <div
+      v-if="!isSCMStaff"
+      class="fixed bottom-6 right-6 z-40 flex flex-col gap-3"
+    >
       <!-- Branch Returns Approval (first, appears on top) -->
       <div v-if="pendingReturns.length > 0" class="card shadow-xl bg-base-100">
         <div class="card-body p-4">

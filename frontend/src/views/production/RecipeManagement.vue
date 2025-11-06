@@ -259,6 +259,33 @@
     }, 0);
   });
 
+  // Suggested price range using 30-35% markup (PH guideline)
+  const suggestedPriceRange = computed(() => {
+    const cost = Number(totalCostPerBatch.value || 0);
+    return {
+      min: cost * 1.3,
+      max: cost * 1.35,
+    };
+  });
+
+  // Per serving calculations
+  const perServingCost = computed(() => {
+    const batchSize = parseFloat(
+      modal.value.recipe?.batch_size || recipeForm.value.batch_size || 0
+    );
+    if (!batchSize || batchSize <= 0) return null;
+    return totalCostPerBatch.value / batchSize;
+  });
+
+  const suggestedPerServingRange = computed(() => {
+    if (perServingCost.value == null) return null;
+    const cost = Number(perServingCost.value || 0);
+    return {
+      min: cost * 1.3,
+      max: cost * 1.35,
+    };
+  });
+
   // Filter inventory items to only show food-related ingredients (excluding expired)
   const foodIngredients = computed(() => {
     if (!itemTypes.value || itemTypes.value.length === 0) return [];
@@ -1851,6 +1878,29 @@
                   ingredients.length !== 1 ? 's' : ''
                 }}
               </div>
+              <!-- Suggested Price Indicator (30–35% markup, per serving only) -->
+              <div
+                class="mt-2 p-2 rounded-lg bg-green-50 border border-green-200"
+              >
+                <div
+                  v-if="
+                    recipeForm.batch_size &&
+                    parseFloat(recipeForm.batch_size) > 0 &&
+                    suggestedPerServingRange
+                  "
+                  class="text-xs text-green-800"
+                >
+                  <span class="font-medium"
+                    >Suggested price per serving (30–35% markup):</span
+                  >
+                  ₱{{ formatCurrency(suggestedPerServingRange.min) }} – ₱{{
+                    formatCurrency(suggestedPerServingRange.max)
+                  }}
+                </div>
+                <div v-else class="text-[11px] text-green-700">
+                  Set batch size to see suggested price per serving.
+                </div>
+              </div>
             </div>
 
             <!-- Status -->
@@ -2626,6 +2676,29 @@
               <span class="font-bold text-lg text-primaryColor">
                 ₱{{ modal.recipe?.total_estimated_cost || 0 }}
               </span>
+            </div>
+            <!-- Suggested Price Per Serving (30–35% markup) -->
+            <div
+              class="mt-2 p-2 rounded-lg bg-green-50 border border-green-200"
+            >
+              <div
+                v-if="
+                  modal.recipe?.batch_size &&
+                  parseFloat(modal.recipe?.batch_size) > 0 &&
+                  suggestedPerServingRange
+                "
+                class="text-xs text-green-800"
+              >
+                <span class="font-medium"
+                  >Suggested price per serving (30–35% markup):</span
+                >
+                ₱{{ formatCurrency(suggestedPerServingRange.min) }} – ₱{{
+                  formatCurrency(suggestedPerServingRange.max)
+                }}
+              </div>
+              <div v-else class="text-[11px] text-green-700">
+                Batch size required to compute suggested price per serving.
+              </div>
             </div>
           </div>
 

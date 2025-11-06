@@ -1144,211 +1144,207 @@
         return;
       }
 
-      const branches =
-        selectedBranch.value === 'all'
-          ? (branchStore.activeBranches || []).map((b) => b.id)
-          : [parseInt(selectedBranch.value)];
-
       // Track unique suggestions to avoid duplicates
       const uniqueSuggestions = new Set();
 
-      for (const branchId of branches) {
-        const branchResults = rows.value.filter((r) => r.branchId === branchId);
-
-        for (const item of branchResults) {
-          const itemSuggestions = [];
-          const inv = inventoryByItemId.value.get(item.itemId) || {};
-          const availableQty = Number(inv.available_quantity || 0);
-          const totalProduced = Number(inv.total_produced || 0);
-          const dailyConsumption = Number(item.dailyAvgQty || 0);
-          const fbAgg = feedbackByItemId.value.get(Number(item.itemId));
-          const ratingCount = fbAgg?.count || 0;
-          const ratingAvg = ratingCount
-            ? Math.round((fbAgg.sum / ratingCount) * 10) / 10
-            : null;
-          const negativeRate = ratingCount
-            ? fbAgg.negativeCount / ratingCount
-            : 0;
-          const daysSinceActivity = (() => {
-            if (!item.lastActivity) return Infinity;
-            const now = getCurrentPhilippineTime();
-            const last = new Date(item.lastActivity);
-            return Math.max(
-              0,
-              Math.round((now - last) / (1000 * 60 * 60 * 24))
+      // When "all branches" is selected, use aggregated rows directly (branchId: 'all')
+      // When a specific branch is selected, filter by that branch ID
+      const itemsToProcess =
+        selectedBranch.value === 'all'
+          ? rows.value.filter((r) => r.branchId === 'all')
+          : rows.value.filter(
+              (r) => Number(r.branchId) === Number(selectedBranch.value)
             );
-          })();
 
-          // Realistic metrics
-          const daysOfCover =
-            availableQty > 0
-              ? Math.ceil(availableQty / Math.max(dailyConsumption, 0.1))
-              : 0;
-          const daysUntilStockout = daysOfCover;
-          const forecastEntry = (allForecasts.value || []).find(
-            (f) => Number(f.id) === Number(item.itemId)
-          );
-          const trendDirection = forecastEntry?.trendDirection || 'stable';
+      for (const item of itemsToProcess) {
+        const itemSuggestions = [];
+        const inv = inventoryByItemId.value.get(item.itemId) || {};
+        const availableQty = Number(inv.available_quantity || 0);
+        const totalProduced = Number(inv.total_produced || 0);
+        const dailyConsumption = Number(item.dailyAvgQty || 0);
+        const fbAgg = feedbackByItemId.value.get(Number(item.itemId));
+        const ratingCount = fbAgg?.count || 0;
+        const ratingAvg = ratingCount
+          ? Math.round((fbAgg.sum / ratingCount) * 10) / 10
+          : null;
+        const negativeRate = ratingCount
+          ? fbAgg.negativeCount / ratingCount
+          : 0;
+        const daysSinceActivity = (() => {
+          if (!item.lastActivity) return Infinity;
+          const now = getCurrentPhilippineTime();
+          const last = new Date(item.lastActivity);
+          return Math.max(0, Math.round((now - last) / (1000 * 60 * 60 * 24)));
+        })();
 
-          // QUALITY: High proportion of recent low ratings
-          if (ratingCount >= 3 && negativeRate >= 0.4) {
-            itemSuggestions.push({
-              type: 'quality',
-              priority: 'high',
-              title: 'Quality Check Recommended',
-              reason: `Customer feedback shows ${(negativeRate * 100).toFixed(0)}% low ratings${ratingAvg != null ? ` (avg ${ratingAvg}/5)` : ''}`,
-              recommendation:
-                'Investigate quality/consistency; pause discounts',
-              discountType: 'none',
-              discountValue: 0,
-              duration: 'asap',
-              expectedImpact: 'Improve satisfaction and retention',
-              icon: 'fa-solid fa-exclamation-triangle',
-              color: 'text-warning',
-            });
-          }
+        // Realistic metrics
+        const daysOfCover =
+          availableQty > 0
+            ? Math.ceil(availableQty / Math.max(dailyConsumption, 0.1))
+            : 0;
+        const daysUntilStockout = daysOfCover;
+        const forecastEntry = (allForecasts.value || []).find(
+          (f) => Number(f.id) === Number(item.itemId)
+        );
+        const trendDirection = forecastEntry?.trendDirection || 'stable';
 
-          // 1) URGENT: very low days-of-cover regardless of trend
-          if (availableQty > 0 && daysOfCover <= 3) {
-            itemSuggestions.push({
-              type: 'urgent',
-              priority: 'critical',
-              title: 'Urgent Stock Clearance',
-              reason: `Very low days of cover (${daysOfCover}d) with current sales of ${dailyConsumption.toFixed(1)}/day`,
-              recommendation: `Launch immediate 15-25% discount to accelerate sell-through`,
-              discountType: 'percentage',
-              discountValue: 20,
-              duration: '3-5 days',
-              expectedImpact: `Clear ${Math.min(Math.round(availableQty * 0.8), availableQty)} units`,
-              icon: 'fa-solid fa-exclamation-triangle',
-              color: 'text-error',
-            });
-          }
-
-          // 2) CLEARANCE: overstocked or long days-of-cover, esp. with flat/down trend
-          if (
-            availableQty >= 200 &&
-            (daysOfCover >= 25 ||
-              (availableQty > totalProduced * 0.4 && dailyConsumption < 1.0) ||
-              (trendDirection === 'down' && daysOfCover >= 15))
-          ) {
-            itemSuggestions.push({
-              type: 'clearance',
-              priority: 'high',
-              title: 'Clearance Sale Opportunity',
-              reason: `Overstocked: ${availableQty} units (~${daysOfCover} days of cover)`,
-              recommendation: `Run 20-30% markdown to reduce excess inventory`,
-              discountType: 'percentage',
-              discountValue: 25,
-              duration: '1-2 weeks',
-              expectedImpact: 'Reduce stock by 40-60%',
-              icon: 'fa-solid fa-tags',
-              color: 'text-warning',
-            });
-          }
-
-          // 3) BOOST: demand soft / declining but inventory is adequate
-          if (
-            (trendDirection === 'down' || dailyConsumption <= 1.0) &&
-            daysOfCover >= 7 &&
-            daysOfCover <= 25
-          ) {
-            itemSuggestions.push({
-              type: 'boost',
-              priority: 'medium',
-              title: 'Sales Boost Campaign',
-              reason: `Soft demand (${dailyConsumption.toFixed(1)}/day) with ${daysOfCover}d cover`,
-              recommendation: `Run a 10-15% promo to stimulate demand`,
-              discountType: 'percentage',
-              discountValue: 12,
-              duration: '1-2 weeks',
-              expectedImpact: 'Increase daily sales by 30-70%',
-              icon: 'fa-solid fa-chart-line',
-              color: 'text-info',
-            });
-          }
-
-          // 4. Seasonal/Weather-based Promo Suggestions
-          const currentMonth = new Date().getMonth() + 1;
-          const isSummer = currentMonth >= 3 && currentMonth <= 5;
-          const isRainy = currentMonth >= 6 && currentMonth <= 10;
-          const isChristmas = currentMonth >= 11 || currentMonth <= 1;
-
-          if (isSummer && dailyConsumption < 0.8) {
-            itemSuggestions.push({
-              type: 'seasonal',
-              priority: 'medium',
-              title: 'Summer Promotion',
-              reason: 'Summer season with lower demand patterns',
-              recommendation: `Launch "Summer Special" with 10-15% discount`,
-              discountType: 'percentage',
-              discountValue: 12,
-              duration: '2-3 weeks',
-              expectedImpact: 'Maintain sales during low season',
-              icon: 'fa-solid fa-sun',
-              color: 'text-warning',
-            });
-          }
-
-          if (isChristmas && dailyConsumption > 1.5) {
-            itemSuggestions.push({
-              type: 'seasonal',
-              priority: 'high',
-              title: 'Holiday Bundle Promotion',
-              reason: 'High demand during Christmas season',
-              recommendation: `Create bundle deals or volume discounts`,
-              discountType: 'percentage',
-              discountValue: 15,
-              duration: '1 month',
-              expectedImpact: 'Maximize holiday sales revenue',
-              icon: 'fa-solid fa-gift',
-              color: 'text-success',
-            });
-          }
-
-          // 5) VOLUME: strong trend up, healthy stock, reasonable days-of-cover
-          if (
-            trendDirection === 'up' &&
-            dailyConsumption >= 2.0 &&
-            availableQty >= Math.max(20, Math.round(dailyConsumption * 7)) &&
-            daysOfCover >= 5 &&
-            daysOfCover <= 15
-          ) {
-            itemSuggestions.push({
-              type: 'volume',
-              priority: 'medium',
-              title: 'Volume Discount Promotion',
-              reason: `High demand (${dailyConsumption.toFixed(1)}/day), ${daysOfCover}d cover, trend up`,
-              recommendation: `Offer "Buy More, Save More" volume discounts`,
-              discountType: 'percentage',
-              discountValue: 10,
-              duration: '2 weeks',
-              expectedImpact: 'Increase average order value by 30%',
-              icon: 'fa-solid fa-shopping-cart',
-              color: 'text-primaryColor',
-            });
-          }
-
-          // Add suggestions to the main array, but only if they're unique
-          itemSuggestions.forEach((suggestion) => {
-            const suggestionKey = `${suggestion.type}-${item.branchId}-${item.itemId}`;
-
-            if (!uniqueSuggestions.has(suggestionKey)) {
-              uniqueSuggestions.add(suggestionKey);
-              suggestions.push({
-                ...suggestion,
-                branchId: item.branchId,
-                branchName: item.branchName,
-                itemId: item.itemId,
-                itemName: item.itemName,
-                currentStock: availableQty,
-                dailyConsumption: dailyConsumption,
-                unit: 'units',
-                daysUntilStockout: daysUntilStockout,
-              });
-            }
+        // QUALITY: High proportion of recent low ratings
+        if (ratingCount >= 3 && negativeRate >= 0.4) {
+          itemSuggestions.push({
+            type: 'quality',
+            priority: 'high',
+            title: 'Quality Check Recommended',
+            reason: `Customer feedback shows ${(negativeRate * 100).toFixed(0)}% low ratings${ratingAvg != null ? ` (avg ${ratingAvg}/5)` : ''}`,
+            recommendation: 'Investigate quality/consistency; pause discounts',
+            discountType: 'none',
+            discountValue: 0,
+            duration: 'asap',
+            expectedImpact: 'Improve satisfaction and retention',
+            icon: 'fa-solid fa-exclamation-triangle',
+            color: 'text-warning',
           });
         }
+
+        // 1) URGENT: very low days-of-cover regardless of trend
+        if (availableQty > 0 && daysOfCover <= 3) {
+          itemSuggestions.push({
+            type: 'urgent',
+            priority: 'critical',
+            title: 'Urgent Stock Clearance',
+            reason: `Very low days of cover (${daysOfCover}d) with current sales of ${dailyConsumption.toFixed(1)}/day`,
+            recommendation: `Launch immediate 15-25% discount to accelerate sell-through`,
+            discountType: 'percentage',
+            discountValue: 20,
+            duration: '3-5 days',
+            expectedImpact: `Clear ${Math.min(Math.round(availableQty * 0.8), availableQty)} units`,
+            icon: 'fa-solid fa-exclamation-triangle',
+            color: 'text-error',
+          });
+        }
+
+        // 2) CLEARANCE: overstocked or long days-of-cover, esp. with flat/down trend
+        if (
+          availableQty >= 200 &&
+          (daysOfCover >= 25 ||
+            (availableQty > totalProduced * 0.4 && dailyConsumption < 1.0) ||
+            (trendDirection === 'down' && daysOfCover >= 15))
+        ) {
+          itemSuggestions.push({
+            type: 'clearance',
+            priority: 'high',
+            title: 'Clearance Sale Opportunity',
+            reason: `Overstocked: ${availableQty} units (~${daysOfCover} days of cover)`,
+            recommendation: `Run 20-30% markdown to reduce excess inventory`,
+            discountType: 'percentage',
+            discountValue: 25,
+            duration: '1-2 weeks',
+            expectedImpact: 'Reduce stock by 40-60%',
+            icon: 'fa-solid fa-tags',
+            color: 'text-warning',
+          });
+        }
+
+        // 3) BOOST: demand soft / declining but inventory is adequate
+        if (
+          (trendDirection === 'down' || dailyConsumption <= 1.0) &&
+          daysOfCover >= 7 &&
+          daysOfCover <= 25
+        ) {
+          itemSuggestions.push({
+            type: 'boost',
+            priority: 'medium',
+            title: 'Sales Boost Campaign',
+            reason: `Soft demand (${dailyConsumption.toFixed(1)}/day) with ${daysOfCover}d cover`,
+            recommendation: `Run a 10-15% promo to stimulate demand`,
+            discountType: 'percentage',
+            discountValue: 12,
+            duration: '1-2 weeks',
+            expectedImpact: 'Increase daily sales by 30-70%',
+            icon: 'fa-solid fa-chart-line',
+            color: 'text-info',
+          });
+        }
+
+        // 4. Seasonal/Weather-based Promo Suggestions
+        const currentMonth = new Date().getMonth() + 1;
+        const isSummer = currentMonth >= 3 && currentMonth <= 5;
+        const isRainy = currentMonth >= 6 && currentMonth <= 10;
+        const isChristmas = currentMonth >= 11 || currentMonth <= 1;
+
+        if (isSummer && dailyConsumption < 0.8) {
+          itemSuggestions.push({
+            type: 'seasonal',
+            priority: 'medium',
+            title: 'Summer Promotion',
+            reason: 'Summer season with lower demand patterns',
+            recommendation: `Launch "Summer Special" with 10-15% discount`,
+            discountType: 'percentage',
+            discountValue: 12,
+            duration: '2-3 weeks',
+            expectedImpact: 'Maintain sales during low season',
+            icon: 'fa-solid fa-sun',
+            color: 'text-warning',
+          });
+        }
+
+        if (isChristmas && dailyConsumption > 1.5) {
+          itemSuggestions.push({
+            type: 'seasonal',
+            priority: 'high',
+            title: 'Holiday Bundle Promotion',
+            reason: 'High demand during Christmas season',
+            recommendation: `Create bundle deals or volume discounts`,
+            discountType: 'percentage',
+            discountValue: 15,
+            duration: '1 month',
+            expectedImpact: 'Maximize holiday sales revenue',
+            icon: 'fa-solid fa-gift',
+            color: 'text-success',
+          });
+        }
+
+        // 5) VOLUME: strong trend up, healthy stock, reasonable days-of-cover
+        if (
+          trendDirection === 'up' &&
+          dailyConsumption >= 2.0 &&
+          availableQty >= Math.max(20, Math.round(dailyConsumption * 7)) &&
+          daysOfCover >= 5 &&
+          daysOfCover <= 15
+        ) {
+          itemSuggestions.push({
+            type: 'volume',
+            priority: 'medium',
+            title: 'Volume Discount Promotion',
+            reason: `High demand (${dailyConsumption.toFixed(1)}/day), ${daysOfCover}d cover, trend up`,
+            recommendation: `Offer "Buy More, Save More" volume discounts`,
+            discountType: 'percentage',
+            discountValue: 10,
+            duration: '2 weeks',
+            expectedImpact: 'Increase average order value by 30%',
+            icon: 'fa-solid fa-shopping-cart',
+            color: 'text-primaryColor',
+          });
+        }
+
+        // Add suggestions to the main array, but only if they're unique
+        itemSuggestions.forEach((suggestion) => {
+          const suggestionKey = `${suggestion.type}-${item.branchId}-${item.itemId}`;
+
+          if (!uniqueSuggestions.has(suggestionKey)) {
+            uniqueSuggestions.add(suggestionKey);
+            suggestions.push({
+              ...suggestion,
+              branchId: item.branchId,
+              branchName: item.branchName,
+              itemId: item.itemId,
+              itemName: item.itemName,
+              currentStock: availableQty,
+              dailyConsumption: dailyConsumption,
+              unit: 'units',
+              daysUntilStockout: daysUntilStockout,
+            });
+          }
+        });
       }
 
       // Sort suggestions by priority and type
@@ -1650,9 +1646,8 @@
               class="select select-bordered select-xs"
               v-model="chartMode"
             >
-                        <option value="perMenu">Per Menu (Bar)</option>
+              <option value="perMenu">Per Menu (Bar)</option>
               <option value="sum">Daily Sum (Line)</option>
-  
             </select>
           </div>
         </div>

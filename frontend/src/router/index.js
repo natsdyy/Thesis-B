@@ -399,7 +399,6 @@ function requiresManagerAccess(routePath) {
 
     // SCM Manager routes
     '/scm/dashboard',
-    '/scm/main-inventory',
     '/scm/request-supply',
     '/scm/purchase-order',
     '/scm/grn',
@@ -418,7 +417,6 @@ function requiresManagerAccess(routePath) {
     '/production/menu-creation',
     '/production/recipes',
     '/production/quality-inspection',
-    '/production/production-inventory',
     '/production/production-execution',
 
     // CRM Manager routes

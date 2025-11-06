@@ -122,6 +122,13 @@
       authStore.userRole === 'Chairman of the Board'
   );
 
+  // Check if user is Staff in Production department (view-only access)
+  const isProductionStaff = computed(
+    () =>
+      authStore.userRole === 'Staff' &&
+      authStore.userDepartment === 'Production'
+  );
+
   // Calculate real-time statistics from current inventory data
   const realTimeStats = computed(() => {
     const items = productionInventory.value || [];
@@ -928,12 +935,18 @@
   // Methods
   const fetchData = async () => {
     try {
-      await Promise.all([
+      const promises = [
         productionStore.fetchProductionInventory(),
         productionStore.fetchProductionInventoryStats(),
         fetchBranches(),
-        fetchRecentActivity(),
-      ]);
+      ];
+
+      // Only fetch recent activity if user is not Staff
+      if (!isProductionStaff.value) {
+        promises.push(fetchRecentActivity());
+      }
+
+      await Promise.all(promises);
     } catch (error) {
       console.error('Error fetching data:', error);
     }
@@ -987,6 +1000,10 @@
   };
 
   const openUpdateModal = (item, type) => {
+    // Prevent Staff from opening update modal
+    if (isProductionStaff.value) {
+      return;
+    }
     if (!item || !item.id) {
       console.error('Invalid item provided to openUpdateModal:', item);
       return;
@@ -1035,6 +1052,10 @@
   };
 
   const openDistributionModal = (item) => {
+    // Prevent Staff from opening distribution modal
+    if (isProductionStaff.value) {
+      return;
+    }
     if (!item || !item.id) {
       console.error('Invalid item provided to openDistributionModal:', item);
       return;
@@ -1061,6 +1082,11 @@
   };
 
   const updateStock = async () => {
+    // Prevent Staff from updating stock
+    if (isProductionStaff.value) {
+      showToast('error', 'You do not have permission to update stock');
+      return;
+    }
     try {
       // Validate form before submission
       if (!stockUpdateValidation.value.isValid) {
@@ -1113,6 +1139,11 @@
   };
 
   const updatePricing = async () => {
+    // Prevent Staff from updating pricing
+    if (isProductionStaff.value) {
+      showToast('error', 'You do not have permission to update pricing');
+      return;
+    }
     try {
       await productionStore.updateInventoryPricing(
         selectedItem.value.id,
@@ -1126,6 +1157,11 @@
   };
 
   const recordDistribution = async () => {
+    // Prevent Staff from recording distributions
+    if (isProductionStaff.value) {
+      showToast('error', 'You do not have permission to record distributions');
+      return;
+    }
     try {
       if (
         !distributionForm.value.quantity ||
@@ -1176,6 +1212,11 @@
   };
 
   const configureInventory = async (item) => {
+    // Prevent Staff from configuring inventory
+    if (isProductionStaff.value) {
+      showToast('error', 'You do not have permission to configure inventory');
+      return;
+    }
     try {
       // Navigate to Production Execution page
       router.push({
@@ -1294,7 +1335,14 @@
 
   // Watch for tab changes to fetch distributions
   watch(activeTab, (newTab) => {
-    if (newTab === 'distributions' && distributions.value.length === 0) {
+    // Reset to inventory tab if Staff tries to access restricted tabs
+    if (isProductionStaff.value && (newTab === 'distributions' || newTab === 'alerts')) {
+      activeTab.value = 'inventory';
+      return;
+    }
+    
+    // Only fetch distributions if user is not Staff
+    if (newTab === 'distributions' && !isProductionStaff.value && distributions.value.length === 0) {
       fetchDistributions();
     }
   });
@@ -1400,6 +1448,7 @@
         Inventory
       </button>
       <button
+        v-if="!isProductionStaff"
         @click="activeTab = 'distributions'"
         class="tab"
         :class="{ 'tab-active': activeTab === 'distributions' }"
@@ -1408,6 +1457,7 @@
         Distributions
       </button>
       <button
+        v-if="!isProductionStaff"
         @click="activeTab = 'alerts'"
         class="tab"
         :class="{ 'tab-active': activeTab === 'alerts' }"
@@ -1720,7 +1770,7 @@
 
                 <div class="flex gap-2">
                   <button
-                    v-if="isReadyToProduce(item)"
+                    v-if="isReadyToProduce(item) && !isProductionStaff"
                     @click.stop="configureInventory(item)"
                     class="btn bg-primaryColor btn-sm flex-1 text-white font-thin hover:border-none hover:shadow-none hover:bg-primaryColor/90"
                     :disabled="loading"
@@ -1871,7 +1921,11 @@
                         <Eye class="w-4 h-4" />
                       </button>
                       <button
-                        v-if="!isBoardMember && isReadyToProduce(item)"
+                        v-if="
+                          !isBoardMember &&
+                          !isProductionStaff &&
+                          isReadyToProduce(item)
+                        "
                         @click.stop="configureInventory(item)"
                         class="text-warning hover:text-warning/80 p-1"
                         title="Proceed to Execution"
@@ -2017,7 +2071,11 @@
                           <Eye class="w-4 h-4" />
                         </button>
                         <button
-                          v-if="!isBoardMember && isReadyToProduce(item)"
+                          v-if="
+                            !isBoardMember &&
+                            !isProductionStaff &&
+                            isReadyToProduce(item)
+                          "
                           @click.stop="configureInventory(item)"
                           class="text-warning hover:text-warning/80"
                           title="Proceed to Execution"
@@ -2174,7 +2232,7 @@
         </div>
 
         <!-- Distributions Tab -->
-        <div v-if="activeTab === 'distributions'" class="space-y-6">
+        <div v-if="activeTab === 'distributions' && !isProductionStaff" class="space-y-6">
           <div
             class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6"
           >
@@ -2863,7 +2921,7 @@
         </div>
 
         <!-- Alerts Tab -->
-        <div v-if="activeTab === 'alerts'" class="space-y-6">
+        <div v-if="activeTab === 'alerts' && !isProductionStaff" class="space-y-6">
           <div
             class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6"
           >
@@ -2992,6 +3050,7 @@
 
     <!-- Recent Activity Section -->
     <div
+      v-if="!isProductionStaff"
       class="card bg-gradient-to-br from-base-100 to-base-50 border border-gray-200 shadow-lg"
     >
       <div class="card-body p-6 overflow-y-auto max-h-[500px]">
@@ -3013,7 +3072,7 @@
           </div>
           <button
             @click="fetchData"
-            class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10"
+            class="btn btn-sm text-primaryColor hover:bg-primaryColor/10"
             :disabled="loading"
           >
             <RefreshCcw class="w-4 h-4 mr-1" />

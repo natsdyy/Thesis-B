@@ -6,20 +6,9 @@
         :isOpen="isAnnouncementModalOpen"
         :announcements="activeAnnouncements"
         @close="closeAnnouncementModal"
+        @open-job-positions="openJobPositionsFromAnnouncement"
       />
     </Teleport>
-
-    <!-- Foodpanda Order Modal -->
-    <FoodpandaOrderModal
-      :isOpen="isFoodpandaModalOpen"
-      @close="closeFoodpandaModal"
-    />
-
-    <!-- Grabfood Order Modal -->
-    <GrabfoodOrderModal
-      :isOpen="isGrabfoodModalOpen"
-      @close="closeGrabfoodModal"
-    />
 
     <!-- Job Positions Modal -->
     <JobPositionsModal
@@ -771,246 +760,25 @@
       </div>
     </section>
 
-    <!-- Delivery Options Section -->
-    <section class="py-20 bg-green-800">
-      <div class="container mx-auto px-6">
-        <div class="text-center mb-16">
-          <div class="flex items-center justify-center mb-4">
-            <div class="w-60 h-0.5 bg-orange-400 sm:block hidden"></div>
-            <h2 class="text-4xl font-bold text-white mx-4">
-              Order for Delivery
-            </h2>
-            <div class="w-60 h-0.5 bg-orange-400 sm:block hidden"></div>
-          </div>
-          <p class="text-xl text-green-100 max-w-2xl mx-auto">
-            Craving our delicious steaks? Order now through your favorite
-            delivery platforms!
-          </p>
-        </div>
-
-        <!-- Delivery Content with Video on Right -->
-        <div
-          class="grid lg:grid-cols-2 gap-8 lg:gap-12 items-center px-4 sm:px-6 lg:px-10"
-        >
-          <!-- Left Side - Delivery Options -->
-          <div class="space-y-6 lg:space-y-8">
-            <div class="text-center lg:text-left">
-              <h3 class="text-xl sm:text-2xl font-bold text-white mb-2">
-                Choose Your Delivery Platform
-              </h3>
-              <p class="text-sm sm:text-base text-green-100">
-                We partner with the best delivery services to bring Countryside
-                to your doorstep
-              </p>
-            </div>
-
-            <!-- Delivery Cards - Vertical Mobile-First Design -->
-            <div class="grid grid-cols-2 gap-3 sm:gap-4 lg:gap-6">
-              <!-- Foodpanda Card -->
-              <div
-                class="bg-orange-500 rounded-2xl p-4 sm:p-5 lg:p-6 text-white text-center transition-all duration-300 shadow-lg card-hover cursor-pointer flex flex-col justify-between min-h-[280px] sm:min-h-[320px] lg:min-h-[360px]"
-              >
-                <div class="flex-1 flex flex-col justify-center">
-                  <div
-                    class="w-16 h-16 sm:w-20 sm:h-20 lg:w-24 lg:h-24 bg-white bg-opacity-20 rounded-full mx-auto mb-4 flex items-center justify-center"
-                  >
-                    <img
-                      src="/src/assets/crm/Foodpanda.png"
-                      alt="Foodpanda Logo"
-                      class="w-12 h-12 sm:w-14 sm:h-14 lg:w-16 lg:h-16 object-contain"
-                    />
-                  </div>
-                  <h3
-                    class="text-xl sm:text-2xl lg:text-3xl font-bold mb-2 sm:mb-3"
-                  >
-                    Foodpanda
-                  </h3>
-                  <p
-                    class="text-xs sm:text-sm lg:text-base mb-4 opacity-90 leading-relaxed px-2"
-                  >
-                    Order your favorite Countryside dishes through Foodpanda
-                  </p>
-                </div>
-                <button
-                  @click="openFoodpandaModal"
-                  class="bg-white text-orange-500 px-4 sm:px-6 py-2 sm:py-2.5 rounded-lg font-medium hover:bg-gray-100 transition-colors w-full cursor-pointer text-sm sm:text-base shadow-md hover:shadow-lg"
-                >
-                  Order on Foodpanda
-                </button>
-              </div>
-
-              <!-- Grabfood Card -->
-              <div
-                class="bg-green-600 rounded-2xl p-4 sm:p-5 lg:p-6 text-white text-center transition-all duration-300 shadow-lg card-hover cursor-pointer flex flex-col justify-between min-h-[280px] sm:min-h-[320px] lg:min-h-[360px]"
-              >
-                <div class="flex-1 flex flex-col justify-center">
-                  <div
-                    class="w-16 h-16 sm:w-20 sm:h-20 lg:w-24 lg:h-24 bg-white bg-opacity-20 rounded-full mx-auto mb-4 flex items-center justify-center"
-                  >
-                    <img
-                      src="/src/assets/crm/GrabFood.png"
-                      alt="GrabFood Logo"
-                      class="w-12 h-12 sm:w-14 sm:h-14 lg:w-16 lg:h-16 object-contain"
-                    />
-                  </div>
-                  <h3
-                    class="text-xl sm:text-2xl lg:text-3xl font-bold mb-2 sm:mb-3"
-                  >
-                    Grabfood
-                  </h3>
-                  <p
-                    class="text-xs sm:text-sm lg:text-base mb-4 opacity-90 leading-relaxed px-2"
-                  >
-                    Get your Countryside favorites delivered by Grab
-                  </p>
-                </div>
-                <button
-                  @click="openGrabfoodModal"
-                  class="bg-white text-green-600 px-4 sm:px-6 py-2 sm:py-2.5 rounded-lg font-medium hover:bg-gray-100 transition-colors w-full cursor-pointer text-sm sm:text-base shadow-md hover:shadow-lg"
-                >
-                  Order on Grabfood
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <!-- Right Side - Video -->
-          <div
-            class="flex justify-center lg:justify-end order-3 lg:order-2 mt-6 lg:mt-0"
-          >
-            <div class="max-w-lg w-full">
-              <div
-                class="relative rounded-xl sm:rounded-2xl overflow-hidden shadow-2xl"
-              >
-                <video
-                  class="w-full h-auto rounded-xl sm:rounded-2xl"
-                  loop
-                  playsinline
-                  ref="deliveryVideo"
-                  :muted="isDeliveryVideoMuted"
-                >
-                  <source src="/video/foodgrab.mp4" type="video/mp4" />
-                  Your browser does not support the video tag.
-                </video>
-
-                <!-- Play/Pause Button for Delivery Video -->
-                <button
-                  @click="toggleDeliveryVideo"
-                  class="absolute top-2 left-2 sm:top-4 sm:left-4 bg-black/70 hover:bg-black/90 text-white p-2 sm:p-3 rounded-full transition-all duration-300 hover:scale-110 backdrop-blur-sm z-20"
-                  :title="isDeliveryVideoPlaying ? 'Pause' : 'Play'"
-                >
-                  <svg
-                    v-if="isDeliveryVideoPlaying"
-                    class="w-4 h-4 sm:w-5 sm:h-5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                    ></path>
-                  </svg>
-                  <svg
-                    v-else
-                    class="w-4 h-4 sm:w-5 sm:h-5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1m4 0h1m-6 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                    ></path>
-                  </svg>
-                </button>
-
-                <!-- Volume Control for Delivery Video -->
-                <button
-                  @click="toggleDeliveryVideoMute"
-                  class="absolute top-2 right-2 sm:top-4 sm:right-4 bg-black/70 hover:bg-black/90 backdrop-blur-sm rounded-full p-2 sm:p-2.5 text-white hover:text-orange-400 transition-all duration-300 z-20"
-                  :title="
-                    isDeliveryVideoMuted
-                      ? 'Unmute (Click to enable sound)'
-                      : 'Mute (Click to disable sound)'
-                  "
-                >
-                  <font-awesome-icon
-                    v-if="isDeliveryVideoMuted"
-                    icon="fa-solid fa-volume-xmark"
-                    class="w-3 h-3 sm:w-4 sm:h-4"
-                  />
-                  <font-awesome-icon
-                    v-else-if="deliveryVideoVolume === 0"
-                    icon="fa-solid fa-volume-off"
-                    class="w-3 h-3 sm:w-4 sm:h-4"
-                  />
-                  <font-awesome-icon
-                    v-else-if="deliveryVideoVolume < 0.5"
-                    icon="fa-solid fa-volume-low"
-                    class="w-3 h-3 sm:w-4 sm:h-4"
-                  />
-                  <font-awesome-icon
-                    v-else
-                    icon="fa-solid fa-volume-high"
-                    class="w-3 h-3 sm:w-4 sm:h-4"
-                  />
-                </button>
-              </div>
-
-              <!-- Video Caption -->
-              <p
-                class="text-xs sm:text-sm text-gray-200 mt-2 sm:mt-3 italic text-center lg:text-right"
-              >
-                Experience the convenience of food delivery with Countryside
-                Steakhouse
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <!-- Additional Delivery Info -->
-        <div class="mt-12 text-center">
-          <div
-            class="bg-white/10 backdrop-blur-lg rounded-2xl p-6 w-full border border-white/30"
-          >
-            <div class="flex items-center justify-center mb-4">
-              <div class="w-70 h-0.5 bg-green-200"></div>
-              <h4 class="text-xl text-green-200 mx-3">Delivery Information</h4>
-              <div class="w-70 h-0.5 bg-green-200"></div>
-            </div>
-            <div class="grid md:grid-cols-3 gap-4 text-sm text-gray-200">
-              <div>
-                <font-awesome-icon icon="fa-solid fa-clock" />
-                <p>Delivery Time: 30-45 minutes</p>
-              </div>
-              <div>
-                <font-awesome-icon icon="fa-solid fa-coins" />
-                <p>
-                  Delivery Fee:
-                  <span><font-awesome-icon icon="fa-solid fa-peso-sign" /></span
-                  >50 -
-                  <span><font-awesome-icon icon="fa-solid fa-peso-sign" /></span
-                  >80
-                </p>
-              </div>
-              <div>
-                <font-awesome-icon icon="fa-solid fa-location-dot" />
-                <p>Available in selected branches only</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-
     <!-- Our Stores Section -->
-    <section id="stores" class="py-20 bg-white">
-      <div class="container mx-auto px-6">
+    <section id="stores" class="py-20 countryside-bg relative overflow-hidden">
+      <!-- Decorative countryside elements -->
+      <div class="absolute inset-0 opacity-5">
+        <div
+          class="absolute top-10 left-10 w-32 h-32 border-4 border-green-800 rounded-full"
+        ></div>
+        <div
+          class="absolute top-32 right-20 w-24 h-24 border-4 border-orange-500 rounded-full"
+        ></div>
+        <div
+          class="absolute bottom-20 left-1/4 w-20 h-20 border-4 border-green-700 rounded-full"
+        ></div>
+        <div
+          class="absolute bottom-32 right-1/3 w-28 h-28 border-4 border-orange-400 rounded-full"
+        ></div>
+      </div>
+
+      <div class="container mx-auto px-6 relative z-10">
         <div class="text-center mb-16">
           <div class="flex items-center justify-center mb-6">
             <div class="w-20 h-0.5 bg-orange-400"></div>
@@ -1036,7 +804,7 @@
               <div
                 v-for="(branch, index) in branches"
                 :key="branch.id"
-                class="bg-white rounded-xl sm:rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 card-hover flex-shrink-0 w-[85vw] max-w-[320px] snap-start flex flex-col animate-fade-in-up"
+                class="countryside-card-bg rounded-xl sm:rounded-2xl shadow-md overflow-hidden hover:shadow-lg transition-all duration-300 transform hover:-translate-y-2 card-hover flex-shrink-0 w-[85vw] max-w-[320px] snap-start flex flex-col animate-fade-in-up"
                 :style="{ animationDelay: `${index * 0.15}s` }"
               >
                 <div class="h-40 sm:h-48 overflow-hidden">
@@ -1095,7 +863,7 @@
             <div
               v-for="(branch, index) in branches.slice(0, 6)"
               :key="branch.id"
-              class="bg-white rounded-xl sm:rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 card-hover flex flex-col animate-fade-in-up"
+              class="countryside-card-bg rounded-xl sm:rounded-2xl shadow-md overflow-hidden hover:shadow-lg transition-all duration-300 transform hover:-translate-y-2 card-hover flex flex-col animate-fade-in-up"
               :style="{ animationDelay: `${index * 0.1}s` }"
             >
               <div class="h-48 sm:h-56 overflow-hidden">
@@ -1153,7 +921,7 @@
           >
             <router-link
               to="/stores"
-              class="btn bg-green-600 hover:bg-green-700 text-white px-8 py-3 rounded-lg shadow-lg hover:shadow-xl flex items-center !font-medium"
+              class="btn bg-green-600 hover:bg-green-700 text-white px-8 py-3 rounded-lg shadow-lg hover:shadow-xl flex items-center !font-medium border-none"
             >
               <span>View All Branches</span>
               <font-awesome-icon
@@ -1170,7 +938,7 @@
           >
             <router-link
               to="/stores"
-              class="btn bg-green-600 hover:bg-green-700 text-white px-6 py-2.5 rounded-lg font-semibold shadow-lg hover:shadow-xl flex items-center text-sm"
+              class="btn bg-green-600 hover:bg-green-700 text-white px-6 py-2.5 rounded-lg font-medium shadow-lg hover:shadow-xl flex items-center text-sm border-none"
             >
               <span>View All Branches</span>
               <font-awesome-icon
@@ -1323,7 +1091,7 @@
               <div
                 v-for="item in signatureDishes"
                 :key="item.name"
-                class="bg-white rounded-xl sm:rounded-2xl overflow-hidden shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 card-hover relative flex-shrink-0 w-[75vw] max-w-[280px] snap-start"
+                class="menu-card-bg rounded-xl sm:rounded-2xl overflow-hidden shadow-md hover:shadow-lg transition-all duration-300 transform hover:-translate-y-2 card-hover relative flex-shrink-0 w-[75vw] max-w-[280px] snap-start"
               >
                 <!-- Modern Promo Badge -->
                 <div
@@ -1447,7 +1215,7 @@
             <div
               v-for="item in signatureDishes"
               :key="item.name"
-              class="bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 card-hover relative"
+              class="menu-card-bg rounded-2xl overflow-hidden shadow-md hover:shadow-lg transition-all duration-300 transform hover:-translate-y-2 card-hover relative"
             >
               <!-- Modern Promo Badge -->
               <div v-if="item.hasPromo" class="absolute top-4 right-4 z-10">
@@ -1907,8 +1675,6 @@
   import { useRouter } from 'vue-router';
   import { ref, onMounted, onUnmounted, computed, nextTick, watch } from 'vue';
   import AnnouncementModal from './AnnouncementModal.vue';
-  import FoodpandaOrderModal from './FoodpandaOrderModal.vue';
-  import GrabfoodOrderModal from './GrabfoodOrderModal.vue';
   import JobPositionsModal from './JobPositionsModal.vue';
   import branchService from '../../services/branchService.js';
   import menuService from '../../services/menuService.js';
@@ -1963,17 +1729,13 @@
   // Reels carousel state
   const currentReelIndex = ref(0);
   const videoPlayer = ref(null);
-  const deliveryVideo = ref(null);
 
   // Video play/pause state
   const isHeroVideoPlaying = ref(true);
-  const isDeliveryVideoPlaying = ref(true);
 
   // Video volume state
   const heroVideoVolume = ref(0.5); // Default 50% volume
   const isHeroVideoMuted = ref(false); // Start unmuted
-  const deliveryVideoVolume = ref(0.5); // Default 50% volume
-  const isDeliveryVideoMuted = ref(false); // Start unmuted
 
   // Auto-scroll state
   const isReelsAutoScrollActive = ref(true);
@@ -2210,26 +1972,6 @@
     }
   };
 
-  const toggleDeliveryVideo = async () => {
-    hasUserInteracted.value = true; // Mark user interaction
-    if (deliveryVideo.value) {
-      if (isDeliveryVideoPlaying.value) {
-        deliveryVideo.value.pause();
-        isDeliveryVideoPlaying.value = false;
-      } else {
-        try {
-          await deliveryVideo.value.play();
-          isDeliveryVideoPlaying.value = true;
-        } catch (error) {
-          if (error.name !== 'AbortError') {
-            console.log('Delivery video play failed:', error);
-          }
-          isDeliveryVideoPlaying.value = false;
-        }
-      }
-    }
-  };
-
   // Volume control functions for Hero Video
   const setHeroVideoVolume = (volume) => {
     heroVideoVolume.value = parseFloat(volume);
@@ -2259,39 +2001,8 @@
     }
   };
 
-  // Volume control functions for Delivery Video
-  const setDeliveryVideoVolume = (volume) => {
-    deliveryVideoVolume.value = parseFloat(volume);
-    if (deliveryVideo.value) {
-      deliveryVideo.value.volume = deliveryVideoVolume.value;
-      // If volume is set above 0, automatically unmute
-      if (deliveryVideoVolume.value > 0) {
-        isDeliveryVideoMuted.value = false;
-        deliveryVideo.value.muted = false;
-      } else {
-        // If volume is set to 0, mute
-        isDeliveryVideoMuted.value = true;
-        deliveryVideo.value.muted = true;
-      }
-    }
-  };
-
-  const toggleDeliveryVideoMute = () => {
-    isDeliveryVideoMuted.value = !isDeliveryVideoMuted.value;
-    if (deliveryVideo.value) {
-      deliveryVideo.value.muted = isDeliveryVideoMuted.value;
-      // When unmuting, ensure volume is set
-      if (!isDeliveryVideoMuted.value && deliveryVideoVolume.value === 0) {
-        deliveryVideoVolume.value = 0.5;
-        deliveryVideo.value.volume = 0.5;
-      }
-    }
-  };
-
   // Modal state
   const isAnnouncementModalOpen = ref(false);
-  const isFoodpandaModalOpen = ref(false);
-  const isGrabfoodModalOpen = ref(false);
   const isJobPositionsModalOpen = ref(false);
 
   // Announcements state
@@ -2371,11 +2082,6 @@
     if (videoPlayer.value && isHeroVideoPlaying.value) {
       videoPlayer.value.pause();
       isHeroVideoPlaying.value = false;
-    }
-
-    if (deliveryVideo.value && isDeliveryVideoPlaying.value) {
-      deliveryVideo.value.pause();
-      isDeliveryVideoPlaying.value = false;
     }
 
     // Reset timeout for scroll end (if needed for future enhancements)
@@ -2487,12 +2193,6 @@
           isHeroVideoPlaying.value = false;
         });
       }
-      // Set delivery video volume
-      if (deliveryVideo.value) {
-        deliveryVideo.value.volume = deliveryVideoVolume.value;
-        deliveryVideo.value.muted = false; // Ensure delivery video is unmuted
-        isDeliveryVideoMuted.value = false; // Update state
-      }
     });
   });
 
@@ -2576,20 +2276,11 @@
     }
   };
 
-  const openFoodpandaModal = () => {
-    isFoodpandaModalOpen.value = true;
-  };
-
-  const closeFoodpandaModal = () => {
-    isFoodpandaModalOpen.value = false;
-  };
-
-  const openGrabfoodModal = () => {
-    isGrabfoodModalOpen.value = true;
-  };
-
-  const closeGrabfoodModal = () => {
-    isGrabfoodModalOpen.value = false;
+  const openJobPositionsFromAnnouncement = () => {
+    // Close announcement modal first to avoid overlap
+    closeAnnouncementModal();
+    // Then open the job positions modal
+    openJobPositionsModal();
   };
 
   const openJobPositionsModal = () => {
@@ -3136,6 +2827,92 @@
   .hero-section {
     min-height: 100vh;
     position: relative;
+  }
+
+  /* Countryside background for Stores Section */
+  .countryside-bg {
+    background: linear-gradient(
+      135deg,
+      #f5f1e8 0%,
+      #ede8d8 25%,
+      #e8e0cc 50%,
+      #f0ead6 75%,
+      #f5f1e8 100%
+    );
+    background-size: 400% 400%;
+    animation: countrysideGradient 15s ease infinite;
+    position: relative;
+  }
+
+  .countryside-bg::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-image:
+      radial-gradient(
+        circle at 20% 30%,
+        rgba(139, 195, 74, 0.1) 0%,
+        transparent 50%
+      ),
+      radial-gradient(
+        circle at 80% 70%,
+        rgba(255, 152, 0, 0.08) 0%,
+        transparent 50%
+      ),
+      radial-gradient(
+        circle at 40% 80%,
+        rgba(76, 175, 80, 0.1) 0%,
+        transparent 50%
+      );
+    pointer-events: none;
+  }
+
+  @keyframes countrysideGradient {
+    0% {
+      background-position: 0% 50%;
+    }
+    50% {
+      background-position: 100% 50%;
+    }
+    100% {
+      background-position: 0% 50%;
+    }
+  }
+
+  /* Countryside card background - soft cream that complements the section */
+  .countryside-card-bg {
+    background: linear-gradient(135deg, #faf8f3 0%, #f7f4ed 50%, #faf8f3 100%);
+    border: 1px solid rgba(139, 195, 74, 0.1);
+    box-shadow:
+      0 4px 6px -1px rgba(0, 0, 0, 0.08),
+      0 2px 4px -1px rgba(0, 0, 0, 0.04);
+  }
+
+  .countryside-card-bg:hover {
+    box-shadow:
+      0 10px 15px -3px rgba(0, 0, 0, 0.1),
+      0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    border-color: rgba(139, 195, 74, 0.2);
+  }
+
+  /* Menu card background - soft cream that complements dark green section */
+  .menu-card-bg {
+    background: linear-gradient(135deg, #f9f7f2 0%, #f5f3ec 50%, #f9f7f2 100%);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow:
+      0 4px 6px -1px rgba(0, 0, 0, 0.15),
+      0 2px 4px -1px rgba(0, 0, 0, 0.1);
+  }
+
+  .menu-card-bg:hover {
+    box-shadow:
+      0 10px 15px -3px rgba(0, 0, 0, 0.2),
+      0 4px 6px -2px rgba(0, 0, 0, 0.15);
+    border-color: rgba(255, 255, 255, 0.3);
+    background: linear-gradient(135deg, #faf8f4 0%, #f6f4ee 50%, #faf8f4 100%);
   }
 
   /* Logo styling */

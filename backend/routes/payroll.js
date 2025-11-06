@@ -159,7 +159,15 @@ router.put(
   async (req, res) => {
     try {
       const { id, recordId } = req.params;
-      const updates = req.body;
+      const updates = { ...req.body };
+
+      // Handle UI-only fields that are not actual DB columns
+      const manualAdditionalEarnings = Number(updates.additional_earnings || 0);
+      const manualAdditionalDeductions = Number(
+        updates.additional_deductions || 0
+      );
+      delete updates.additional_earnings;
+      delete updates.additional_deductions;
 
       // Get the period first to check status
       const period = await PayrollPeriod.getById(parseInt(id));
@@ -171,15 +179,17 @@ router.put(
         });
       }
 
-      // Recalculate totals if necessary
+      // Recalculate totals when any driver changes OR when manual adjustments are provided
       if (
         updates.hours_worked !== undefined ||
-        updates.overtime_hours !== undefined
+        updates.overtime_hours !== undefined ||
+        manualAdditionalEarnings !== 0 ||
+        manualAdditionalDeductions !== 0
       ) {
         const record = await PayrollRecord.getById(parseInt(recordId));
         const hourlyRate = Number(record.rate_per_hour);
 
-        // Recalculate
+        // Recalculate base components if provided
         if (updates.hours_worked !== undefined) {
           updates.basic_salary = Number(updates.hours_worked) * hourlyRate;
         }
@@ -188,17 +198,30 @@ router.put(
             Number(updates.overtime_hours) * hourlyRate * 1.25;
         }
 
-        // Recalculate gross and net
-        updates.gross_salary =
-          Number(updates.basic_salary || record.basic_salary) +
-          Number(updates.overtime_pay || record.overtime_pay) +
-          Number(record.regular_holiday_pay || 0) +
-          Number(record.special_holiday_pay || 0) +
-          Number(record.double_holiday_pay || 0) +
-          Number(record.sil_conversion_pay || 0);
+        // Build gross from existing/updated parts plus manual additions (not stored separately)
+        const basicSalary = Number(
+          updates.basic_salary ?? record.basic_salary ?? 0
+        );
+        const overtimePay = Number(
+          updates.overtime_pay ?? record.overtime_pay ?? 0
+        );
+        const regularHolidayPay = Number(record.regular_holiday_pay || 0);
+        const specialHolidayPay = Number(record.special_holiday_pay || 0);
+        const doubleHolidayPay = Number(record.double_holiday_pay || 0);
+        const silConversionPay = Number(record.sil_conversion_pay || 0);
 
-        updates.net_salary =
-          Number(updates.gross_salary) - Number(record.total_deductions || 0);
+        updates.gross_salary =
+          basicSalary +
+          overtimePay +
+          regularHolidayPay +
+          specialHolidayPay +
+          doubleHolidayPay +
+          silConversionPay +
+          manualAdditionalEarnings;
+
+        const totalDeductions =
+          Number(record.total_deductions || 0) + manualAdditionalDeductions;
+        updates.net_salary = Number(updates.gross_salary) - totalDeductions;
       }
 
       const updatedRecord = await PayrollRecord.update(

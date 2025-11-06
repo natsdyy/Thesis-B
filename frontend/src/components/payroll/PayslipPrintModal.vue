@@ -682,6 +682,9 @@
     'Night Differential': recordData.value?.night_diff_pay,
     'SIL Conversion Pay': recordData.value?.sil_conversion_pay,
     'Rest Day Pay': recordData.value?.rest_day_pay,
+    ...(Number(recordData.value?.additional_earnings || 0) > 0
+      ? { 'Additional Earnings': recordData.value?.additional_earnings }
+      : {}),
   }));
 
   const deductionsList = computed(() => ({
@@ -689,6 +692,9 @@
     PhilHealth: recordData.value?.philhealth_employee_share,
     'Pag-IBIG': recordData.value?.pagibig_employee_share,
     'Withholding Tax': recordData.value?.withholding_tax,
+    ...(Number(recordData.value?.additional_deductions || 0) > 0
+      ? { 'Additional Deductions': recordData.value?.additional_deductions }
+      : {}),
     ...(Number(recordData.value?.previous_balance_applied || 0) !== 0
       ? {
           'Previous Balance Applied':

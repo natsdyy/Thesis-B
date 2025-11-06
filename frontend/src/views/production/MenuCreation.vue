@@ -322,6 +322,24 @@
     }).format(amount || 0);
   };
 
+  // Suggested price per serving (30–35% markup) for create/edit modal
+  const suggestedPerServingRange = computed(() => {
+    const cost = Number(recipeCostInfo.value?.costPerServing || 0);
+    return {
+      min: cost * 1.3,
+      max: cost * 1.35,
+    };
+  });
+
+  // Suggested price per serving for Details modal
+  const detailsSuggestedPerServingRange = computed(() => {
+    const cost = Number(selectedMenuItem.value?.cost_price || 0);
+    return {
+      min: cost * 1.3,
+      max: cost * 1.35,
+    };
+  });
+
   const getStatusBadgeClass = (isAvailable) => {
     return isAvailable
       ? 'badge-sm border-none font-medium bg-success/20 text-success'
@@ -483,18 +501,21 @@
     menuItemForm.value.isEditing = true;
     menuItemForm.value.editingItemId = item.id;
 
-    // Populate cost info from the current recipe
+    // Populate cost info from the current recipe (ensure per-serving is derived from batch)
     if (menuItemForm.value.recipe_id) {
       const recipe = productionStore.recipes.find(
         (r) => r.id === menuItemForm.value.recipe_id
       );
       if (recipe) {
-        const totalCost = Number(recipe.total_estimated_cost) || 0;
-        const costPerServing = Number(recipe.cost_per_batch) || 0;
+        const totalCost = Number(
+          recipe.total_estimated_cost ?? recipe.cost_per_batch ?? 0
+        );
+        const batchSize = Number(recipe.batch_size || 0);
+        const perServing = batchSize > 0 ? totalCost / batchSize : 0;
 
         recipeCostInfo.value = {
-          totalCost: totalCost,
-          costPerServing: costPerServing,
+          totalCost: isFinite(totalCost) ? totalCost : 0,
+          costPerServing: isFinite(perServing) ? perServing : 0,
         };
       }
     }
@@ -1507,232 +1528,178 @@
             </div>
           </div>
 
-          <!-- Menu Items Grid -->
-          <div
-            class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6"
-          >
-            <div
-              v-for="item in paginatedMenuItems"
-              :key="item.id"
-              class="card bg-white border border-gray-200 hover:shadow-xl duration-300 cursor-pointer"
-              @click="openDetailsModal(item)"
-            >
-              <div class="card-body p-4 sm:p-6">
-                <!-- Header Section -->
-                <div
-                  class="flex flex-col sm:flex-row sm:items-start sm:justify-between mb-3 sm:mb-4 gap-2"
-                >
-                  <div class="flex-1 min-w-0">
-                    <h3
-                      class="card-title text-base sm:text-lg font-bold text-primaryColor mb-2 truncate"
-                    >
-                      {{ item.item_name }}
-                    </h3>
+          <!-- Menu Items List (replaces grid) -->
+          <div class="bg-white rounded-lg shadow overflow-hidden">
+            <!-- Loading State (optional simple) -->
+            <div v-if="loading" class="p-6 text-center text-sm text-gray-500">
+              Loading menu items...
+            </div>
 
-                    <!-- Price Section - Mobile First -->
-                    <div class="sm:hidden mb-2">
-                      <div class="text-lg font-bold text-primaryColor">
-                        {{ formatCurrency(item.selling_price) }}
+            <!-- Content -->
+            <div
+              v-else-if="paginatedMenuItems.length > 0"
+              class="overflow-x-auto"
+            >
+              <!-- Mobile Card Layout -->
+              <div class="block sm:hidden space-y-3 p-4">
+                <div
+                  v-for="item in paginatedMenuItems"
+                  :key="item.id"
+                  class="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer"
+                  @click="openDetailsModal(item)"
+                >
+                  <div class="flex items-start justify-between">
+                    <div class="min-w-0">
+                      <h3 class="text-sm font-medium text-gray-900 truncate">
+                        {{ item.item_name }}
+                      </h3>
+                      <p class="text-xs text-gray-500 truncate">
+                        {{ item.category }}
+                      </p>
+                      <div class="mt-2 text-xs text-gray-600">
+                        <span class="font-medium text-primaryColor">{{
+                          formatCurrency(item.selling_price)
+                        }}</span>
+                      </div>
+                      <div class="flex items-center gap-2 mt-2">
+                        <span
+                          class="badge badge-xs"
+                          :class="getStatusBadgeClass(item.is_available)"
+                        >
+                          {{ getStatusText(item.is_available) }}
+                        </span>
+                        <span
+                          v-if="item.passed_inspections > 0"
+                          class="badge badge-xs bg-success/20 text-success border border-success/30"
+                        >
+                          Passed
+                        </span>
                       </div>
                     </div>
-                  </div>
-
-                  <!-- Price Section - Desktop -->
-                  <div class="hidden sm:block text-right">
-                    <div class="text-lg font-bold text-primaryColor">
-                      {{ formatCurrency(item.selling_price) }}
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Badges Section - Responsive -->
-                <div class="flex flex-wrap gap-1 sm:gap-2 mb-3 sm:mb-4">
-                  <span
-                    class="badge badge-xs sm:badge-sm"
-                    :class="getStatusBadgeClass(item.is_available)"
-                  >
-                    {{ getStatusText(item.is_available) }}
-                  </span>
-                  <span
-                    class="badge badge-xs sm:badge-sm bg-gray-100 text-gray-600"
-                  >
-                    {{ item.category }}
-                  </span>
-                  <!-- Quality Inspection Status -->
-                  <span
-                    v-if="item.passed_inspections > 0"
-                    class="badge badge-xs sm:badge-sm bg-success/20 text-success border border-success/30"
-                    title="Passed Quality Inspection - Ready for Production"
-                  >
-                    <Shield class="w-3 h-3 mr-1" />
-                    <span class="hidden xs:inline">Quality Passed</span>
-                    <span class="xs:hidden">Passed</span>
-                  </span>
-                  <span
-                    v-else-if="
-                      item.quality_inspections_count > 0 &&
-                      item.passed_inspections === 0
-                    "
-                    class="badge badge-xs sm:badge-sm bg-warning/20 text-warning border border-warning/30"
-                    title="Quality Inspection Pending - Consider quality check before approval"
-                  >
-                    <AlertTriangle class="w-3 h-3 mr-1" />
-                    <span class="hidden xs:inline">Needs Quality Check</span>
-                    <span class="xs:hidden">Pending</span>
-                  </span>
-                  <span
-                    v-else-if="!item.is_available"
-                    class="badge badge-xs sm:badge-sm bg-info/20 text-info border border-info/30"
-                    title="New menu item - Quality inspection recommended"
-                  >
-                    <Shield class="w-3 h-3 mr-1" />
-                    <span class="hidden xs:inline"
-                      >Quality Check Recommended</span
-                    >
-                    <span class="xs:hidden">Check Needed</span>
-                  </span>
-                  <!-- Promo Discount Badge -->
-                  <span
-                    v-if="item.promo_info"
-                    class="badge badge-xs sm:badge-sm"
-                    :class="
-                      item.promo_info.is_active
-                        ? 'bg-success/20 text-success border border-success/30'
-                        : 'bg-gray/20 text-gray-600 border border-gray/30'
-                    "
-                    :title="
-                      item.promo_info.is_active
-                        ? 'Active promotional discount available'
-                        : 'Promotional discount (inactive)'
-                    "
-                  >
-                    <Star class="w-3 h-3 mr-1" />
-                    <span class="hidden xs:inline">{{
-                      item.promo_info.is_active ? 'Promo Active' : 'Promo'
-                    }}</span>
-                    <span class="xs:hidden">Promo</span>
-                  </span>
-                </div>
-
-                <!-- Bottom Section - Responsive -->
-                <div
-                  class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-4"
-                >
-                  <div
-                    class="flex flex-col xs:flex-row xs:items-center gap-2 xs:gap-4 text-xs sm:text-sm text-gray-600"
-                  >
-                    <div class="flex items-center gap-1">
-                      <Clock class="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
-                      <span>{{ item.preparation_time_minutes }}m</span>
-                    </div>
-                  </div>
-                  <!-- Actions Dropdown -->
-                  <div
-                    class="dropdown dropdown-end flex-shrink-0"
-                    @click.stop
-                    @mousedown.stop
-                    @mouseup.stop
-                  >
-                    <button
-                      class="btn btn-ghost btn-xs sm:btn-sm"
-                      tabindex="0"
-                      @click.stop.prevent
-                      @mousedown.stop
-                      @mouseup.stop
-                    >
-                      <EllipsisVertical class="w-3 h-3 sm:w-4 sm:h-4" />
-                    </button>
-                    <ul
-                      class="dropdown-content menu p-2 shadow bg-base-100 rounded-box w-48 sm:w-52 z-50"
-                      tabindex="0"
-                      @click.stop
-                    >
-                      <!-- View Details -->
-                      <li>
-                        <button
-                          @click.stop.prevent="openDetailsModal(item)"
-                          @mousedown.stop
-                          class="text-sm"
-                        >
-                          <Eye class="w-3 h-3 mr-2" />
-                          View Details
-                        </button>
-                      </li>
-
-                      <!-- Create Quality Inspection (only if not already passed) -->
-                      <li
-                        v-if="!item.deleted_at && item.passed_inspections === 0"
+                    <div class="flex flex-col space-y-1 ml-2">
+                      <button
+                        @click.stop.prevent="openDetailsModal(item)"
+                        class="btn btn-ghost btn-xs"
                       >
-                        <button
-                          @click.stop.prevent="createQualityInspection(item)"
-                          @mousedown.stop
-                          class="text-sm text-primaryColor"
-                        >
-                          <Shield class="w-3 h-3 mr-2" />
-                          Create Quality Inspection
-                        </button>
-                      </li>
-
-                      <!-- Approve (only for draft items) -->
-                      <li v-if="!item.is_available && !item.deleted_at">
-                        <button
-                          @click.stop.prevent="openApproveModal(item)"
-                          @mousedown.stop
-                          class="text-sm text-success"
-                        >
-                          <CheckCircle class="w-3 h-3 mr-2" />
-                          Approve for Production
-                        </button>
-                      </li>
-
-                      <!-- Edit (only for non-deleted items) -->
-                      <li v-if="!item.deleted_at && statusFilter !== 'deleted'">
-                        <button
-                          @click.stop.prevent="openEditModal(item)"
-                          @mousedown.stop
-                          class="text-sm text-orange-500"
-                        >
-                          <Edit class="w-3 h-3 mr-2" />
-                          Edit Menu Item
-                        </button>
-                      </li>
-
-                      <!-- Delete (only for non-deleted items) -->
-                      <li v-if="!item.deleted_at && statusFilter !== 'deleted'">
-                        <button
-                          @click.stop.prevent="openConfirmModal('delete', item)"
-                          @mousedown.stop
-                          class="text-sm text-red-500"
-                        >
-                          <Trash2 class="w-3 h-3 mr-2" />
-                          Delete Menu Item
-                        </button>
-                      </li>
-
-                      <!-- Restore (only for deleted items) -->
-                      <li v-if="statusFilter === 'deleted' && item.deleted_at">
-                        <button
-                          @click.stop.prevent="
-                            openConfirmModal('restore', item)
-                          "
-                          @mousedown.stop
-                          class="text-sm text-blue-500"
-                        >
-                          <RefreshCcw class="w-3 h-3 mr-2" />
-                          Restore Menu Item
-                        </button>
-                      </li>
-                    </ul>
+                        <Eye class="w-4 h-4" />
+                      </button>
+                      <button
+                        v-if="!item.is_available && !item.deleted_at"
+                        @click.stop.prevent="openApproveModal(item)"
+                        class="btn btn-ghost btn-xs text-success"
+                      >
+                        <CheckCircle class="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
+
+              <!-- Desktop Table Layout -->
+              <table
+                class="min-w-full divide-y divide-gray-200 hidden sm:table"
+              >
+                <thead class="bg-gray-50">
+                  <tr>
+                    <th
+                      class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    >
+                      Item Name
+                    </th>
+                    <th
+                      class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    >
+                      Category
+                    </th>
+                    <th
+                      class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    >
+                      Price
+                    </th>
+                    <th
+                      class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    >
+                      Status
+                    </th>
+                    <th
+                      class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    >
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                  <tr
+                    v-for="item in paginatedMenuItems"
+                    :key="item.id"
+                    class="hover:bg-gray-50"
+                  >
+                    <td
+                      class="px-3 sm:px-6 py-4 whitespace-nowrap font-medium text-gray-900"
+                    >
+                      {{ item.item_name }}
+                    </td>
+                    <td
+                      class="px-3 sm:px-6 py-4 whitespace-nowrap text-gray-700"
+                    >
+                      {{ item.category }}
+                    </td>
+                    <td
+                      class="px-3 sm:px-6 py-4 whitespace-nowrap text-primaryColor font-semibold"
+                    >
+                      {{ formatCurrency(item.selling_price) }}
+                    </td>
+                    <td class="px-3 sm:px-6 py-4 whitespace-nowrap">
+                      <span
+                        class="badge badge-xs sm:badge-sm"
+                        :class="getStatusBadgeClass(item.is_available)"
+                        >{{ getStatusText(item.is_available) }}</span
+                      >
+                    </td>
+                    <td
+                      class="px-3 sm:px-6 py-4 whitespace-nowrap text-sm font-medium"
+                    >
+                      <div class="flex items-center gap-2">
+                        <button
+                          @click.prevent="openDetailsModal(item)"
+                          class="btn btn-ghost btn-xs"
+                          title="View Details"
+                        >
+                          <Eye class="w-4 h-4" />
+                        </button>
+                        <button
+                          v-if="!item.is_available && !item.deleted_at"
+                          @click.prevent="openApproveModal(item)"
+                          class="btn btn-ghost btn-xs text-success"
+                          title="Approve"
+                        >
+                          <CheckCircle class="w-4 h-4" />
+                        </button>
+                        <button
+                          v-if="!item.deleted_at"
+                          @click.prevent="openEditModal(item)"
+                          class="btn btn-ghost btn-xs text-orange-500"
+                          title="Edit"
+                        >
+                          <Edit class="w-4 h-4" />
+                        </button>
+                        <button
+                          v-if="!item.deleted_at"
+                          @click.prevent="openConfirmModal('delete', item)"
+                          class="btn btn-ghost btn-xs text-red-500"
+                          title="Delete"
+                        >
+                          <Trash2 class="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
 
             <!-- Empty State -->
-            <div
-              v-if="paginatedMenuItems.length === 0"
-              class="col-span-full flex flex-col items-center justify-center py-12"
-            >
+            <div v-else class="text-center py-12">
               <ChefHat class="w-16 h-16 text-gray-300 mb-4" />
               <h3 class="text-lg font-medium text-gray-600 mb-2">
                 No menu items found
@@ -2036,6 +2003,20 @@
                 :value="formatCurrency(recipeCostInfo.costPerServing)"
                 class="input input-sm sm:input-md input-bordered w-full bg-gray-50 text-black/70"
               />
+            </div>
+          </div>
+
+          <!-- Suggested Price (Per Serving, 30–35% markup) -->
+          <div
+            class="mt-2 p-2 rounded-lg bg-green-50 border border-green-200"
+            v-if="recipeCostInfo.costPerServing !== null"
+          >
+            <div class="text-xs text-green-800">
+              <span class="font-medium"
+                >Suggested price per serving (30–35% markup):</span
+              >
+              {{ formatCurrency(suggestedPerServingRange.min) }} –
+              {{ formatCurrency(suggestedPerServingRange.max) }}
             </div>
           </div>
 
@@ -2515,7 +2496,7 @@
                 <CheckCircle class="w-5 h-5 text-green-600" />
                 <div>
                   <div class="font-medium text-green-800">
-                    Quality Inspection Already Passed 
+                    Quality Inspection Already Passed
                     <font-awesome-icon icon="fa-solid fa-check" />
                   </div>
                   <div class="text-xs text-green-600">
@@ -2686,6 +2667,18 @@
                       )
                     }}
                   </span>
+                </div>
+                <!-- Suggested per-serving price (30–35% markup) -->
+                <div
+                  class="mt-2 p-2 rounded-lg bg-green-50 border border-green-200"
+                >
+                  <div class="text-xs text-green-800">
+                    <span class="font-medium"
+                      >Suggested price per serving (30–35% markup):</span
+                    >
+                    {{ formatCurrency(detailsSuggestedPerServingRange.min) }} –
+                    {{ formatCurrency(detailsSuggestedPerServingRange.max) }}
+                  </div>
                 </div>
               </div>
             </div>

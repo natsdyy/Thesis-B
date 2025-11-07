@@ -1373,22 +1373,29 @@ class EmailService {
 
       const rows = (items || [])
         .map((it, idx) => {
-          const qty = Number(it.item_quantity || 0);
-          const unit = it.item_unit || "";
-          const unitPrice = Number(it.item_unit_price || 0).toLocaleString(
-            "en-PH",
-            { minimumFractionDigits: 2, maximumFractionDigits: 2 }
-          );
-          const amount = Number(
-            it.item_amount || qty * (it.item_unit_price || 0)
+          // Support both Purchase Order items (quantity, unit, unit_price, total_price)
+          // and Supply Request items (item_quantity, item_unit, item_unit_price, item_amount)
+          const qty = Number(it.quantity || it.item_quantity || 0);
+          const unit = it.unit || it.item_unit || "";
+          const unitPrice = Number(
+            it.unit_price || it.item_unit_price || 0
           ).toLocaleString("en-PH", {
             minimumFractionDigits: 2,
             maximumFractionDigits: 2,
           });
+          const amount = Number(
+            it.total_price ||
+              it.item_amount ||
+              qty * (it.unit_price || it.item_unit_price || 0)
+          ).toLocaleString("en-PH", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          });
+          const itemName = it.item_name || "-";
           return `
             <tr>
               <td style="padding:8px; border-bottom:1px solid #eee; color:#2c3e50;">${idx + 1}</td>
-              <td style="padding:8px; border-bottom:1px solid #eee; color:#2c3e50;">${it.item_name || "-"}</td>
+              <td style="padding:8px; border-bottom:1px solid #eee; color:#2c3e50;">${itemName}</td>
               <td style="padding:8px; border-bottom:1px solid #eee; text-align:right;">${qty} ${unit}</td>
               <td style="padding:8px; border-bottom:1px solid #eee; text-align:right;">₱ ${unitPrice}</td>
               <td style="padding:8px; border-bottom:1px solid #eee; text-align:right; font-weight:600;">₱ ${amount}</td>

@@ -1375,8 +1375,21 @@
       );
 
       if (response.data.success) {
+        // Update the order in the local array with the response data
+        // This ensures supplier_id is preserved if it was auto-populated
+        const updatedOrder = response.data.data;
+        const index = orders.value.findIndex((o) => o.id === order.id);
+        if (index !== -1) {
+          orders.value[index] = updatedOrder;
+        } else {
+          // If order not found (e.g., supplier_id was null before), add it
+          orders.value.unshift(updatedOrder);
+        }
+
         showSuccess('Order confirmed successfully!');
-        await loadOrders(); // Refresh orders
+
+        // Refresh orders to ensure all data is in sync
+        await loadOrders();
       }
     } catch (error) {
       console.error('Error confirming order:', error);
@@ -1411,8 +1424,21 @@
       );
 
       if (response.data.success) {
+        // Update the order in the local array with the response data
+        // This ensures supplier_id is preserved if it was auto-populated
+        const updatedOrder = response.data.data;
+        const index = orders.value.findIndex((o) => o.id === order.id);
+        if (index !== -1) {
+          orders.value[index] = updatedOrder;
+        } else {
+          // If order not found (e.g., supplier_id was null before), add it
+          orders.value.unshift(updatedOrder);
+        }
+
         showSuccess('Order marked as in progress!');
-        await loadOrders(); // Refresh orders
+
+        // Refresh orders to ensure all data is in sync
+        await loadOrders();
       }
     } catch (error) {
       console.error('Error updating order status:', error);

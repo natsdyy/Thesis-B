@@ -25,7 +25,25 @@ class PurchaseOrder {
 
       // Optional filters
       if (filters && filters.supplierId) {
-        query = query.where("po.supplier_id", filters.supplierId);
+        // Include POs where:
+        // 1. supplier_id matches directly, OR
+        // 2. supplier_id is null but items have supplier_product_id belonging to this supplier
+        query = query.where(function () {
+          this.where("po.supplier_id", filters.supplierId).orWhere(function () {
+            this.whereNull("po.supplier_id").whereExists(function () {
+              this.select("*")
+                .from("purchase_order_items as poi")
+                .leftJoin(
+                  "supplier_products as sp",
+                  "poi.supplier_product_id",
+                  "sp.id"
+                )
+                .whereRaw("poi.purchase_order_id = po.id")
+                .where("sp.supplier_id", filters.supplierId)
+                .whereNotNull("poi.supplier_product_id");
+            });
+          });
+        });
       }
 
       const purchaseOrders = await query.orderBy("po.created_at", "desc");
@@ -365,11 +383,39 @@ class PurchaseOrder {
         supplyRequestId
       );
 
+      // Resolve supplier from param or fall back to supply request
+      let resolvedSupplierId = supplierId || supplyRequest?.supplier_id || null;
+
+      // If still null, try to get from supply request items' supplier_product
+      if (!resolvedSupplierId && supplyRequestItems.length > 0) {
+        const firstItemWithSupplier = supplyRequestItems.find(
+          (item) => item.supplier_product_id
+        );
+        if (firstItemWithSupplier?.supplier_product_id) {
+          const supplierProduct = await trx("supplier_products")
+            .where("id", firstItemWithSupplier.supplier_product_id)
+            .first();
+          if (supplierProduct?.supplier_id) {
+            resolvedSupplierId = supplierProduct.supplier_id;
+            console.log(
+              `Auto-resolved supplier_id ${resolvedSupplierId} from supplier_product for PO from supply request ${supplyRequestId}`
+            );
+          }
+        }
+      }
+
+      // If the supply request is supplier-sourced, supplier must be present
+      if (supplyRequest?.is_supplier_sourced && !resolvedSupplierId) {
+        throw new Error(
+          "Supplier is required for supplier-sourced supply requests"
+        );
+      }
+
       // Create purchase order
       const [purchaseOrder] = await trx("purchase_orders")
         .insert({
           po_number: poData.po_number,
-          supplier_id: supplierId || null,
+          supplier_id: resolvedSupplierId,
           supply_request_id: supplyRequestId,
           status: poData.status || "Draft",
           total_amount: supplyRequestItems.reduce(
@@ -452,6 +498,34 @@ class PurchaseOrder {
         .where("supply_request_id", supplyRequestId)
         .whereIn("id", selectedItemIds);
 
+      // Resolve supplier from param or fall back to supply request
+      let resolvedSupplierId = supplierId || supplyRequest?.supplier_id || null;
+
+      // If still null, try to get from selected items' supplier_product
+      if (!resolvedSupplierId && supplyRequestItems.length > 0) {
+        const firstItemWithSupplier = supplyRequestItems.find(
+          (item) => item.supplier_product_id
+        );
+        if (firstItemWithSupplier?.supplier_product_id) {
+          const supplierProduct = await trx("supplier_products")
+            .where("id", firstItemWithSupplier.supplier_product_id)
+            .first();
+          if (supplierProduct?.supplier_id) {
+            resolvedSupplierId = supplierProduct.supplier_id;
+            console.log(
+              `Auto-resolved supplier_id ${resolvedSupplierId} from supplier_product for PO from supply request ${supplyRequestId}`
+            );
+          }
+        }
+      }
+
+      // If the supply request is supplier-sourced, supplier must be present
+      if (supplyRequest?.is_supplier_sourced && !resolvedSupplierId) {
+        throw new Error(
+          "Supplier is required for supplier-sourced supply requests"
+        );
+      }
+
       if (supplyRequestItems.length !== selectedItems.length) {
         throw new Error(
           "Some selected items do not belong to the supply request"
@@ -488,7 +562,7 @@ class PurchaseOrder {
       const [purchaseOrder] = await trx("purchase_orders")
         .insert({
           po_number: poData.po_number,
-          supplier_id: supplierId || null,
+          supplier_id: resolvedSupplierId,
           supply_request_id: supplyRequestId,
           status: poData.status || "Draft",
           total_amount: totalAmount,
@@ -628,6 +702,50 @@ class PurchaseOrder {
     }
   }
 
+  // Helper method to auto-populate supplier_id from items if missing
+  static async autoPopulateSupplierId(trx, purchaseOrderId) {
+    try {
+      // Get the current PO
+      const currentOrder = await trx("purchase_orders")
+        .where("id", purchaseOrderId)
+        .first();
+
+      if (!currentOrder || currentOrder.supplier_id) {
+        return currentOrder?.supplier_id || null;
+      }
+
+      // Try to get supplier_id from supply_request first
+      if (currentOrder.supply_request_id) {
+        const supplyRequest = await trx("supply_requests")
+          .where("id", currentOrder.supply_request_id)
+          .first();
+        if (supplyRequest?.supplier_id) {
+          return supplyRequest.supplier_id;
+        }
+      }
+
+      // Try to get supplier_id from first item's supplier_product
+      const firstItem = await trx("purchase_order_items")
+        .where("purchase_order_id", purchaseOrderId)
+        .whereNotNull("supplier_product_id")
+        .first();
+
+      if (firstItem?.supplier_product_id) {
+        const supplierProduct = await trx("supplier_products")
+          .where("id", firstItem.supplier_product_id)
+          .first();
+        if (supplierProduct?.supplier_id) {
+          return supplierProduct.supplier_id;
+        }
+      }
+
+      return null;
+    } catch (error) {
+      console.error("Error auto-populating supplier_id:", error);
+      return null;
+    }
+  }
+
   // Update purchase order
   static async update(id, poData, items = null) {
     const trx = await db.transaction();
@@ -640,6 +758,17 @@ class PurchaseOrder {
         throw new Error("Purchase order not found");
       }
 
+      // NEW: Auto-populate supplier_id if missing (both in current order and poData)
+      if (!poData.supplier_id && !currentOrder.supplier_id) {
+        const autoSupplierId = await this.autoPopulateSupplierId(trx, id);
+        if (autoSupplierId) {
+          poData.supplier_id = autoSupplierId;
+          console.log(
+            `Auto-populated supplier_id ${autoSupplierId} for PO ${id}`
+          );
+        }
+      }
+
       // NEW: Validate supplier if it's being changed
       if (poData.supplier_id) {
         const supplier = await Supplier.validateForPurchaseOrder(
@@ -648,7 +777,7 @@ class PurchaseOrder {
       }
 
       const updateData = {
-        supplier_id: poData.supplier_id || null,
+        supplier_id: poData.supplier_id || currentOrder.supplier_id || null,
         status: poData.status,
         total_amount: poData.total_amount,
         expected_delivery: poData.expected_delivery,

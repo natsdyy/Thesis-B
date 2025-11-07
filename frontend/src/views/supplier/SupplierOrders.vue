@@ -1373,7 +1373,7 @@
         { confirmed_by: supplier?.name || 'Supplier' },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-
+//2
       if (response.data.success) {
         // Update the order in the local array with the response data
         // This ensures supplier_id is preserved if it was auto-populated

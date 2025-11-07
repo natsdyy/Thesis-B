@@ -314,9 +314,12 @@
 
                   <div
                     v-if="returnItem.notes"
-                    class="text-xs text-gray-600 mb-2 italic"
+                    class="text-xs text-gray-600 mb-2"
                   >
-                    "{{ returnItem.notes }}"
+                    <div
+                      class="prose max-w-none"
+                      v-html="fixImageUrls(returnItem.notes)"
+                    ></div>
                   </div>
 
                   <div class="text-xs text-gray-500">
@@ -774,7 +777,12 @@
             <h6 class="text-xs font-medium">Notes / Proof:</h6>
             <div
               class="prose max-w-none text-xs border border-black/30 rounded-md p-2"
-              v-html="receiptModal.order.notes || 'No notes provided'"
+              v-html="
+                fixImageUrls(
+                  receiptModal.order.completion_notes ||
+                    receiptModal.order.notes
+                ) || 'No notes provided'
+              "
             ></div>
           </div>
 
@@ -901,7 +909,10 @@
           </div>
           <div v-if="returnDetailsModal.item.notes">
             <span class="font-medium">Notes:</span>
-            <span class="italic">{{ returnDetailsModal.item.notes }}</span>
+            <div
+              class="prose max-w-none mt-1"
+              v-html="fixImageUrls(returnDetailsModal.item.notes)"
+            ></div>
           </div>
           <div>
             <span class="font-medium">Logged by:</span>
@@ -1102,6 +1113,16 @@
       'In Progress': 'bg-info/10 text-info',
     };
     return statusMap[status] || 'bg-ghost';
+  };
+
+  const fixImageUrls = (html) => {
+    if (!html) return html;
+
+    // Replace relative image paths with absolute URLs
+    return html.replace(
+      /src=["']\.\.\/uploads\//g,
+      `src="${apiConfig.baseURL}/uploads/`
+    );
   };
 
   const toggleOrderExpand = (orderId) => {
@@ -1373,7 +1394,7 @@
         { confirmed_by: supplier?.name || 'Supplier' },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-//2
+      //2
       if (response.data.success) {
         // Update the order in the local array with the response data
         // This ensures supplier_id is preserved if it was auto-populated
@@ -1489,5 +1510,10 @@
     height: auto;
     display: block;
     margin: 6px 0;
+    border-radius: 4px;
+    border: 1px solid #e5e7eb;
+  }
+  .prose p {
+    margin: 4px 0;
   }
 </style>

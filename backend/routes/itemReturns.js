@@ -120,6 +120,24 @@ router.put("/:id/process", async (req, res) => {
       });
     }
 
+    // Record cash inflow when supplier accepts the return
+    try {
+      const fresh = await ItemReturn.getById(itemReturn.id);
+      const amount = Number(fresh?.return_value || 0);
+      if (amount > 0) {
+        await CashMovement.recordInflowForBudgetReturn({
+          branch_id: null, // HQ/SCM
+          amount,
+          purchase_order_id: fresh.purchase_order_id,
+          notes: `Supplier accepted return #${fresh.id} for PO ${fresh.po_number} - Refund: ₱${amount.toFixed(2)}`,
+          occurred_at: new Date(),
+        });
+      }
+    } catch (cmErr) {
+      console.error("Failed to record supplier return refund inflow:", cmErr);
+      // Do not fail the main operation
+    }
+
     res.json({
       success: true,
       message: "Return processed successfully",
@@ -162,23 +180,8 @@ router.put("/:id/complete", async (req, res) => {
       });
     }
 
-    // Post a budget return inflow
-    try {
-      const fresh = await ItemReturn.getById(itemReturn.id);
-      const amount = Number(fresh?.return_value || 0);
-      if (amount > 0) {
-        await CashMovement.recordInflowForBudgetReturn({
-          branch_id: null, // HQ/SCM; adjust if branch context is available
-          amount,
-          purchase_order_id: fresh.purchase_order_id,
-          notes: `Item return #${fresh.id} for PO ${fresh.po_number}`,
-          occurred_at: new Date(),
-        });
-      }
-    } catch (cmErr) {
-      console.error("Failed to record budget return inflow:", cmErr);
-      // Do not fail the main operation
-    }
+    // Note: Cash movement is already created when supplier accepts the return (status: Processed)
+    // No need to create duplicate cash movement on completion
 
     res.json({
       success: true,

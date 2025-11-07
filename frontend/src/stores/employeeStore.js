@@ -848,6 +848,52 @@ export const useEmployeeStore = defineStore('employee', {
       }
     },
 
+    // Fetch employees for birthday filtering (by department or branch)
+    async fetchEmployeesForBirthdays(branchId, department) {
+      try {
+        let employees = [];
+
+        if (branchId) {
+          // Fetch branch employees
+          const response = await fetch(
+            `${apiConfig.baseURL}/branches/${branchId}/employees`,
+            {
+              method: 'GET',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${localStorage.getItem('token')}`,
+              },
+            }
+          );
+
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+
+          const data = await response.json();
+          employees = Array.isArray(data) ? data : data.data || [];
+        } else if (department) {
+          // Fetch department employees
+          employees = await this.fetchEmployeesByDepartment(department);
+        } else {
+          // No branch or department specified
+          return [];
+        }
+
+        // Filter out System/Super Admin and deleted employees
+        return employees.filter((emp) => {
+          const role = (emp.role || '').toLowerCase();
+          return (
+            role !== 'system admin' && role !== 'super admin' && !emp.deleted_at
+          );
+        });
+      } catch (error) {
+        console.error('Error fetching employees for birthdays:', error);
+        // Return empty array on error (non-blocking)
+        return [];
+      }
+    },
+
     // Fetch departments with their available roles
     async fetchDepartmentsWithRoles() {
       this.setLoading(true);

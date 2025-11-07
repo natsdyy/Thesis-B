@@ -6,6 +6,8 @@
     createPhilippineDate,
     formatForAPI,
   } from '../../utils/timezoneUtils.js';
+  import { sanitizeHtml } from '../../utils/sanitizeHtml.js';
+  import { formatImageUrl } from '../../config/api.js';
 
   const props = defineProps({
     show: { type: Boolean, default: false },
@@ -29,6 +31,8 @@
   const loading = ref(false);
   const activeTab = ref('today'); // today | thisWeek | thisMonth | customMonth
   const remittanceDetails = ref(null); // Store actual remittance record data
+  const previewImageUrl = ref(null); // For image preview modal
+  const showImagePreview = ref(false);
 
   const tabs = computed(() => {
     if (props.remittanceId !== null && props.remittanceId !== undefined) {
@@ -397,6 +401,41 @@
     emit('close');
   };
 
+  // Image preview functions
+  const openImagePreview = (imageUrl) => {
+    // Ensure URL is properly formatted
+    let url = imageUrl;
+    if (typeof url === 'string') {
+      // If it's already a full URL, use it as is
+      if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        url = formatImageUrl(url);
+      } else {
+        url = formatImageUrl(url); // formatImageUrl handles full URLs too
+      }
+    }
+    previewImageUrl.value = url;
+    showImagePreview.value = true;
+  };
+
+  const closeImagePreview = () => {
+    showImagePreview.value = false;
+    previewImageUrl.value = null;
+    const dlg = document.getElementById('image_preview_modal');
+    if (dlg?.close) dlg.close();
+  };
+
+  // Handle image clicks in proof content
+  const handleProofImageClick = (event) => {
+    const img = event.target.closest('img');
+    if (img && img.src) {
+      event.preventDefault();
+      event.stopPropagation();
+      // Extract the original src (might be formatted)
+      const src = img.getAttribute('src') || img.src;
+      openImagePreview(src);
+    }
+  };
+
   watch(
     () => props.show,
     async (val) => {
@@ -430,8 +469,48 @@
     }
   );
 
+  // Watch for image preview modal state
+  watch(showImagePreview, (val) => {
+    const dlg = document.getElementById('image_preview_modal');
+    if (val) {
+      if (dlg?.showModal) dlg.showModal();
+    } else if (dlg?.close) {
+      dlg.close();
+    }
+  });
+
+  // Process images in proof content to make them clickable and format URLs
+  const processProofImages = () => {
+    const proofContent = document.querySelector('.proof-content');
+    if (proofContent) {
+      const images = proofContent.querySelectorAll('img');
+      images.forEach((img) => {
+        img.style.cursor = 'pointer';
+        // Ensure image URLs are properly formatted
+        const src = img.getAttribute('src');
+        if (src && !src.startsWith('http')) {
+          img.src = formatImageUrl(src);
+        }
+      });
+    }
+  };
+
+  // Watch remittance details to process images when content changes
+  watch(
+    () => remittanceDetails.value,
+    () => {
+      if (remittanceDetails.value?.notes) {
+        // Use nextTick to ensure DOM is updated
+        setTimeout(processProofImages, 100);
+      }
+    },
+    { deep: true }
+  );
+
   onMounted(() => {
     if (props.show) loadOrders();
+    // Process images after mount
+    setTimeout(processProofImages, 200);
   });
 </script>
 
@@ -518,6 +597,35 @@
                 ₱{{ summaryTotals.loss.toFixed(2) }}
               </div>
             </div>
+          </div>
+        </div>
+
+        <!-- Proof of Sales Section - Show when viewing specific remittance -->
+        <div
+          v-if="remittanceDetails && remittanceDetails.notes"
+          class="mb-4 card bg-white shadow border border-black/10"
+        >
+          <div class="card-body p-4">
+            <h4
+              class="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2"
+            >
+              <font-awesome-icon
+                icon="fa-solid fa-file-image"
+                class="text-primaryColor"
+              />
+              Proof of Sales
+            </h4>
+            <div
+              class="prose prose-sm max-w-none proof-content"
+              v-html="sanitizeHtml(remittanceDetails.notes)"
+              @click="handleProofImageClick"
+            ></div>
+            <p
+              v-if="!remittanceDetails.notes"
+              class="text-sm text-gray-500 italic"
+            >
+              No proof of sales provided
+            </p>
           </div>
         </div>
 
@@ -658,6 +766,63 @@
     </div>
     <form method="dialog" class="modal-backdrop"><button>close</button></form>
   </dialog>
+
+  <!-- Image Preview Modal -->
+  <dialog id="image_preview_modal" class="modal">
+    <div class="modal-box max-w-4xl">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="font-bold text-lg">Image Preview</h3>
+        <button
+          class="btn btn-sm btn-circle btn-ghost"
+          @click="closeImagePreview"
+        >
+          <font-awesome-icon icon="fa-solid fa-times" />
+        </button>
+      </div>
+      <div
+        class="flex items-center justify-center bg-gray-100 rounded-lg p-4 min-h-[400px]"
+      >
+        <img
+          v-if="previewImageUrl"
+          :src="previewImageUrl"
+          alt="Proof of sales image"
+          class="max-w-full max-h-[70vh] rounded-lg shadow-lg"
+          @error="closeImagePreview"
+        />
+      </div>
+      <div class="modal-action">
+        <button class="btn btn-sm" @click="closeImagePreview">Close</button>
+      </div>
+    </div>
+    <form method="dialog" class="modal-backdrop">
+      <button @click="closeImagePreview">close</button>
+    </form>
+  </dialog>
 </template>
 
-<style scoped></style>
+<style scoped>
+  .proof-content :deep(img) {
+    cursor: pointer;
+    max-width: 100%;
+    height: auto;
+    margin: 8px 0;
+    border-radius: 4px;
+    transition: opacity 0.2s;
+    border: 1px solid #e5e7eb;
+  }
+
+  .proof-content :deep(img:hover) {
+    opacity: 0.8;
+    border-color: #3b82f6;
+  }
+
+  .proof-content :deep(p) {
+    margin: 8px 0;
+  }
+
+  .proof-content :deep(ul),
+  .proof-content :deep(ol) {
+    margin: 8px 0;
+    padding-left: 20px;
+  }
+</style>

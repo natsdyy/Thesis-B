@@ -21,7 +21,7 @@
   } from 'lucide-vue-next';
   import { usePOSStore } from '../../stores/posStore.js';
   import { useBranchContextStore } from '../../stores/branchContextStore.js';
-  import { apiConfig, getApiUrl } from '../../config/api.js';
+  import { apiConfig, getApiUrl, formatImageUrl } from '../../config/api.js';
   import axios from 'axios';
   import { useCustomToast } from '../../composables/useCustomToast.js';
   import {
@@ -30,6 +30,21 @@
     formatForAPI,
     formatForDisplay,
   } from '../../utils/timezoneUtils.js';
+  import Editor from '@tinymce/tinymce-vue';
+  const TinyMCEEditor = Editor;
+  import { sanitizeHtml } from '../../utils/sanitizeHtml.js';
+  import tinymce from 'tinymce/tinymce';
+  import 'tinymce/tinymce';
+  import 'tinymce/icons/default';
+  import 'tinymce/themes/silver';
+  import 'tinymce/models/dom/model';
+  import 'tinymce/plugins/link';
+  import 'tinymce/plugins/lists';
+  import 'tinymce/plugins/image';
+  import 'tinymce/skins/ui/oxide/skin.min.css';
+  try {
+    tinymce?.EditorManager?.overrideDefaults?.({ license_key: 'gpl' });
+  } catch (_) {}
 
   const props = defineProps({
     show: { type: Boolean, default: false },
@@ -662,6 +677,7 @@
   // Confirmation modal + submit state
   const showConfirmRemit = ref(false);
   const submitting = ref(false);
+  const proofContent = ref(''); // Store proof content from TinyMCE
 
   // Ensure confirm dialog overlays the parent modal using native dialog.showModal()
   watch(
@@ -673,9 +689,102 @@
       } else if (dlg?.close) {
         dlg.close();
       }
+      // Reset proof content when modal opens/closes
+      if (!val) {
+        proofContent.value = '';
+      }
     },
     { flush: 'post' }
   );
+
+  // Helper function for image upload
+  const pickAndUploadImage = (callback, modalId = 'confirm_remit_modal') => {
+    try {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.onchange = async (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        try {
+          const token = localStorage.getItem('token');
+          const formData = new FormData();
+          formData.append('file', file);
+          const response = await fetch(getApiUrl('/uploads/proofs'), {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+            body: formData,
+          });
+          const data = await response.json();
+          if (data?.location) {
+            callback(data.location);
+          } else {
+            showError(data?.message || 'Upload failed');
+          }
+        } catch (err) {
+          showError(err?.message || 'Upload failed');
+        }
+      };
+      input.click();
+    } catch (_) {}
+  };
+
+  // TinyMCE configuration for proof of sales
+  const tinyMCEConfig = computed(() => ({
+    menubar: false,
+    height: 220,
+    plugins: 'link lists',
+    toolbar: 'uploadimage',
+    toolbar_mode: 'wrap',
+    automatic_uploads: false,
+    images_upload_handler: async (blobInfo, progress) => {
+      return new Promise((resolve, reject) => {
+        const token = localStorage.getItem('token');
+        const formData = new FormData();
+        formData.append('file', blobInfo.blob(), blobInfo.filename());
+
+        fetch(getApiUrl('/uploads/proofs'), {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+          body: formData,
+        })
+          .then((response) => response.json())
+          .then((data) => {
+            if (data.location) {
+              resolve(formatImageUrl(data.location));
+            } else {
+              reject(data.message || 'Upload failed');
+            }
+          })
+          .catch((error) => {
+            reject(error.message || 'Upload failed');
+          });
+      });
+    },
+    file_picker_types: 'image',
+    content_style:
+      'html,body{max-width:100%;} img{max-width:100%;height:auto;display:block;margin:6px 0;}',
+    valid_elements:
+      'p,b,i,u,strong,em,ul,ol,li,br,a[href|target|rel],img[src|alt|title|class|style],span[class|style],div[class|style]',
+    setup: (ed) => {
+      ed.ui.registry.addButton('uploadimage', {
+        text: 'Upload Image',
+        tooltip: 'Upload image proof',
+        onAction: () => {
+          pickAndUploadImage((url) =>
+            ed.insertContent(`<img src="${formatImageUrl(url)}" />`)
+          );
+        },
+      });
+    },
+    branding: false,
+    skin: false,
+    content_css: false,
+    license_key: 'gpl',
+    ui_container: 'body',
+  }));
 
   // Calculate statistics from unremitted orders only
   // This ensures we only remit amounts from orders that haven't been remitted yet
@@ -791,6 +900,11 @@
         voidedAmount,
       };
       // Add timeout to prevent hanging
+      // Sanitize and include proof content in notes
+      const notes = proofContent.value?.trim()
+        ? sanitizeHtml(proofContent.value.trim())
+        : null;
+
       const submissionPromise = posStore.submitRemittance({
         branchId: context.currentBranch.id,
         periodType,
@@ -802,7 +916,7 @@
         voidedAmount: totals.voidedAmount,
         disposed: totals.disposed,
         remittedAmount: remitted,
-        notes: null,
+        notes,
       });
 
       // Add timeout wrapper
@@ -1442,7 +1556,7 @@
                 <button
                   @click="nextPage"
                   :disabled="currentPage === totalPages"
-                  class="btn btn-sm "
+                  class="btn btn-sm"
                   :class="{ 'btn-disabled': currentPage === totalPages }"
                 >
                   <span class="hidden sm:inline">Next</span>
@@ -1486,7 +1600,7 @@
           <div class="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
             <div class="flex gap-2">
               <button
-                class="btn  btn-sm font-thin flex-1 sm:flex-none"
+                class="btn btn-sm font-thin flex-1 sm:flex-none"
                 @click="refreshData"
                 :disabled="posStore.loading"
               >
@@ -1495,7 +1609,7 @@
                 <span class="sm:hidden">Refresh</span>
               </button>
               <button
-                class="btn  btn-sm font-thin flex-1 sm:flex-none"
+                class="btn btn-sm font-thin flex-1 sm:flex-none"
                 @click="exportRemitData"
                 :disabled="isExporting || posStore.loading"
               >
@@ -1540,7 +1654,7 @@
 
   <!-- Confirm Remit Modal -->
   <dialog id="confirm_remit_modal" class="modal">
-    <div class="modal-box">
+    <div class="modal-box max-w-3xl max-h-[90vh] overflow-y-auto">
       <h3 class="font-bold text-lg">Confirm Remittance</h3>
       <p class="py-2 text-sm text-gray-600">
         This will submit the unremitted orders from
@@ -1605,6 +1719,36 @@
           <span>Amount to Remit:</span>
           <span>₱{{ confirmSummary.remitted.toLocaleString() }}</span>
         </div>
+      </div>
+
+      <!-- Proof of Sales Section -->
+      <div class="mt-4 border-t pt-4">
+        <label class="label py-2">
+          <span
+            class="label-text text-sm font-semibold text-gray-700 flex items-center gap-2"
+          >
+            <font-awesome-icon
+              icon="fa-solid fa-file-image"
+              class="text-primaryColor"
+            />
+            Proof of Sales (Optional)
+          </span>
+        </label>
+        <div class="border border-gray-300 rounded-lg overflow-hidden bg-white">
+          <TinyMCEEditor
+            v-model="proofContent"
+            :init="tinyMCEConfig"
+            class="remittance-proof-editor"
+          />
+        </div>
+        <p class="text-xs text-gray-500 mt-2 flex items-center gap-1">
+          <font-awesome-icon
+            icon="fa-solid fa-info-circle"
+            class="text-gray-400"
+          />
+          Upload images or add notes as proof of sales for this remittance.
+          Click the "Upload Image" button in the editor to attach photos.
+        </p>
       </div>
       <div class="modal-action">
         <button

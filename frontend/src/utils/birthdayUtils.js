@@ -166,36 +166,12 @@ export function getBirthdayEmployees(employees) {
   const upcomingBirthdays = [];
   const processedEmployeeIds = new Set(); // Track processed employees to avoid duplicates
 
-  // Debug: Log today's date (can be removed in production)
-  if (process.env.NODE_ENV === 'development') {
-    console.log('[Birthday Filter] Today in Manila:', {
-      year: today.getFullYear(),
-      month: today.getMonth() + 1,
-      day: today.getDate(),
-      dateString: `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`,
-      rawDate: today.toString(),
-    });
-  }
-
   // Get today's birthdays
   employees.forEach((employee) => {
     if (!employee.birthday) return;
     if (employee.deleted_at) return; // Skip deleted employees
 
-    const birthdayMD = getMonthDay(employee.birthday);
-    const isToday = isBirthdayOnDate(employee.birthday, today);
-
-    // Debug: Log for employee ID 18 (can be removed in production)
-    if (process.env.NODE_ENV === 'development' && employee.id === 18) {
-      console.log('[Birthday Filter] Employee 18:', {
-        birthday: employee.birthday,
-        birthdayMD,
-        todayMD: { month: today.getMonth() + 1, day: today.getDate() },
-        isToday,
-      });
-    }
-
-    if (isToday) {
+    if (isBirthdayOnDate(employee.birthday, today)) {
       todayBirthdays.push({
         ...employee,
         birthdayDisplay: 'Today',

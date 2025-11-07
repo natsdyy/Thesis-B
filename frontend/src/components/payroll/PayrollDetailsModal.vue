@@ -551,17 +551,26 @@
                       >{{ formatCurrency(record.gross_salary) }}
                     </div>
                     <div
+                      v-if="Number(record.rest_day_pay || 0) > 0"
+                      class="text-xs text-primaryColor mt-1"
+                      :title="`Rest Day Pay: ₱${formatCurrency(record.rest_day_pay)} (130% of regular rate)`"
+                    >
+                      <i class="fas fa-peso-sign mr-0.5"></i
+                      >{{ formatCurrency(record.rest_day_pay) }}
+                      <span class="text-gray-500"> Rest Day (130%)</span>
+                    </div>
+                    <div
                       v-if="
                         Number(
                           otherExpensesByEmployee[record.employee_id] || 0
                         ) > 0
                       "
-                      class="text-xs mt-1"
+                      class="text-xs text-warning mt-1"
+                      :title="`Other Expense: ₱${formatCurrency(otherExpensesByEmployee[record.employee_id])} (click to apply as additional earnings)`"
                     >
                       <button
                         @click="applyOtherExpenseToRecord(record)"
                         class="text-warning hover:text-warning/80 font-semibold"
-                        :title="`Other Expense: ₱${formatCurrency(otherExpensesByEmployee[record.employee_id])} (click to apply as additional earnings)`"
                       >
                         <i class="fas fa-peso-sign mr-0.5"></i>
                         {{
@@ -571,15 +580,6 @@
                         }}
                         <span class="text-gray-500"> Other Expense</span>
                       </button>
-                    </div>
-                    <div
-                      v-if="Number(record.rest_day_pay || 0) > 0"
-                      class="text-xs text-primaryColor mt-1"
-                      :title="`Rest Day Pay: ₱${formatCurrency(record.rest_day_pay)} (130% of regular rate)`"
-                    >
-                      <i class="fas fa-peso-sign mr-0.5"></i
-                      >{{ formatCurrency(record.rest_day_pay) }}
-                      <span class="text-gray-500"> Rest Day (130%)</span>
                     </div>
                   </div>
                 </td>
@@ -781,7 +781,7 @@
 </template>
 
 <script>
-  import { ref, computed, onMounted } from 'vue';
+  import { ref, computed, onMounted, watch } from 'vue';
   import { usePayrollStore } from '@/stores/payrollStore';
   import { useAuthStore } from '@/stores/authStore';
   import { useFinanceBalanceStore } from '@/stores/financeBalanceStore';
@@ -824,6 +824,7 @@
       const actionLoading = ref(false);
       const actionLoadingText = ref('');
       const balanceLoading = ref(false);
+      const fetchingOtherExpenses = ref(false);
 
       const payrollPeriod = computed(() => payrollStore.selectedPeriod);
       const payrollRecords = computed(() => payrollStore.payrollRecords);
@@ -1220,9 +1221,20 @@
 
       // Fetch balance when modal opens
       const fetchOtherExpenses = async () => {
+        // Prevent multiple simultaneous fetches
+        if (fetchingOtherExpenses.value) return;
+        
         try {
+          fetchingOtherExpenses.value = true;
+          
           // Derive branch and month for query
-          const anyRecord = payrollStore.payrollRecords[0];
+          const records = payrollStore.payrollRecords;
+          if (!records || records.length === 0) {
+            otherExpensesByEmployee.value = {};
+            return;
+          }
+
+          const anyRecord = records[0];
           const branchId = anyRecord?.branch_id;
           const from = payrollStore.selectedPeriod?.date_from;
           const monthStr = from
@@ -1255,11 +1267,36 @@
             map[empId] = (map[empId] || 0) + amt;
           }
           otherExpensesByEmployee.value = map;
+          console.log('Other expenses mapped:', map);
+          console.log('Payroll records employee IDs:', records.map(r => ({ id: r.employee_id, name: r.employee_name })));
         } catch (e) {
           console.error('Failed to fetch other expenses:', e);
           otherExpensesByEmployee.value = {};
+        } finally {
+          fetchingOtherExpenses.value = false;
         }
       };
+
+      // Watch for payroll records to be loaded and fetch other expenses
+      watch(
+        () => [payrollStore.payrollRecords, props.show],
+        ([newRecords, show]) => {
+          if (show && newRecords && newRecords.length > 0) {
+            fetchOtherExpenses();
+          }
+        },
+        { immediate: true }
+      );
+
+      // Watch for period changes
+      watch(
+        () => payrollStore.selectedPeriod?.id,
+        (newId) => {
+          if (newId && props.show) {
+            fetchOtherExpenses();
+          }
+        }
+      );
 
       onMounted(async () => {
         if (showBalanceSummary.value) {
@@ -1272,7 +1309,10 @@
             balanceLoading.value = false;
           }
         }
-        await fetchOtherExpenses();
+        // Fetch other expenses if records are already loaded
+        if (payrollStore.payrollRecords && payrollStore.payrollRecords.length > 0) {
+          await fetchOtherExpenses();
+        }
       });
 
       return {

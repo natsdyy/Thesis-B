@@ -1223,10 +1223,10 @@
       const fetchOtherExpenses = async () => {
         // Prevent multiple simultaneous fetches
         if (fetchingOtherExpenses.value) return;
-        
+
         try {
           fetchingOtherExpenses.value = true;
-          
+
           // Derive branch and month for query
           const records = payrollStore.payrollRecords;
           if (!records || records.length === 0) {
@@ -1267,8 +1267,6 @@
             map[empId] = (map[empId] || 0) + amt;
           }
           otherExpensesByEmployee.value = map;
-          console.log('Other expenses mapped:', map);
-          console.log('Payroll records employee IDs:', records.map(r => ({ id: r.employee_id, name: r.employee_name })));
         } catch (e) {
           console.error('Failed to fetch other expenses:', e);
           otherExpensesByEmployee.value = {};
@@ -1310,7 +1308,10 @@
           }
         }
         // Fetch other expenses if records are already loaded
-        if (payrollStore.payrollRecords && payrollStore.payrollRecords.length > 0) {
+        if (
+          payrollStore.payrollRecords &&
+          payrollStore.payrollRecords.length > 0
+        ) {
           await fetchOtherExpenses();
         }
       });

@@ -2305,8 +2305,15 @@
       return;
     }
 
-    // Enforce supplier progress before completion
-    if (!['In Progress', 'Confirmed'].includes(order.status)) {
+    // Check if this is a manual entry (no supplier required)
+    const isManualEntry = !order.supplier_id || order.supplier_id === null;
+
+    // Enforce supplier progress before completion only for supplier-sourced orders
+    // Manual entries can be completed regardless of status (Draft, Sent, etc.)
+    if (
+      !isManualEntry &&
+      !['In Progress', 'Confirmed'].includes(order.status)
+    ) {
       showToast(
         'error',
         'Order must be Confirmed or In Progress by the supplier before completion.'

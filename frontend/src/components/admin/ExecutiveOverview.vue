@@ -407,14 +407,16 @@
 <template>
   <div class="space-y-6">
     <!-- KPI Cards -->
-    <div class="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+    <div
+      class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4"
+    >
       <div class="card bg-white shadow-lg">
-        <div class="card-body">
-          <div class="flex items-center justify-between">
-            <div class="text-sm text-gray-500">Today Sales</div>
-            <PhilippinePeso class="w-4 h-4 text-primaryColor" />
+        <div class="card-body p-4 flex flex-col gap-2">
+          <div class="flex items-center justify-between mb-1">
+            <span class="text-sm text-gray-500 font-medium">Today Sales</span>
+            <PhilippinePeso class="w-4 h-4 text-primaryColor flex-shrink-0" />
           </div>
-          <div class="text-2xl font-bold">
+          <div class="text-2xl font-bold text-gray-900">
             ₱{{
               Number(props.kpis.todaySales || 0).toLocaleString(undefined, {
                 maximumFractionDigits: 2,
@@ -425,12 +427,12 @@
       </div>
 
       <div class="card bg-white shadow-lg">
-        <div class="card-body">
-          <div class="flex items-center justify-between">
-            <div class="text-sm text-gray-500">MTD Sales</div>
-            <LayoutDashboard class="w-4 h-4 text-primaryColor" />
+        <div class="card-body p-4 flex flex-col gap-2">
+          <div class="flex items-center justify-between mb-1">
+            <span class="text-sm text-gray-500 font-medium">MTD Sales</span>
+            <LayoutDashboard class="w-4 h-4 text-primaryColor flex-shrink-0" />
           </div>
-          <div class="text-2xl font-bold">
+          <div class="text-2xl font-bold text-gray-900">
             ₱{{
               Number(props.kpis.mtdSales || 0).toLocaleString(undefined, {
                 maximumFractionDigits: 2,
@@ -441,34 +443,38 @@
       </div>
 
       <div class="card bg-white shadow-lg">
-        <div class="card-body">
-          <div class="flex items-center justify-between">
-            <div class="text-sm text-gray-500">Gross Margin</div>
-            <TrendingUp class="w-4 h-4 text-primaryColor" />
+        <div class="card-body p-4 flex flex-col gap-2">
+          <div class="flex items-center justify-between mb-1">
+            <span class="text-sm text-gray-500 font-medium">Gross Margin</span>
+            <TrendingUp class="w-4 h-4 text-primaryColor flex-shrink-0" />
           </div>
-          <div class="text-2xl font-bold">
+          <div class="text-2xl font-bold text-gray-900">
             {{ Number(props.kpis.grossMarginPct || 0).toFixed(1) }}%
           </div>
         </div>
       </div>
 
       <div class="card bg-white shadow-lg">
-        <div class="card-body">
-          <div class="flex items-center justify-between">
-            <div class="text-sm text-gray-500">Active Branches</div>
-            <Building2 class="w-4 h-4 text-primaryColor" />
+        <div class="card-body p-4 flex flex-col gap-2">
+          <div class="flex items-center justify-between mb-1">
+            <span class="text-sm text-gray-500 font-medium"
+              >Active Branches</span
+            >
+            <Building2 class="w-4 h-4 text-primaryColor flex-shrink-0" />
           </div>
-          <div class="text-2xl font-bold">{{ props.kpis.activeBranches }}</div>
+          <div class="text-2xl font-bold text-gray-900">
+            {{ props.kpis.activeBranches }}
+          </div>
         </div>
       </div>
 
       <div class="card bg-white shadow-lg">
-        <div class="card-body">
-          <div class="flex items-center justify-between">
-            <div class="text-sm text-gray-500">Payroll MTD</div>
-            <PhilippinePeso class="w-4 h-4 text-primaryColor" />
+        <div class="card-body p-4 flex flex-col gap-2">
+          <div class="flex items-center justify-between mb-1">
+            <span class="text-sm text-gray-500 font-medium">Payroll MTD</span>
+            <PhilippinePeso class="w-4 h-4 text-primaryColor flex-shrink-0" />
           </div>
-          <div class="text-2xl font-bold">
+          <div class="text-2xl font-bold text-gray-900">
             ₱{{
               Number(props.kpis.payrollMtd || 0).toLocaleString(undefined, {
                 maximumFractionDigits: 2,
@@ -479,12 +485,14 @@
       </div>
 
       <div class="card bg-white shadow-lg">
-        <div class="card-body">
-          <div class="flex items-center justify-between">
-            <div class="text-sm text-gray-500">Payroll Approvals</div>
-            <LayoutDashboard class="w-4 h-4 text-primaryColor" />
+        <div class="card-body p-4 flex flex-col gap-2">
+          <div class="flex items-center justify-between mb-1">
+            <span class="text-sm text-gray-500 font-medium"
+              >Payroll Approvals</span
+            >
+            <LayoutDashboard class="w-4 h-4 text-primaryColor flex-shrink-0" />
           </div>
-          <div class="text-2xl font-bold">
+          <div class="text-2xl font-bold text-gray-900">
             {{ props.kpis.pendingPayrollApprovals }}
           </div>
         </div>

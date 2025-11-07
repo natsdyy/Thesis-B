@@ -20,6 +20,7 @@
     CheckCircle,
   } from 'lucide-vue-next';
   import { useProductionStore } from '../../stores/productionStore.js';
+  import { sanitizeHtml } from '../../utils/sanitizeHtml.js';
 
   // Props
   const props = defineProps({
@@ -43,6 +44,10 @@
   const totalPages = ref(1);
   const totalTransactions = ref(0);
   const isExporting = ref(false);
+
+  // Image preview modal
+  const showImagePreview = ref(false);
+  const previewImageUrl = ref('');
 
   // Custom month picker state
   const showCustomMonthPicker = ref(false);
@@ -482,6 +487,21 @@
     }
 
     return formattedDetails;
+  };
+
+  // Image preview functions
+  const openImagePreview = (imageUrl) => {
+    previewImageUrl.value = imageUrl;
+    showImagePreview.value = true;
+    const dlg = document.getElementById('image_preview_modal');
+    if (dlg?.showModal) dlg.showModal();
+  };
+
+  const closeImagePreview = () => {
+    showImagePreview.value = false;
+    previewImageUrl.value = '';
+    const dlg = document.getElementById('image_preview_modal');
+    if (dlg?.close) dlg.close();
   };
 
   // Modal functions
@@ -1070,7 +1090,7 @@
           Clear
         </button>
         <button
-          class="btn btn-outline btn-sm font-thin"
+          class="btn  btn-sm font-thin"
           @click="exportTransactions"
           :disabled="isExporting || loading"
         >
@@ -1246,7 +1266,25 @@
                   <!-- Notes -->
                   <td>
                     <div class="text-sm">
-                      <div class="text-gray-600">
+                      <!-- Render HTML if notes contain HTML tags (like images) -->
+                      <div
+                        v-if="
+                          transaction.notes &&
+                          transaction.notes.includes('<') &&
+                          !transaction.notes.trim().startsWith('{')
+                        "
+                        class="text-gray-600 prose prose-sm max-w-none"
+                        v-html="sanitizeHtml(transaction.notes)"
+                        @click="
+                          (e) => {
+                            if (e.target.tagName === 'IMG') {
+                              openImagePreview(e.target.src);
+                            }
+                          }
+                        "
+                      ></div>
+                      <!-- Otherwise show formatted text -->
+                      <div v-else class="text-gray-600">
                         {{ getFormattedNotes(transaction) }}
                       </div>
                       <div
@@ -1394,6 +1432,39 @@
       </div>
     </div>
   </dialog>
+
+  <!-- Image Preview Modal -->
+  <dialog id="image_preview_modal" class="modal" v-if="showImagePreview">
+    <div class="modal-box max-w-4xl">
+      <div class="flex justify-between items-center mb-4">
+        <h3 class="font-bold text-lg">Image Preview</h3>
+        <button
+          @click="closeImagePreview"
+          class="btn btn-ghost btn-sm btn-circle"
+        >
+          <X class="w-5 h-5" />
+        </button>
+      </div>
+      <div class="flex justify-center items-center bg-gray-100 rounded-lg p-4">
+        <img
+          :src="previewImageUrl"
+          alt="Preview"
+          class="max-w-full max-h-[70vh] object-contain rounded-lg shadow-lg"
+        />
+      </div>
+      <div class="modal-action">
+        <button
+          @click="closeImagePreview"
+          class="btn bg-primaryColor text-white font-thin hover:bg-primaryColor/80"
+        >
+          Close
+        </button>
+      </div>
+    </div>
+    <form method="dialog" class="modal-backdrop">
+      <button @click="closeImagePreview">close</button>
+    </form>
+  </dialog>
 </template>
 
 <style scoped>
@@ -1411,5 +1482,25 @@
   .badge {
     font-size: 0.75rem;
     padding: 0.25rem 0.5rem;
+  }
+
+  /* Style images in notes column */
+  .prose img {
+    max-width: 200px;
+    max-height: 150px;
+    object-fit: contain;
+    border-radius: 0.375rem;
+    border: 1px solid #e5e7eb;
+    cursor: pointer;
+    transition: transform 0.2s;
+  }
+
+  .prose img:hover {
+    transform: scale(1.05);
+    border-color: #9ca3af;
+  }
+
+  .prose p {
+    margin: 0;
   }
 </style>

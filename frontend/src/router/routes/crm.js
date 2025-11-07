@@ -30,6 +30,12 @@ export default [
     meta: { title: 'Announcement Management' },
   },
   {
+    path: 'faqs',
+    name: 'CRMFAQManager',
+    component: () => import('../../views/crm/FAQManager.vue'),
+    meta: { title: 'FAQ Management' },
+  },
+  {
     path: 'attendance',
     name: 'CRMAttendance',
     component: () => import('../../views/common/DepartmentAttendance.vue'),
@@ -41,5 +47,4 @@ export default [
     component: () => import('../../views/common/DepartmentProfile.vue'),
     meta: { title: 'CRM Profile' },
   },
-
 ];

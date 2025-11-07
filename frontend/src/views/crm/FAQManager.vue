@@ -15,7 +15,6 @@
         <div class="stat-title">Inactive FAQs</div>
         <div class="stat-value text-warning">{{ stats.inactive_faqs }}</div>
       </div>
-
     </div>
 
     <!-- Actions Bar -->
@@ -36,7 +35,15 @@
         </div>
       </div>
       <div class="flex gap-2">
-        <button class="btn text-white hover:opacity-90 active:opacity-80 font-thin" style="background-color: var(--color-primaryColor); border-color: var(--color-primaryColor);" @click="openCreateModal">
+        <button
+          v-if="!isBoardMember"
+          class="btn text-white hover:opacity-90 active:opacity-80 font-thin"
+          style="
+            background-color: var(--color-primaryColor);
+            border-color: var(--color-primaryColor);
+          "
+          @click="openCreateModal"
+        >
           <Plus :size="20" class="mr-2" />
           Add FAQ
         </button>
@@ -58,51 +65,101 @@
             <table class="table table-zebra">
               <thead>
                 <tr>
-                  <th class="w-12"></th>
+                  <th v-if="!isBoardMember" class="w-12"></th>
                   <th class="w-16">Order</th>
                   <th>Question</th>
                   <th>Category</th>
                   <th>Created</th>
-                  <th>Actions</th>
+                  <th v-if="!isBoardMember">Actions</th>
                 </tr>
               </thead>
               <tbody ref="inactiveTbody">
                 <tr v-if="loading">
-                  <td colspan="6" class="text-center py-8">
+                  <td :colspan="isBoardMember ? 4 : 6" class="text-center py-8">
                     <span class="loading loading-spinner loading-lg"></span>
                   </td>
                 </tr>
                 <!-- Placeholder row for empty table - must be a real DOM element -->
-                <tr v-if="!loading && inactiveFAQs.length === 0" :data-id="'placeholder-inactive'" class="sortable-placeholder" style="height: 0.1px; line-height: 0.1px; font-size: 0; visibility: hidden; overflow: hidden;">
-                  <td colspan="6" style="padding: 0; height: 0.1px; border: none;"></td>
+                <tr
+                  v-if="!loading && inactiveFAQs.length === 0"
+                  :data-id="'placeholder-inactive'"
+                  class="sortable-placeholder"
+                  style="
+                    height: 0.1px;
+                    line-height: 0.1px;
+                    font-size: 0;
+                    visibility: hidden;
+                    overflow: hidden;
+                  "
+                >
+                  <td
+                    :colspan="isBoardMember ? 4 : 6"
+                    style="padding: 0; height: 0.1px; border: none"
+                  ></td>
                 </tr>
-                <tr v-if="!loading && inactiveFAQs.length === 0" class="no-drag">
-                  <td colspan="6" class="text-center py-8 text-gray-500">
-                    No inactive FAQs (drag FAQs here to make them inactive)
+                <tr
+                  v-if="!loading && inactiveFAQs.length === 0"
+                  class="no-drag"
+                >
+                  <td
+                    :colspan="isBoardMember ? 4 : 6"
+                    class="text-center py-8 text-gray-500"
+                  >
+                    {{
+                      isBoardMember
+                        ? 'No inactive FAQs'
+                        : 'No inactive FAQs (drag FAQs here to make them inactive)'
+                    }}
                   </td>
                 </tr>
-                <tr v-for="faq in paginatedInactiveFAQs" :key="faq.id" :data-id="faq.id" class="cursor-move faq-row">
-                  <td class="w-12">
-                    <div class="flex items-center justify-center text-gray-400 hover:text-gray-600 drag-handle" style="cursor: grab; padding: 8px;">
-                      <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 8h16M4 16h16" />
+                <tr
+                  v-for="faq in paginatedInactiveFAQs"
+                  :key="faq.id"
+                  :data-id="faq.id"
+                  :class="{ 'cursor-move faq-row': !isBoardMember }"
+                >
+                  <td v-if="!isBoardMember" class="w-12">
+                    <div
+                      class="flex items-center justify-center text-gray-400 hover:text-gray-600 drag-handle"
+                      style="cursor: grab; padding: 8px"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        class="h-6 w-6"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        stroke-width="2"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          d="M4 8h16M4 16h16"
+                        />
                       </svg>
                     </div>
                   </td>
                   <td class="w-16">
-                    <span class="badge bg-gray-200 badge-sm">{{ faq.display_order || '-' }}</span>
+                    <span class="badge bg-gray-200 badge-sm">{{
+                      faq.display_order || '-'
+                    }}</span>
                   </td>
                   <td>
-                    <div class="font-medium">{{ truncate(faq.question, 50) }}</div>
+                    <div class="font-medium">
+                      {{ truncate(faq.question, 50) }}
+                    </div>
                   </td>
                   <td>
-                    <span v-if="faq.category" class="badge badge-sm  border-gray-300">
+                    <span
+                      v-if="faq.category"
+                      class="badge badge-sm border-gray-300"
+                    >
                       {{ faq.category }}
                     </span>
                     <span v-else class="text-gray-400">-</span>
                   </td>
                   <td>{{ formatDate(faq.created_at) }}</td>
-                  <td>
+                  <td v-if="!isBoardMember">
                     <div class="flex gap-2">
                       <button
                         class="btn btn-sm btn-ghost"
@@ -127,9 +184,14 @@
             </table>
           </div>
           <!-- Pagination for Inactive FAQs -->
-          <div v-if="!loading && inactiveFAQs.length > 0" class="p-4 border-t border-gray-200 flex items-center justify-between">
+          <div
+            v-if="!loading && inactiveFAQs.length > 0"
+            class="p-4 border-t border-gray-200 flex items-center justify-between"
+          >
             <div class="text-sm text-gray-600">
-              Showing {{ (inactivePage - 1) * itemsPerPage + 1 }} to {{ Math.min(inactivePage * itemsPerPage, inactiveFAQs.length) }} of {{ inactiveFAQs.length }} FAQs
+              Showing {{ (inactivePage - 1) * itemsPerPage + 1 }} to
+              {{ Math.min(inactivePage * itemsPerPage, inactiveFAQs.length) }}
+              of {{ inactiveFAQs.length }} FAQs
             </div>
             <div class="join">
               <button
@@ -172,51 +234,99 @@
             <table class="table table-zebra">
               <thead>
                 <tr>
-                  <th class="w-12"></th>
+                  <th v-if="!isBoardMember" class="w-12"></th>
                   <th class="w-16">Order</th>
                   <th>Question</th>
                   <th>Category</th>
                   <th>Created</th>
-                  <th>Actions</th>
+                  <th v-if="!isBoardMember">Actions</th>
                 </tr>
               </thead>
               <tbody ref="activeTbody">
                 <tr v-if="loading">
-                  <td colspan="6" class="text-center py-8">
+                  <td :colspan="isBoardMember ? 4 : 6" class="text-center py-8">
                     <span class="loading loading-spinner loading-lg"></span>
                   </td>
                 </tr>
                 <!-- Placeholder row for empty table - must be a real DOM element -->
-                <tr v-if="!loading && activeFAQs.length === 0" :data-id="'placeholder-active'" class="sortable-placeholder" style="height: 0.1px; line-height: 0.1px; font-size: 0; visibility: hidden; overflow: hidden;">
-                  <td colspan="6" style="padding: 0; height: 0.1px; border: none;"></td>
+                <tr
+                  v-if="!loading && activeFAQs.length === 0"
+                  :data-id="'placeholder-active'"
+                  class="sortable-placeholder"
+                  style="
+                    height: 0.1px;
+                    line-height: 0.1px;
+                    font-size: 0;
+                    visibility: hidden;
+                    overflow: hidden;
+                  "
+                >
+                  <td
+                    :colspan="isBoardMember ? 4 : 6"
+                    style="padding: 0; height: 0.1px; border: none"
+                  ></td>
                 </tr>
                 <tr v-if="!loading && activeFAQs.length === 0" class="no-drag">
-                  <td colspan="6" class="text-center py-8 text-gray-500">
-                    No active FAQs (drag FAQs here to make them active)
+                  <td
+                    :colspan="isBoardMember ? 4 : 6"
+                    class="text-center py-8 text-gray-500"
+                  >
+                    {{
+                      isBoardMember
+                        ? 'No active FAQs'
+                        : 'No active FAQs (drag FAQs here to make them active)'
+                    }}
                   </td>
                 </tr>
-                <tr v-for="faq in paginatedActiveFAQs" :key="faq.id" :data-id="faq.id" class="cursor-move faq-row">
-                  <td class="w-12">
-                    <div class="flex items-center justify-center text-gray-400 hover:text-gray-600 drag-handle" style="cursor: grab; padding: 8px;">
-                      <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 8h16M4 16h16" />
+                <tr
+                  v-for="faq in paginatedActiveFAQs"
+                  :key="faq.id"
+                  :data-id="faq.id"
+                  :class="{ 'cursor-move faq-row': !isBoardMember }"
+                >
+                  <td v-if="!isBoardMember" class="w-12">
+                    <div
+                      class="flex items-center justify-center text-gray-400 hover:text-gray-600 drag-handle"
+                      style="cursor: grab; padding: 8px"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        class="h-6 w-6"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        stroke-width="2"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          d="M4 8h16M4 16h16"
+                        />
                       </svg>
                     </div>
                   </td>
                   <td class="w-16">
-                    <span class="badge bg-success/10 text-success badge-sm font-medium">{{ faq.display_order || '-' }}</span>
+                    <span
+                      class="badge bg-success/10 text-success badge-sm font-medium"
+                      >{{ faq.display_order || '-' }}</span
+                    >
                   </td>
                   <td>
-                    <div class="font-medium">{{ truncate(faq.question, 50) }}</div>
+                    <div class="font-medium">
+                      {{ truncate(faq.question, 50) }}
+                    </div>
                   </td>
                   <td>
-                    <span v-if="faq.category" class="badge  badge-sm border-gray-300">
+                    <span
+                      v-if="faq.category"
+                      class="badge badge-sm border-gray-300"
+                    >
                       {{ faq.category }}
                     </span>
                     <span v-else class="text-gray-400">-</span>
                   </td>
                   <td>{{ formatDate(faq.created_at) }}</td>
-                  <td>
+                  <td v-if="!isBoardMember">
                     <div class="flex gap-2">
                       <button
                         class="btn btn-sm btn-ghost"
@@ -241,9 +351,14 @@
             </table>
           </div>
           <!-- Pagination for Active FAQs -->
-          <div v-if="!loading && activeFAQs.length > 0" class="p-4 border-t border-gray-200 flex items-center justify-between">
+          <div
+            v-if="!loading && activeFAQs.length > 0"
+            class="p-4 border-t border-gray-200 flex items-center justify-between"
+          >
             <div class="text-sm text-gray-600">
-              Showing {{ (activePage - 1) * itemsPerPage + 1 }} to {{ Math.min(activePage * itemsPerPage, activeFAQs.length) }} of {{ activeFAQs.length }} FAQs
+              Showing {{ (activePage - 1) * itemsPerPage + 1 }} to
+              {{ Math.min(activePage * itemsPerPage, activeFAQs.length) }} of
+              {{ activeFAQs.length }} FAQs
             </div>
             <div class="join">
               <button
@@ -280,7 +395,9 @@
     <!-- Create/Edit Modal -->
     <dialog ref="faqModal" class="modal">
       <div class="modal-box max-w-xl w-full max-h-[90vh] overflow-y-auto">
-        <div class="flex justify-between items-center mb-4 pb-3 border-b border-gray-200">
+        <div
+          class="flex justify-between items-center mb-4 pb-3 border-b border-gray-200"
+        >
           <h3 class="font-bold text-xl text-gray-900">
             {{ editingFAQ ? 'Edit FAQ' : 'Create New FAQ' }}
           </h3>
@@ -340,7 +457,9 @@
           <div class="flex flex-col gap-3">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
               <div class="form-control flex flex-col h-full">
-                <label class="label min-h-[1.75rem] pb-2 pt-0 mb-0 flex items-center">
+                <label
+                  class="label min-h-[1.75rem] pb-2 pt-0 mb-0 flex items-center"
+                >
                   <span class="label-text font-semibold text-gray-700"
                     >Category</span
                   >
@@ -365,7 +484,9 @@
                     @input="handleCategoryInput"
                   />
                 </div>
-                <label class="label min-h-[1.5rem] pt-1.5 pb-0 mt-0 flex items-start">
+                <label
+                  class="label min-h-[1.5rem] pt-1.5 pb-0 mt-0 flex items-start"
+                >
                   <span
                     v-if="categoryIconSuggestion"
                     class="label-text-alt text-gray-500 flex items-center gap-1"
@@ -379,7 +500,6 @@
                   </span>
                 </label>
               </div>
-
             </div>
           </div>
 
@@ -395,10 +515,16 @@
             <button
               type="submit"
               class="btn text-white btn-sm bg-primaryColor hover:opacity-90 active:opacity-80 font-thin"
-              style="background-color: var(--color-primaryColor); border-color: var(--color-primaryColor);"
+              style="
+                background-color: var(--color-primaryColor);
+                border-color: var(--color-primaryColor);
+              "
               :disabled="saving"
             >
-              <span v-if="saving" class="loading loading-spinner loading-sm"></span>
+              <span
+                v-if="saving"
+                class="loading loading-spinner loading-sm"
+              ></span>
               <span v-else>{{ editingFAQ ? 'Update FAQ' : 'Create FAQ' }}</span>
             </button>
           </div>
@@ -421,11 +547,7 @@
           <p class="font-medium">{{ deletingFAQ?.question }}</p>
         </div>
         <div class="modal-action">
-          <button
-            type="button"
-            class="btn btn-ghost"
-            @click="closeDeleteModal"
-          >
+          <button type="button" class="btn btn-ghost" @click="closeDeleteModal">
             Cancel
           </button>
           <button
@@ -443,17 +565,6 @@
         <button @click="closeDeleteModal">close</button>
       </form>
     </dialog>
-
-    <!-- Toast -->
-    <div
-      v-if="toast.show"
-      :class="[
-        'toast toast-top toast-end',
-        toast.type === 'success' ? 'alert-success' : 'alert-error',
-      ]"
-    >
-      <span>{{ toast.message }}</span>
-    </div>
   </div>
 </template>
 
@@ -538,7 +649,10 @@
   } from 'lucide-vue-next';
   import axios from 'axios';
   import { apiConfig } from '../../config/api.js';
+  import { useCustomToast } from '../../composables/useCustomToast.js';
+  import { useAuthStore } from '../../stores/authStore.js';
 
+  const authStore = useAuthStore();
   const loading = ref(false);
   const saving = ref(false);
   const faqs = ref([]);
@@ -548,6 +662,18 @@
     active_faqs: 0,
     inactive_faqs: 0,
     total_categories: 0,
+  });
+
+  // Check if user is board member or chairman
+  const isBoardMember = computed(() => {
+    const position = authStore.user?.position || '';
+    const role = authStore.userRole || '';
+    return (
+      position.includes('Board') ||
+      position.includes('Chairman') ||
+      role.includes('Board') ||
+      role.includes('Chairman')
+    );
   });
 
   const searchQuery = ref('');
@@ -562,15 +688,16 @@
     category: '',
   });
 
-  const toast = ref({ show: false, type: 'success', message: '' });
   const categoryIconSuggestion = ref(null);
+
+  const { showSuccess, showError } = useCustomToast();
 
   // Icon suggestion mapping based on category keywords
   const getCategoryIcon = (category) => {
     if (!category || !category.trim()) return null;
-    
+
     const categoryLower = category.toLowerCase().trim();
-    
+
     // Icon mapping based on keywords - Expanded with many more categories
     const iconMap = {
       // General categories
@@ -582,7 +709,7 @@
       faq: HelpCircle,
       question: HelpCircle,
       questions: HelpCircle,
-      
+
       // Orders and delivery
       order: Package,
       orders: Package,
@@ -593,7 +720,7 @@
       pickup: Store,
       takeout: Store,
       carryout: Store,
-      
+
       // Payment
       payment: CreditCard,
       payments: CreditCard,
@@ -607,7 +734,7 @@
       refund: RefreshCw,
       return: RefreshCw,
       returns: RefreshCw,
-      
+
       // Hours and location
       hours: Clock,
       'operating hours': Clock,
@@ -621,7 +748,7 @@
       store: Store,
       stores: Store,
       shop: Store,
-      
+
       // Hiring and careers
       hiring: Briefcase,
       career: Briefcase,
@@ -632,7 +759,7 @@
       apply: Users,
       join: Users,
       application: Briefcase,
-      
+
       // Ratings and reviews
       rating: Star,
       ratings: Star,
@@ -642,7 +769,7 @@
       feedback: MessageSquare,
       testimonials: MessageSquare,
       comments: MessageSquare,
-      
+
       // Food and menu
       food: UtensilsCrossed,
       menu: BookOpen,
@@ -653,7 +780,7 @@
       items: ShoppingCart,
       dish: UtensilsCrossed,
       dishes: UtensilsCrossed,
-      
+
       // Service
       service: Handshake,
       services: Handshake,
@@ -664,7 +791,7 @@
       customer: User,
       customers: Users,
       client: User,
-      
+
       // Policies
       policy: FileText,
       policies: FileText,
@@ -673,7 +800,7 @@
       security: Shield,
       safety: Shield,
       warranty: FileText,
-      
+
       // Additional categories
       discount: Percent,
       sale: ShoppingBag,
@@ -720,7 +847,7 @@
       error: XCircle,
       success: CheckCircle,
       confirmation: CheckCircle,
-      
+
       // More categories for expanded options
       nutrition: Heart,
       healthy: Heart,
@@ -1466,7 +1593,7 @@
     const value = event.target.value;
     // Extract category text (remove any existing icon prefixes or special characters)
     const categoryText = value.replace(/^[^\w\s]+/, '').trim();
-    
+
     if (categoryText) {
       categoryIconSuggestion.value = getCategoryIcon(categoryText);
     } else {
@@ -1478,11 +1605,6 @@
     // Icons are visual only - category field stores text only
     // This function is kept for UI consistency but icons aren't saved with the category
     // The icon will be recalculated when the category is loaded based on its text
-  };
-
-  const showToast = (type, message) => {
-    toast.value = { show: true, type, message };
-    setTimeout(() => (toast.value.show = false), 3000);
   };
 
   const activeSortableInstance = ref(null);
@@ -1498,11 +1620,15 @@
 
   // Computed properties for separated FAQs
   const activeFAQs = computed(() => {
-    return faqs.value.filter(faq => faq.is_active).sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
+    return faqs.value
+      .filter((faq) => faq.is_active)
+      .sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
   });
 
   const inactiveFAQs = computed(() => {
-    return faqs.value.filter(faq => !faq.is_active).sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
+    return faqs.value
+      .filter((faq) => !faq.is_active)
+      .sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
   });
 
   // Paginated FAQs
@@ -1519,8 +1645,12 @@
   });
 
   // Pagination info
-  const activeTotalPages = computed(() => Math.ceil(activeFAQs.value.length / itemsPerPage.value));
-  const inactiveTotalPages = computed(() => Math.ceil(inactiveFAQs.value.length / itemsPerPage.value));
+  const activeTotalPages = computed(() =>
+    Math.ceil(activeFAQs.value.length / itemsPerPage.value)
+  );
+  const inactiveTotalPages = computed(() =>
+    Math.ceil(inactiveFAQs.value.length / itemsPerPage.value)
+  );
 
   // Pagination methods
   const setActivePage = (page) => {
@@ -1538,19 +1668,23 @@
       if (searchQuery.value) {
         params.search = searchQuery.value;
       }
-      
+
       // Reset pagination when loading new data
       activePage.value = 1;
       inactivePage.value = 1;
 
       const response = await axios.get(`${apiConfig.baseURL}/faqs`, { params });
       const loadedFAQs = response.data.data || [];
-      
+
       // Normalize display_order to be sequential (1, 2, 3, 4, 5, 6...)
       // Separate active and inactive
-      const active = loadedFAQs.filter(f => f.is_active).sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
-      const inactive = loadedFAQs.filter(f => !f.is_active).sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
-      
+      const active = loadedFAQs
+        .filter((f) => f.is_active)
+        .sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
+      const inactive = loadedFAQs
+        .filter((f) => !f.is_active)
+        .sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
+
       // Check if orders need updating and update backend
       const orderUpdates = [];
       active.forEach((faq, index) => {
@@ -1559,7 +1693,9 @@
         if (oldOrder !== correctOrder) {
           faq.display_order = correctOrder;
           orderUpdates.push(
-            axios.put(`${apiConfig.baseURL}/faqs/${faq.id}`, { display_order: correctOrder })
+            axios.put(`${apiConfig.baseURL}/faqs/${faq.id}`, {
+              display_order: correctOrder,
+            })
           );
         }
       });
@@ -1569,24 +1705,28 @@
         if (oldOrder !== correctOrder) {
           faq.display_order = correctOrder;
           orderUpdates.push(
-            axios.put(`${apiConfig.baseURL}/faqs/${faq.id}`, { display_order: correctOrder })
+            axios.put(`${apiConfig.baseURL}/faqs/${faq.id}`, {
+              display_order: correctOrder,
+            })
           );
         }
       });
-      
+
       // Update backend silently if order was wrong (don't show error if it fails)
       if (orderUpdates.length > 0) {
-        Promise.all(orderUpdates).catch(err => console.warn('Warning: Some order updates failed:', err));
+        Promise.all(orderUpdates).catch((err) =>
+          console.warn('Warning: Some order updates failed:', err)
+        );
       }
-      
+
       faqs.value = [...active, ...inactive];
-      
+
       // Initialize sortable after FAQs are loaded
       await nextTick();
       setTimeout(() => initSortable(), 300);
     } catch (error) {
       console.error('Error loading FAQs:', error);
-      showToast('error', error.response?.data?.message || 'Failed to load FAQs');
+      showError(error.response?.data?.message || 'Failed to load FAQs');
     } finally {
       loading.value = false;
     }
@@ -1594,6 +1734,12 @@
 
   const initSortable = () => {
     try {
+      // Don't initialize sortable for board members
+      if (isBoardMember.value) {
+        console.log('⏸️ Skipping sortable initialization - board member');
+        return;
+      }
+
       // Don't reinitialize while dragging is in progress
       if (isDragging.value) {
         console.log('⏸️ Skipping sortable initialization - drag in progress');
@@ -1620,350 +1766,408 @@
 
       if (loading.value) return;
 
-    // Wait for DOM to be ready
-    nextTick(() => {
-      // Ensure placeholders exist before initializing SortableJS
-      const ensurePlaceholder = (tbody, placeholderId) => {
-        if (!tbody) return false;
-        
-        // Always ensure tbody has at least one child for SortableJS
-        const hasItems = Array.from(tbody.children || []).some(n => {
-          const id = n.dataset?.id;
-          return id && !id.includes('placeholder') && !n.classList.contains('no-drag');
-        });
-        
-        const hasPlaceholder = tbody.querySelector(`[data-id="${placeholderId}"]`);
-        
-        // If empty or only has empty message row, ensure placeholder exists
-        if (!hasItems) {
-          if (!hasPlaceholder) {
-            // Create a minimal placeholder to prevent null errors
-            const placeholder = document.createElement('tr');
-            placeholder.setAttribute('data-id', placeholderId);
-            placeholder.className = 'sortable-placeholder';
-            placeholder.style.cssText = 'height: 1px; line-height: 0; font-size: 0; visibility: hidden; overflow: hidden; position: absolute; width: 100%; pointer-events: none;';
-            const td = document.createElement('td');
-            td.colSpan = 6;
-            td.style.cssText = 'padding: 0; height: 1px; border: none;';
-            placeholder.appendChild(td);
-            // Insert before empty message row if it exists, otherwise append
-            const emptyMessageRow = tbody.querySelector('.no-drag');
-            if (emptyMessageRow) {
-              tbody.insertBefore(placeholder, emptyMessageRow);
-            } else {
-              tbody.appendChild(placeholder);
-            }
-            return true;
-          }
-          // If placeholder exists, ensure it's not the only child (add empty message check)
-          const validChildren = Array.from(tbody.children).filter(child => 
-            child.dataset?.id || child.classList.contains('no-drag') || child.classList.contains('sortable-placeholder')
-          );
-          if (validChildren.length === 0) {
-            // No valid children at all - create placeholder
-            const placeholder = document.createElement('tr');
-            placeholder.setAttribute('data-id', placeholderId);
-            placeholder.className = 'sortable-placeholder';
-            placeholder.style.cssText = 'height: 1px; line-height: 0; font-size: 0; visibility: hidden; overflow: hidden; position: absolute; width: 100%; pointer-events: none;';
-            const td = document.createElement('td');
-            td.colSpan = 6;
-            td.style.cssText = 'padding: 0; height: 1px; border: none;';
-            placeholder.appendChild(td);
-            tbody.appendChild(placeholder);
-            return true;
-          }
-        }
-        return false;
-      };
+      // Wait for DOM to be ready
+      nextTick(() => {
+        // Ensure placeholders exist before initializing SortableJS
+        const ensurePlaceholder = (tbody, placeholderId) => {
+          if (!tbody) return false;
 
-      // Initialize Active FAQs sortable (always initialize so it can accept drops)
-      const activeBodyEl = activeTbody.value;
-      if (activeBodyEl) {
-        try {
-          // Ensure placeholder exists (only if current page is empty)
-          if (paginatedActiveFAQs.value.length === 0) {
-            ensurePlaceholder(activeBodyEl, 'placeholder-active');
+          // Always ensure tbody has at least one child for SortableJS
+          const hasItems = Array.from(tbody.children || []).some((n) => {
+            const id = n.dataset?.id;
+            return (
+              id &&
+              !id.includes('placeholder') &&
+              !n.classList.contains('no-drag')
+            );
+          });
+
+          const hasPlaceholder = tbody.querySelector(
+            `[data-id="${placeholderId}"]`
+          );
+
+          // If empty or only has empty message row, ensure placeholder exists
+          if (!hasItems) {
+            if (!hasPlaceholder) {
+              // Create a minimal placeholder to prevent null errors
+              const placeholder = document.createElement('tr');
+              placeholder.setAttribute('data-id', placeholderId);
+              placeholder.className = 'sortable-placeholder';
+              placeholder.style.cssText =
+                'height: 1px; line-height: 0; font-size: 0; visibility: hidden; overflow: hidden; position: absolute; width: 100%; pointer-events: none;';
+              const td = document.createElement('td');
+              td.colSpan = 6;
+              td.style.cssText = 'padding: 0; height: 1px; border: none;';
+              placeholder.appendChild(td);
+              // Insert before empty message row if it exists, otherwise append
+              const emptyMessageRow = tbody.querySelector('.no-drag');
+              if (emptyMessageRow) {
+                tbody.insertBefore(placeholder, emptyMessageRow);
+              } else {
+                tbody.appendChild(placeholder);
+              }
+              return true;
+            }
+            // If placeholder exists, ensure it's not the only child (add empty message check)
+            const validChildren = Array.from(tbody.children).filter(
+              (child) =>
+                child.dataset?.id ||
+                child.classList.contains('no-drag') ||
+                child.classList.contains('sortable-placeholder')
+            );
+            if (validChildren.length === 0) {
+              // No valid children at all - create placeholder
+              const placeholder = document.createElement('tr');
+              placeholder.setAttribute('data-id', placeholderId);
+              placeholder.className = 'sortable-placeholder';
+              placeholder.style.cssText =
+                'height: 1px; line-height: 0; font-size: 0; visibility: hidden; overflow: hidden; position: absolute; width: 100%; pointer-events: none;';
+              const td = document.createElement('td');
+              td.colSpan = 6;
+              td.style.cssText = 'padding: 0; height: 1px; border: none;';
+              placeholder.appendChild(td);
+              tbody.appendChild(placeholder);
+              return true;
+            }
           }
-          
-          // Destroy existing instance first
-          if (activeSortableInstance.value) {
-            activeSortableInstance.value.destroy();
-          }
-          
-          activeSortableInstance.value = Sortable.create(activeBodyEl, {
-            animation: 150,
-            ghostClass: 'sortable-ghost',
-            chosenClass: 'sortable-chosen',
-            group: { 
-              name: 'faqs', 
-              pull: true, 
-              put: true 
-            },
-            draggable: 'tr[data-id]:not(.sortable-placeholder)',
-            filter: '.no-drag, .sortable-placeholder',
-            preventOnFilter: false,
-            fallbackOnBody: true,
-            fallbackTolerance: 0,
-            invalid: (el, handle) => {
-              // Prevent dragging placeholder or empty message rows
-              return !el || !el.dataset?.id || el.dataset.id.includes('placeholder') || el.classList.contains('no-drag');
-            },
-            dragClass: 'sortable-drag',
-            forceFallback: false,
-            swapThreshold: 0.65,
-            emptyInsertThreshold: 50,
-            onMove: (evt) => {
-              try {
-                // Always allow moves - handle null cases gracefully
-                if (!evt.related || !evt.related.parentElement || !evt.dragged) {
-                  return true; // Allow drop into empty table
-                }
-                // Ensure target container exists and has structure
-                const targetContainer = evt.to;
-                if (!targetContainer) {
-                  return true; // No target, allow (will be handled by SortableJS)
-                }
-                if (targetContainer.children.length === 0) {
-                  // Ensure placeholder exists for empty container
-                  ensurePlaceholder(targetContainer, 'placeholder-active');
-                  return true; // Empty container, allow drop
-                }
-                // Ensure target container's lastElementChild is valid
+          return false;
+        };
+
+        // Initialize Active FAQs sortable (always initialize so it can accept drops)
+        const activeBodyEl = activeTbody.value;
+        if (activeBodyEl) {
+          try {
+            // Ensure placeholder exists (only if current page is empty)
+            if (paginatedActiveFAQs.value.length === 0) {
+              ensurePlaceholder(activeBodyEl, 'placeholder-active');
+            }
+
+            // Destroy existing instance first
+            if (activeSortableInstance.value) {
+              activeSortableInstance.value.destroy();
+            }
+
+            activeSortableInstance.value = Sortable.create(activeBodyEl, {
+              animation: 150,
+              ghostClass: 'sortable-ghost',
+              chosenClass: 'sortable-chosen',
+              group: {
+                name: 'faqs',
+                pull: true,
+                put: true,
+              },
+              draggable: 'tr[data-id]:not(.sortable-placeholder)',
+              filter: '.no-drag, .sortable-placeholder',
+              preventOnFilter: false,
+              fallbackOnBody: true,
+              fallbackTolerance: 0,
+              invalid: (el, handle) => {
+                // Prevent dragging placeholder or empty message rows
+                return (
+                  !el ||
+                  !el.dataset?.id ||
+                  el.dataset.id.includes('placeholder') ||
+                  el.classList.contains('no-drag')
+                );
+              },
+              dragClass: 'sortable-drag',
+              forceFallback: false,
+              swapThreshold: 0.65,
+              emptyInsertThreshold: 50,
+              onMove: (evt) => {
                 try {
-                  const lastChild = targetContainer.lastElementChild;
-                  if (!lastChild) {
+                  // Always allow moves - handle null cases gracefully
+                  if (
+                    !evt.related ||
+                    !evt.related.parentElement ||
+                    !evt.dragged
+                  ) {
+                    return true; // Allow drop into empty table
+                  }
+                  // Ensure target container exists and has structure
+                  const targetContainer = evt.to;
+                  if (!targetContainer) {
+                    return true; // No target, allow (will be handled by SortableJS)
+                  }
+                  if (targetContainer.children.length === 0) {
+                    // Ensure placeholder exists for empty container
+                    ensurePlaceholder(targetContainer, 'placeholder-active');
+                    return true; // Empty container, allow drop
+                  }
+                  // Ensure target container's lastElementChild is valid
+                  try {
+                    const lastChild = targetContainer.lastElementChild;
+                    if (!lastChild) {
+                      ensurePlaceholder(targetContainer, 'placeholder-active');
+                    }
+                  } catch (err) {
+                    // If lastElementChild access fails, ensure placeholder exists
                     ensurePlaceholder(targetContainer, 'placeholder-active');
                   }
+                  console.log('🔄 Move event:', {
+                    related: evt.related?.dataset?.id,
+                    dragged: evt.dragged?.dataset?.id,
+                  });
+                  return true;
                 } catch (err) {
-                  // If lastElementChild access fails, ensure placeholder exists
-                  ensurePlaceholder(targetContainer, 'placeholder-active');
+                  console.error('Error in onMove:', err);
+                  return true; // Always allow move on error
                 }
-                console.log('🔄 Move event:', { 
-                  related: evt.related?.dataset?.id, 
-                  dragged: evt.dragged?.dataset?.id 
-                });
-                return true;
-              } catch (err) {
-                console.error('Error in onMove:', err);
-                return true; // Always allow move on error
-              }
-            },
-            onStart: (evt) => {
-              isDragging.value = true;
-              console.log('✅✅✅ Drag STARTED - Active Table:', {
-                item: evt.item?.dataset?.id,
-                index: evt.oldIndex
-              });
-              document.body.style.cursor = 'grabbing';
-            },
-            onAdd: (evt) => {
-              try {
-                console.log('➕ Item added to Active table:', evt.item?.dataset?.id);
-                // Ensure target has valid children after add
-                if (evt.to && evt.to.children.length === 0) {
-                  console.warn('Target container empty after add, ensuring placeholder');
-                  ensurePlaceholder(evt.to, 'placeholder-active');
-                }
-                // Schedule the update after SortableJS is done
-                setTimeout(() => {
-                  handleSortChange(evt).catch(err => {
-                    console.error('Error handling sort change:', err);
-                  });
-                }, 100);
-              } catch (err) {
-                console.error('Error in onAdd:', err);
-              }
-            },
-            onUpdate: (evt) => {
-              try {
-                console.log('🔄 Item updated within Active table:', evt.item?.dataset?.id);
-                // Schedule the update after SortableJS is done
-                setTimeout(() => {
-                  handleSortChange(evt).catch(err => {
-                    console.error('Error handling sort change:', err);
-                  });
-                }, 100);
-              } catch (err) {
-                console.error('Error in onUpdate:', err);
-              }
-            },
-            onEnd: (evt) => {
-              try {
-                console.log('✅✅✅ Drag ENDED - Active Table:', {
-                  item: evt.item?.dataset?.id,
-                  oldIndex: evt.oldIndex,
-                  newIndex: evt.newIndex,
-                  from: evt.from === activeBodyEl ? 'Active' : 'Other',
-                  to: evt.to === activeBodyEl ? 'Active' : (evt.to === inactiveTbody.value ? 'Inactive' : 'Other')
-                });
-                document.body.style.cursor = '';
-                // Reset dragging flag after a delay to allow cleanup
-                setTimeout(() => {
-                  isDragging.value = false;
-                }, 200);
-              } catch (err) {
-                console.error('Error in onEnd:', err);
-                document.body.style.cursor = '';
-                isDragging.value = false;
-              }
-            },
-          });
-          console.log('✅ Active sortable initialized successfully!', {
-            element: activeBodyEl,
-            rows: activeBodyEl.querySelectorAll('tr[data-id]').length,
-            instance: activeSortableInstance.value
-          });
-        } catch (err) {
-          console.error('❌ Error creating active sortable:', err);
-        }
-      }
-
-      // Initialize Inactive FAQs sortable (always initialize so it can accept drops)
-      const inactiveBodyEl = inactiveTbody.value;
-      if (inactiveBodyEl) {
-        try {
-          // Ensure placeholder exists (only if current page is empty)
-          if (paginatedInactiveFAQs.value.length === 0) {
-            ensurePlaceholder(inactiveBodyEl, 'placeholder-inactive');
-          }
-          
-          // Destroy existing instance first
-          if (inactiveSortableInstance.value) {
-            inactiveSortableInstance.value.destroy();
-          }
-          
-          inactiveSortableInstance.value = Sortable.create(inactiveBodyEl, {
-            animation: 150,
-            ghostClass: 'sortable-ghost',
-            chosenClass: 'sortable-chosen',
-            group: { 
-              name: 'faqs', 
-              pull: true, 
-              put: true 
-            },
-            draggable: 'tr[data-id]:not(.sortable-placeholder)',
-            filter: '.no-drag, .sortable-placeholder',
-            preventOnFilter: false,
-            fallbackOnBody: true,
-            fallbackTolerance: 0,
-            invalid: (el, handle) => {
-              // Prevent dragging placeholder or empty message rows
-              return !el || !el.dataset?.id || el.dataset.id.includes('placeholder') || el.classList.contains('no-drag');
-            },
-            dragClass: 'sortable-drag',
-            forceFallback: false,
-            swapThreshold: 0.65,
-            emptyInsertThreshold: 50,
-            onMove: (evt) => {
-              try {
-                // Always allow moves - handle null cases gracefully
-                if (!evt.related || !evt.related.parentElement || !evt.dragged) {
-                  return true; // Allow drop into empty table
-                }
-                // Ensure target container exists and has structure
-                const targetContainer = evt.to;
-                if (!targetContainer) {
-                  return true; // No target, allow (will be handled by SortableJS)
-                }
-                if (targetContainer.children.length === 0) {
-                  // Ensure placeholder exists for empty container
-                  ensurePlaceholder(targetContainer, 'placeholder-inactive');
-                  return true; // Empty container, allow drop
-                }
-                // Ensure target container's lastElementChild is valid
-                try {
-                  const lastChild = targetContainer.lastElementChild;
-                  if (!lastChild) {
-                    ensurePlaceholder(targetContainer, 'placeholder-inactive');
-                  }
-                } catch (err) {
-                  // If lastElementChild access fails, ensure placeholder exists
-                  ensurePlaceholder(targetContainer, 'placeholder-inactive');
-                }
-                console.log('🔄 Move event - Inactive:', { 
-                  related: evt.related?.dataset?.id, 
-                  dragged: evt.dragged?.dataset?.id 
-                });
-                return true;
-              } catch (err) {
-                console.error('Error in onMove:', err);
-                return true; // Always allow move on error
-              }
-            },
-            onAdd: (evt) => {
-              try {
-                console.log('➕ Item added to Inactive table:', evt.item?.dataset?.id);
-                // Ensure target has valid children after add
-                if (evt.to && evt.to.children.length === 0) {
-                  console.warn('Target container empty after add, ensuring placeholder');
-                  ensurePlaceholder(evt.to, 'placeholder-inactive');
-                }
-                // Schedule the update after SortableJS is done
-                setTimeout(() => {
-                  handleSortChange(evt).catch(err => {
-                    console.error('Error handling sort change:', err);
-                  });
-                }, 100);
-              } catch (err) {
-                console.error('Error in onAdd:', err);
-              }
-            },
-            onUpdate: (evt) => {
-              try {
-                console.log('🔄 Item updated within Inactive table:', evt.item?.dataset?.id);
-                // Schedule the update after SortableJS is done
-                setTimeout(() => {
-                  handleSortChange(evt).catch(err => {
-                    console.error('Error handling sort change:', err);
-                  });
-                }, 100);
-              } catch (err) {
-                console.error('Error in onUpdate:', err);
-              }
-            },
-            onStart: (evt) => {
-              try {
+              },
+              onStart: (evt) => {
                 isDragging.value = true;
-                console.log('✅✅✅ Drag STARTED - Inactive Table:', {
+                console.log('✅✅✅ Drag STARTED - Active Table:', {
                   item: evt.item?.dataset?.id,
-                  index: evt.oldIndex
+                  index: evt.oldIndex,
                 });
                 document.body.style.cursor = 'grabbing';
-              } catch (err) {
-                console.error('Error in onStart:', err);
-              }
-            },
-            onEnd: (evt) => {
-              try {
-                console.log('✅✅✅ Drag ENDED - Inactive Table:', {
-                  item: evt.item?.dataset?.id,
-                  oldIndex: evt.oldIndex,
-                  newIndex: evt.newIndex,
-                  from: evt.from === inactiveBodyEl ? 'Inactive' : 'Other',
-                  to: evt.to === inactiveBodyEl ? 'Inactive' : (evt.to === activeTbody.value ? 'Active' : 'Other')
-                });
-                document.body.style.cursor = '';
-                // Reset dragging flag after a delay to allow cleanup
-                setTimeout(() => {
+              },
+              onAdd: (evt) => {
+                try {
+                  console.log(
+                    '➕ Item added to Active table:',
+                    evt.item?.dataset?.id
+                  );
+                  // Ensure target has valid children after add
+                  if (evt.to && evt.to.children.length === 0) {
+                    console.warn(
+                      'Target container empty after add, ensuring placeholder'
+                    );
+                    ensurePlaceholder(evt.to, 'placeholder-active');
+                  }
+                  // Schedule the update after SortableJS is done
+                  setTimeout(() => {
+                    handleSortChange(evt).catch((err) => {
+                      console.error('Error handling sort change:', err);
+                    });
+                  }, 100);
+                } catch (err) {
+                  console.error('Error in onAdd:', err);
+                }
+              },
+              onUpdate: (evt) => {
+                try {
+                  console.log(
+                    '🔄 Item updated within Active table:',
+                    evt.item?.dataset?.id
+                  );
+                  // Schedule the update after SortableJS is done
+                  setTimeout(() => {
+                    handleSortChange(evt).catch((err) => {
+                      console.error('Error handling sort change:', err);
+                    });
+                  }, 100);
+                } catch (err) {
+                  console.error('Error in onUpdate:', err);
+                }
+              },
+              onEnd: (evt) => {
+                try {
+                  console.log('✅✅✅ Drag ENDED - Active Table:', {
+                    item: evt.item?.dataset?.id,
+                    oldIndex: evt.oldIndex,
+                    newIndex: evt.newIndex,
+                    from: evt.from === activeBodyEl ? 'Active' : 'Other',
+                    to:
+                      evt.to === activeBodyEl
+                        ? 'Active'
+                        : evt.to === inactiveTbody.value
+                          ? 'Inactive'
+                          : 'Other',
+                  });
+                  document.body.style.cursor = '';
+                  // Reset dragging flag after a delay to allow cleanup
+                  setTimeout(() => {
+                    isDragging.value = false;
+                  }, 200);
+                } catch (err) {
+                  console.error('Error in onEnd:', err);
+                  document.body.style.cursor = '';
                   isDragging.value = false;
-                }, 200);
-              } catch (err) {
-                console.error('Error in onEnd:', err);
-                document.body.style.cursor = '';
-                isDragging.value = false;
-              }
-            },
-          });
-          console.log('✅ Inactive sortable initialized successfully!', {
-            element: inactiveBodyEl,
-            rows: inactiveBodyEl.querySelectorAll('tr[data-id]').length,
-            instance: inactiveSortableInstance.value
-          });
-        } catch (err) {
-          console.error('❌ Error creating inactive sortable:', err);
+                }
+              },
+            });
+            console.log('✅ Active sortable initialized successfully!', {
+              element: activeBodyEl,
+              rows: activeBodyEl.querySelectorAll('tr[data-id]').length,
+              instance: activeSortableInstance.value,
+            });
+          } catch (err) {
+            console.error('❌ Error creating active sortable:', err);
+          }
         }
-      }
-    });
+
+        // Initialize Inactive FAQs sortable (always initialize so it can accept drops)
+        const inactiveBodyEl = inactiveTbody.value;
+        if (inactiveBodyEl) {
+          try {
+            // Ensure placeholder exists (only if current page is empty)
+            if (paginatedInactiveFAQs.value.length === 0) {
+              ensurePlaceholder(inactiveBodyEl, 'placeholder-inactive');
+            }
+
+            // Destroy existing instance first
+            if (inactiveSortableInstance.value) {
+              inactiveSortableInstance.value.destroy();
+            }
+
+            inactiveSortableInstance.value = Sortable.create(inactiveBodyEl, {
+              animation: 150,
+              ghostClass: 'sortable-ghost',
+              chosenClass: 'sortable-chosen',
+              group: {
+                name: 'faqs',
+                pull: true,
+                put: true,
+              },
+              draggable: 'tr[data-id]:not(.sortable-placeholder)',
+              filter: '.no-drag, .sortable-placeholder',
+              preventOnFilter: false,
+              fallbackOnBody: true,
+              fallbackTolerance: 0,
+              invalid: (el, handle) => {
+                // Prevent dragging placeholder or empty message rows
+                return (
+                  !el ||
+                  !el.dataset?.id ||
+                  el.dataset.id.includes('placeholder') ||
+                  el.classList.contains('no-drag')
+                );
+              },
+              dragClass: 'sortable-drag',
+              forceFallback: false,
+              swapThreshold: 0.65,
+              emptyInsertThreshold: 50,
+              onMove: (evt) => {
+                try {
+                  // Always allow moves - handle null cases gracefully
+                  if (
+                    !evt.related ||
+                    !evt.related.parentElement ||
+                    !evt.dragged
+                  ) {
+                    return true; // Allow drop into empty table
+                  }
+                  // Ensure target container exists and has structure
+                  const targetContainer = evt.to;
+                  if (!targetContainer) {
+                    return true; // No target, allow (will be handled by SortableJS)
+                  }
+                  if (targetContainer.children.length === 0) {
+                    // Ensure placeholder exists for empty container
+                    ensurePlaceholder(targetContainer, 'placeholder-inactive');
+                    return true; // Empty container, allow drop
+                  }
+                  // Ensure target container's lastElementChild is valid
+                  try {
+                    const lastChild = targetContainer.lastElementChild;
+                    if (!lastChild) {
+                      ensurePlaceholder(
+                        targetContainer,
+                        'placeholder-inactive'
+                      );
+                    }
+                  } catch (err) {
+                    // If lastElementChild access fails, ensure placeholder exists
+                    ensurePlaceholder(targetContainer, 'placeholder-inactive');
+                  }
+                  console.log('🔄 Move event - Inactive:', {
+                    related: evt.related?.dataset?.id,
+                    dragged: evt.dragged?.dataset?.id,
+                  });
+                  return true;
+                } catch (err) {
+                  console.error('Error in onMove:', err);
+                  return true; // Always allow move on error
+                }
+              },
+              onAdd: (evt) => {
+                try {
+                  console.log(
+                    '➕ Item added to Inactive table:',
+                    evt.item?.dataset?.id
+                  );
+                  // Ensure target has valid children after add
+                  if (evt.to && evt.to.children.length === 0) {
+                    console.warn(
+                      'Target container empty after add, ensuring placeholder'
+                    );
+                    ensurePlaceholder(evt.to, 'placeholder-inactive');
+                  }
+                  // Schedule the update after SortableJS is done
+                  setTimeout(() => {
+                    handleSortChange(evt).catch((err) => {
+                      console.error('Error handling sort change:', err);
+                    });
+                  }, 100);
+                } catch (err) {
+                  console.error('Error in onAdd:', err);
+                }
+              },
+              onUpdate: (evt) => {
+                try {
+                  console.log(
+                    '🔄 Item updated within Inactive table:',
+                    evt.item?.dataset?.id
+                  );
+                  // Schedule the update after SortableJS is done
+                  setTimeout(() => {
+                    handleSortChange(evt).catch((err) => {
+                      console.error('Error handling sort change:', err);
+                    });
+                  }, 100);
+                } catch (err) {
+                  console.error('Error in onUpdate:', err);
+                }
+              },
+              onStart: (evt) => {
+                try {
+                  isDragging.value = true;
+                  console.log('✅✅✅ Drag STARTED - Inactive Table:', {
+                    item: evt.item?.dataset?.id,
+                    index: evt.oldIndex,
+                  });
+                  document.body.style.cursor = 'grabbing';
+                } catch (err) {
+                  console.error('Error in onStart:', err);
+                }
+              },
+              onEnd: (evt) => {
+                try {
+                  console.log('✅✅✅ Drag ENDED - Inactive Table:', {
+                    item: evt.item?.dataset?.id,
+                    oldIndex: evt.oldIndex,
+                    newIndex: evt.newIndex,
+                    from: evt.from === inactiveBodyEl ? 'Inactive' : 'Other',
+                    to:
+                      evt.to === inactiveBodyEl
+                        ? 'Inactive'
+                        : evt.to === activeTbody.value
+                          ? 'Active'
+                          : 'Other',
+                  });
+                  document.body.style.cursor = '';
+                  // Reset dragging flag after a delay to allow cleanup
+                  setTimeout(() => {
+                    isDragging.value = false;
+                  }, 200);
+                } catch (err) {
+                  console.error('Error in onEnd:', err);
+                  document.body.style.cursor = '';
+                  isDragging.value = false;
+                }
+              },
+            });
+            console.log('✅ Inactive sortable initialized successfully!', {
+              element: inactiveBodyEl,
+              rows: inactiveBodyEl.querySelectorAll('tr[data-id]').length,
+              instance: inactiveSortableInstance.value,
+            });
+          } catch (err) {
+            console.error('❌ Error creating inactive sortable:', err);
+          }
+        }
+      });
     } catch (error) {
       console.error('Error initializing sortable:', error);
     }
@@ -1971,32 +2175,42 @@
 
   const handleSortChange = async (evt) => {
     const { oldIndex, newIndex, item, from, to } = evt;
-    
+
     // Validate inputs
     if (!item || !from || !to) {
       console.warn('Invalid sort event:', { item, from, to });
       return;
     }
-    
+
     const movedFAQId = parseInt(item?.dataset?.id);
     if (!movedFAQId || oldIndex === null) {
-      console.warn('Invalid sort - missing FAQ ID or oldIndex:', { movedFAQId, oldIndex, newIndex });
+      console.warn('Invalid sort - missing FAQ ID or oldIndex:', {
+        movedFAQId,
+        oldIndex,
+        newIndex,
+      });
       return;
     }
-    
+
     // If newIndex is null, it means we're dropping into an empty table - set to 0
     if (newIndex === null || newIndex === undefined) {
       // Check if target table is empty
-      const targetHasItems = Array.from(to.children || []).some(n => {
+      const targetHasItems = Array.from(to.children || []).some((n) => {
         const id = n.dataset?.id;
-        return id && !id.includes('placeholder') && !n.classList.contains('no-drag');
+        return (
+          id && !id.includes('placeholder') && !n.classList.contains('no-drag')
+        );
       });
       if (!targetHasItems) {
         // Dropping into empty table - set newIndex to 0
         evt.newIndex = 0;
         console.log('📦 Empty table drop detected, setting newIndex to 0');
       } else {
-        console.warn('Invalid sort - newIndex is null but table has items:', { movedFAQId, oldIndex, newIndex });
+        console.warn('Invalid sort - newIndex is null but table has items:', {
+          movedFAQId,
+          oldIndex,
+          newIndex,
+        });
         return;
       }
     }
@@ -2004,63 +2218,76 @@
     // Determine source/target lists
     const movedToActive = to === activeTbody.value;
     const movedFromActive = from === activeTbody.value;
-    
+
     console.log('📦 Handling sort change:', {
       movedFAQId,
       from: movedFromActive ? 'Active' : 'Inactive',
       to: movedToActive ? 'Active' : 'Inactive',
       oldIndex,
-      newIndex
+      newIndex,
     });
 
     // Prepare lists sorted by order
-    const activeList = [...faqs.value.filter(f => f.is_active)].sort((a,b)=> (a.display_order||0)-(b.display_order||0));
-    const inactiveList = [...faqs.value.filter(f => !f.is_active)].sort((a,b)=> (a.display_order||0)-(b.display_order||0));
+    const activeList = [...faqs.value.filter((f) => f.is_active)].sort(
+      (a, b) => (a.display_order || 0) - (b.display_order || 0)
+    );
+    const inactiveList = [...faqs.value.filter((f) => !f.is_active)].sort(
+      (a, b) => (a.display_order || 0) - (b.display_order || 0)
+    );
 
     // Helper to get adjusted index inside a container (skip non data rows)
     const getAdjustedIndex = (container, rawIndex) => {
       if (!container || !container.children) return 0;
       const nodes = Array.from(container.children);
-      let idx = -1, seen = 0;
-      
+      let idx = -1,
+        seen = 0;
+
       // Filter out placeholder, loading, and empty message rows
-      const dataRows = nodes.filter(n => {
+      const dataRows = nodes.filter((n) => {
         const id = n.dataset?.id;
-        return id && !id.includes('placeholder') && !n.classList.contains('no-drag');
+        return (
+          id && !id.includes('placeholder') && !n.classList.contains('no-drag')
+        );
       });
-      
+
       // If container is empty, return 0
       if (dataRows.length === 0) return 0;
-      
+
       for (let i = 0; i < nodes.length; i++) {
         const node = nodes[i];
         const nodeId = node.dataset?.id;
         // Skip placeholder, loading, and empty message rows
-        if (nodeId && !nodeId.includes('placeholder') && !node.classList.contains('no-drag')) {
+        if (
+          nodeId &&
+          !nodeId.includes('placeholder') &&
+          !node.classList.contains('no-drag')
+        ) {
           if (i === rawIndex) idx = seen;
           seen++;
         }
       }
       // If dropping after last row, place at end
-      if (idx === -1) idx = seen; 
+      if (idx === -1) idx = seen;
       return Math.max(0, idx);
     };
 
     const sourceIndex = getAdjustedIndex(from, oldIndex);
     let targetIndex = getAdjustedIndex(to, newIndex);
-    
+
     // If target is empty, set index to 0
-    const targetHasRows = Array.from(to.children || []).some(n => n.dataset?.id);
+    const targetHasRows = Array.from(to.children || []).some(
+      (n) => n.dataset?.id
+    );
     if (!targetHasRows) targetIndex = 0;
 
     // Remove from source
     let movedItem;
     if (movedFromActive) {
-      const realIndex = activeList.findIndex(f => f.id === movedFAQId);
+      const realIndex = activeList.findIndex((f) => f.id === movedFAQId);
       if (realIndex === -1) return;
       movedItem = activeList.splice(realIndex, 1)[0];
     } else {
-      const realIndex = inactiveList.findIndex(f => f.id === movedFAQId);
+      const realIndex = inactiveList.findIndex((f) => f.id === movedFAQId);
       if (realIndex === -1) return;
       movedItem = inactiveList.splice(realIndex, 1)[0];
     }
@@ -2071,7 +2298,11 @@
       activeList.splice(Math.min(targetIndex, activeList.length), 0, movedItem);
     } else {
       movedItem.is_active = false;
-      inactiveList.splice(Math.min(targetIndex, inactiveList.length), 0, movedItem);
+      inactiveList.splice(
+        Math.min(targetIndex, inactiveList.length),
+        0,
+        movedItem
+      );
     }
 
     // Recompute sequential orders
@@ -2081,7 +2312,12 @@
       if (f.display_order !== newOrder || f.is_active !== true) {
         f.display_order = newOrder;
         f.is_active = true;
-        updates.push(axios.put(`${apiConfig.baseURL}/faqs/${f.id}`, { display_order: newOrder, is_active: true }));
+        updates.push(
+          axios.put(`${apiConfig.baseURL}/faqs/${f.id}`, {
+            display_order: newOrder,
+            is_active: true,
+          })
+        );
       }
     });
     inactiveList.forEach((f, i) => {
@@ -2089,7 +2325,12 @@
       if (f.display_order !== newOrder || f.is_active !== false) {
         f.display_order = newOrder;
         f.is_active = false;
-        updates.push(axios.put(`${apiConfig.baseURL}/faqs/${f.id}`, { display_order: newOrder, is_active: false }));
+        updates.push(
+          axios.put(`${apiConfig.baseURL}/faqs/${f.id}`, {
+            display_order: newOrder,
+            is_active: false,
+          })
+        );
       }
     });
 
@@ -2100,14 +2341,16 @@
         await loadStats();
       }
       faqs.value = [...activeList, ...inactiveList];
-      
+
       // Show appropriate message based on what happened
       if (movedFromActive !== movedToActive) {
-        showToast('success', `FAQ moved to ${movedToActive ? 'Active' : 'Inactive'} and order updated`);
+        showSuccess(
+          `FAQ moved to ${movedToActive ? 'Active' : 'Inactive'} and order updated`
+        );
       } else {
-        showToast('success', 'FAQ order updated');
+        showSuccess('FAQ order updated');
       }
-      
+
       // Reinitialize sortable to update both tables (after DOM updates)
       await nextTick();
       // Wait longer to ensure SortableJS has fully cleaned up and dragging is complete
@@ -2131,7 +2374,7 @@
       }, 400);
     } catch (error) {
       console.error('Error updating FAQ order:', error);
-      showToast('error', 'Failed to update FAQ order');
+      showError('Failed to update FAQ order');
       await loadFAQs();
     }
   };
@@ -2174,7 +2417,9 @@
     };
     // Calculate icon suggestion for existing category
     if (faqForm.value.category) {
-      const categoryText = faqForm.value.category.replace(/^[^\w\s]+/, '').trim();
+      const categoryText = faqForm.value.category
+        .replace(/^[^\w\s]+/, '')
+        .trim();
       categoryIconSuggestion.value = getCategoryIcon(categoryText);
     } else {
       categoryIconSuggestion.value = null;
@@ -2202,17 +2447,25 @@
 
       if (editingFAQ.value) {
         // Editing - preserve existing is_active status and display_order
-        await axios.put(`${apiConfig.baseURL}/faqs/${editingFAQ.value.id}`, faqData);
-        showToast('success', 'FAQ updated successfully');
+        await axios.put(
+          `${apiConfig.baseURL}/faqs/${editingFAQ.value.id}`,
+          faqData
+        );
+        showSuccess('FAQ updated successfully');
       } else {
         // New FAQs default to active and get the highest order + 1 for active FAQs
-        const activeFAQsMaxOrder = faqs.value.filter(f => f.is_active).length > 0
-          ? Math.max(...faqs.value.filter(f => f.is_active).map(f => f.display_order || 0))
-          : 0;
+        const activeFAQsMaxOrder =
+          faqs.value.filter((f) => f.is_active).length > 0
+            ? Math.max(
+                ...faqs.value
+                  .filter((f) => f.is_active)
+                  .map((f) => f.display_order || 0)
+              )
+            : 0;
         faqData.display_order = activeFAQsMaxOrder + 1;
         faqData.is_active = true; // New FAQs default to active
         await axios.post(`${apiConfig.baseURL}/faqs`, faqData);
-        showToast('success', 'FAQ created successfully');
+        showSuccess('FAQ created successfully');
       }
       await loadFAQs();
       await loadStats();
@@ -2229,8 +2482,7 @@
       }, 300);
     } catch (error) {
       console.error('Error saving FAQ:', error);
-      showToast(
-        'error',
+      showError(
         error.response?.data?.message || error.message || 'Failed to save FAQ'
       );
     } finally {
@@ -2254,7 +2506,7 @@
     saving.value = true;
     try {
       await axios.delete(`${apiConfig.baseURL}/faqs/${deletingFAQ.value.id}`);
-      showToast('success', 'FAQ deleted successfully');
+      showSuccess('FAQ deleted successfully');
       await loadFAQs();
       await loadStats();
       await loadCategories();
@@ -2270,8 +2522,7 @@
       }, 300);
     } catch (error) {
       console.error('Error deleting FAQ:', error);
-      showToast(
-        'error',
+      showError(
         error.response?.data?.message || error.message || 'Failed to delete FAQ'
       );
     } finally {

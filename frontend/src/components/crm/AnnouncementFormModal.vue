@@ -283,7 +283,7 @@
                   class="relative group"
                 >
                   <img
-                    :src="image"
+                    :src="resolveMediaUrl(image)"
                     :alt="`Preview ${index + 1}`"
                     class="w-full h-24 object-cover rounded-lg border border-gray-200"
                     @error="handleImageError"
@@ -516,7 +516,6 @@
                       formData.is_active ? 'text-green-600' : 'text-gray-500'
                     "
                   >
-      
                   </span>
                 </div>
                 <input
@@ -697,7 +696,7 @@
                   class="rounded-lg overflow-hidden"
                 >
                   <img
-                    :src="imageList.find((img) => img) || ''"
+                    :src="resolveMediaUrl(imageList.find((img) => img) || '')"
                     :alt="formData.title || 'Preview'"
                     class="w-full h-auto rounded-lg"
                     style="max-height: none; object-fit: contain"
@@ -722,7 +721,7 @@
                           (img) => img
                         )"
                         :key="imgIndex"
-                        :src="image"
+                        :src="resolveMediaUrl(image)"
                         :alt="`${formData.title || 'Preview'} ${imgIndex + 1}`"
                         v-show="previewImageIndex === imgIndex"
                         class="w-full h-auto rounded-lg"
@@ -798,7 +797,7 @@
                     ></iframe>
                     <video
                       v-else-if="formData.video_url"
-                      :src="formData.video_url"
+                      :src="resolveMediaUrl(formData.video_url)"
                       controls
                       class="absolute top-0 left-0 w-full h-full rounded-lg object-cover"
                     >
@@ -918,7 +917,7 @@
                 v-if="
                   !formData.title &&
                   !formData.description &&
-                  !formData.image_url &&
+                  imageList.filter((img) => img).length === 0 &&
                   !formData.video_url
                 "
                 class="text-center py-8 text-gray-400 text-sm"
@@ -970,7 +969,7 @@
     Eye,
     EyeOff,
   } from 'lucide-vue-next';
-  import { apiConfig } from '../../config/api.js';
+  import { apiConfig, formatImageUrl } from '../../config/api.js';
   import Editor from '@tinymce/tinymce-vue';
   const TinyMCEEditor = Editor;
   import tinymce from 'tinymce/tinymce';
@@ -1037,6 +1036,54 @@
     promo_position: 'below',
     content_order: ['description', 'images', 'video'],
   });
+
+  const getApiBaseUrl = () => {
+    const apiUrl = apiConfig.baseURL || import.meta.env.VITE_API_URL || '';
+    return apiUrl ? apiUrl.replace(/\/$/, '') : '';
+  };
+
+  const resolveMediaUrl = (url) => {
+    if (!url) return '';
+    if (/^https?:\/\//i.test(url)) {
+      return url;
+    }
+    const normalized = url.startsWith('/') ? url : `/${url}`;
+    if (
+      normalized.startsWith('/uploads/') ||
+      normalized.startsWith('/utility-receipts/')
+    ) {
+      return formatImageUrl(normalized);
+    }
+    const base = getApiBaseUrl().replace(/\/api$/, '');
+    return base ? `${base}/${normalized.replace(/^\/+/, '')}` : normalized;
+  };
+
+  watch(
+    () => ({ ...formData.value }),
+    (newForm) => {
+      console.log('[AnnouncementFormModal] formData changed', {
+        title: newForm.title,
+        descriptionLength: newForm.description?.length || 0,
+        hasVideo: !!newForm.video_url,
+        imageDisplayType: newForm.image_display_type,
+        contentOrder: newForm.content_order,
+      });
+      console.log('[AnnouncementFormModal] resolved first image preview', {
+        raw: imageList.value[0],
+        resolved: resolveMediaUrl(imageList.value[0] || ''),
+        imageList: imageList.value,
+      });
+    },
+    { deep: true }
+  );
+
+  watch(
+    imageList,
+    (newList) => {
+      console.log('[AnnouncementFormModal] imageList updated', newList);
+    },
+    { deep: true }
+  );
 
   // Computed properties for conditional field visibility
   const showDescription = computed(() => {
@@ -1340,7 +1387,7 @@
     }
 
     // Return original URL if not YouTube or Vimeo (for direct video files)
-    return url;
+    return resolveMediaUrl(url);
   };
 
   const formatPreviewDate = (dateString) => {

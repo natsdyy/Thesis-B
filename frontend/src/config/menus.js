@@ -277,9 +277,9 @@ export const menuItems = [
   {
     name: 'FAQ Management',
     icon: BookOpen,
-    route: '/admin/faq-manager',
-    department: 'Administration',
-    superAdminOnly: true,
+    route: '/crm/faqs',
+    department: 'CRM',
+    managerOnly: true,
   },
 ];
 

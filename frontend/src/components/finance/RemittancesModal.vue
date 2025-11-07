@@ -6,6 +6,22 @@
   import { formatPhilippineTime } from '../../utils/timezoneUtils.js';
   import { useCustomToast } from '../../composables/useCustomToast.js';
   import { sanitizeHtml } from '../../utils/sanitizeHtml.js';
+  import RemittedSalesViewModal from './RemittedSalesViewModal.vue';
+  import Editor from '@tinymce/tinymce-vue';
+  import tinymce from 'tinymce/tinymce';
+  import 'tinymce/tinymce';
+  import 'tinymce/icons/default';
+  import 'tinymce/themes/silver';
+  import 'tinymce/models/dom/model';
+  import 'tinymce/plugins/link';
+  import 'tinymce/plugins/lists';
+  import 'tinymce/plugins/image';
+  import 'tinymce/skins/ui/oxide/skin.min.css';
+
+  // Set TinyMCE GPL license
+  try {
+    tinymce?.EditorManager?.overrideDefaults?.({ license_key: 'gpl' });
+  } catch (_) {}
 
   const props = defineProps({ show: { type: Boolean, default: false } });
   const emit = defineEmits(['close', 'updated']);
@@ -31,6 +47,15 @@
   const selectedRemittance = ref(null);
   const previewImageUrl = ref(null);
   const showImagePreview = ref(false);
+
+  // Remit Order Details Modal state
+  const showRemitOrderDetails = ref(false);
+  const selectedRemittanceForView = ref(null);
+
+  // Reject Modal with TinyMCE
+  const showRejectModal = ref(false);
+  const rejectNotes = ref('');
+  const targetRejectId = ref(null);
 
   // Helper function to format dates using timezone utilities
   const formatDate = (dateString) => {
@@ -89,11 +114,11 @@
     }
   };
 
-  const reject = async (id) => {
+  const reject = async (id, notes) => {
     try {
       submitting.value = true;
       submittingId.value = id;
-      await posStore.rejectRemittance(id, { notes: null });
+      await posStore.rejectRemittance(id, { notes: notes || null });
       await fetchRemittances();
       emit('updated');
       showToast('Remittance rejected successfully', 'success');
@@ -109,14 +134,48 @@
   const confirmProceed = async () => {
     if (!targetId.value) return;
     try {
-      if (confirmAction.value === 'approve') {
-        await approve(targetId.value);
-      } else {
-        await reject(targetId.value);
-      }
+      await approve(targetId.value);
     } finally {
       closeConfirm();
     }
+  };
+
+  // Open Reject Modal with TinyMCE
+  const openRejectModal = (id) => {
+    targetRejectId.value = id;
+    rejectNotes.value = '';
+    showRejectModal.value = true;
+    const dlg = document.getElementById('reject_remittance_modal');
+    if (dlg?.showModal) dlg.showModal();
+  };
+
+  const closeRejectModal = () => {
+    showRejectModal.value = false;
+    targetRejectId.value = null;
+    rejectNotes.value = '';
+    const dlg = document.getElementById('reject_remittance_modal');
+    if (dlg?.close) dlg.close();
+  };
+
+  const confirmReject = async () => {
+    if (!targetRejectId.value) return;
+    try {
+      await reject(targetRejectId.value, rejectNotes.value);
+      closeRejectModal();
+    } catch (e) {
+      console.error('Reject error:', e);
+    }
+  };
+
+  // Open Remit Order Details Modal
+  const openRemitOrderDetails = (remittance) => {
+    selectedRemittanceForView.value = remittance;
+    showRemitOrderDetails.value = true;
+  };
+
+  const closeRemitOrderDetails = () => {
+    showRemitOrderDetails.value = false;
+    selectedRemittanceForView.value = null;
   };
 
   const totalPages = computed(() =>
@@ -381,6 +440,16 @@
                       />
                     </button>
                     <button
+                      class="text-primaryColor btn btn-xs bg-info/0 rounded-full border-none hover:bg-info/10"
+                      @click="openRemitOrderDetails(r)"
+                      title="View Remitted Sales"
+                    >
+                      <font-awesome-icon
+                        icon="fa-solid fa-receipt"
+                        class="!w-3 !h-3"
+                      />
+                    </button>
+                    <button
                       class="text-primaryColor btn btn-xs bg-success/0 rounded-full border-none hover:bg-success/10"
                       @click="openConfirm('approve', r.id)"
                       :disabled="r.status !== 'pending' || submitting"
@@ -388,6 +457,17 @@
                     >
                       <font-awesome-icon
                         icon="fa-solid fa-check"
+                        class="!w-3 !h-3"
+                      />
+                    </button>
+                    <button
+                      class="text-primaryColor btn btn-xs bg-error/0 rounded-full border-none hover:bg-error/10"
+                      @click="openRejectModal(r.id)"
+                      :disabled="r.status !== 'pending' || submitting"
+                      title="Reject"
+                    >
+                      <font-awesome-icon
+                        icon="fa-solid fa-times"
                         class="!w-3 !h-3"
                       />
                     </button>
@@ -431,14 +511,12 @@
     <form method="dialog" class="modal-backdrop"><button>close</button></form>
   </dialog>
 
-  <!-- Confirm Approve/Reject Modal -->
+  <!-- Confirm Approval Modal -->
   <dialog id="finance_remittances_confirm_modal" class="modal">
     <div class="modal-box">
-      <h3 class="font-bold text-lg">
-        Confirm {{ confirmAction === 'approve' ? 'Approval' : 'Rejection' }}
-      </h3>
+      <h3 class="font-bold text-lg">Confirm Approval</h3>
       <p class="py-2 text-sm text-gray-600">
-        Are you sure you want to {{ confirmAction }} this remittance?
+        Are you sure you want to approve this remittance?
       </p>
       <div class="modal-action">
         <button
@@ -463,6 +541,61 @@
     </div>
     <form method="dialog" class="modal-backdrop">
       <button @click="closeConfirm">close</button>
+    </form>
+  </dialog>
+
+  <!-- Reject Remittance Modal with TinyMCE -->
+  <dialog id="reject_remittance_modal" class="modal">
+    <div class="modal-box max-w-3xl">
+      <h3 class="font-bold text-lg text-error mb-4">Reject Remittance</h3>
+      <p class="text-sm text-gray-600 mb-4">
+        Please provide a reason for rejecting this remittance:
+      </p>
+
+      <div class="form-control">
+        <label class="label">
+          <span class="label-text font-semibold">Rejection Notes</span>
+        </label>
+        <Editor
+          v-model="rejectNotes"
+          :init="{
+            height: 300,
+            menubar: false,
+            plugins: 'link lists image',
+            toolbar: 'undo redo | bold italic | bullist numlist | link image',
+            content_style:
+              'body { font-family:Helvetica,Arial,sans-serif; font-size:14px }',
+            branding: false,
+            skin: false,
+            content_css: false,
+            license_key: 'gpl',
+          }"
+        />
+      </div>
+
+      <div class="modal-action">
+        <button
+          class="btn btn-sm font-thin"
+          @click="closeRejectModal"
+          :disabled="submitting"
+        >
+          Cancel
+        </button>
+        <button
+          class="btn bg-error text-white hover:bg-error/80 btn-sm font-thin"
+          @click="confirmReject"
+          :disabled="submitting"
+        >
+          <span
+            v-if="submitting"
+            class="loading loading-spinner loading-xs mr-2"
+          />
+          Reject Remittance
+        </button>
+      </div>
+    </div>
+    <form method="dialog" class="modal-backdrop">
+      <button @click="closeRejectModal">close</button>
     </form>
   </dialog>
 
@@ -588,6 +721,13 @@
       <button @click="closeImagePreview">close</button>
     </form>
   </dialog>
+
+  <!-- Remitted Sales View Modal -->
+  <RemittedSalesViewModal
+    :show="showRemitOrderDetails"
+    :remittance="selectedRemittanceForView"
+    @close="closeRemitOrderDetails"
+  />
 </template>
 
 <style scoped>
@@ -614,5 +754,20 @@
   .proof-content :deep(ol) {
     margin: 8px 0;
     padding-left: 20px;
+  }
+</style>
+
+<style>
+  /* Raise TinyMCE dialogs above DaisyUI modal */
+  .tox,
+  .tox-tinymce-aux,
+  .tox-silver-sink,
+  .tox-dialog-wrap,
+  .tox-dialog {
+    z-index: 99999 !important;
+  }
+  /* Avoid stacking-context issues from transform animations in DaisyUI modal */
+  #reject_remittance_modal .modal-box {
+    transform: none !important;
   }
 </style>

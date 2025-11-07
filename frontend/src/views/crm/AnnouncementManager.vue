@@ -273,6 +273,9 @@
   import AnnouncementFormModal from '../../components/crm/AnnouncementFormModal.vue';
   import AnnouncementModal from '../../components/crm/AnnouncementModal.vue';
   import { useAuthStore } from '../../stores/authStore.js';
+  import { useCustomToast } from '../../composables/useCustomToast.js';
+
+  const { showSuccess, showError } = useCustomToast();
 
   const announcements = ref([]);
   const loading = ref(false);
@@ -362,7 +365,7 @@
       currentPage.value = 1;
     } catch (error) {
       console.error('Error loading announcements:', error);
-      showToast(error.message || 'Failed to load announcements', 'error');
+      showError(error.message || 'Failed to load announcements');
     } finally {
       loading.value = false;
     }
@@ -428,17 +431,16 @@
       }
 
       const result = await response.json();
-      showToast(
+      showSuccess(
         editingAnnouncement.value
           ? 'Announcement updated successfully'
-          : 'Announcement created successfully',
-        'success'
+          : 'Announcement created successfully'
       );
       closeModal();
       await loadAnnouncements();
     } catch (error) {
       console.error('Error saving announcement:', error);
-      showToast(error.message || 'Failed to save announcement', 'error');
+      showError(error.message || 'Failed to save announcement');
     } finally {
       saving.value = false;
     }
@@ -481,12 +483,12 @@
         throw new Error(errorMessage);
       }
 
-      showToast('Announcement deleted successfully', 'success');
+      showSuccess('Announcement deleted successfully');
       closeDeleteModal();
       await loadAnnouncements();
     } catch (error) {
       console.error('Error deleting announcement:', error);
-      showToast(error.message || 'Failed to delete announcement', 'error');
+      showError(error.message || 'Failed to delete announcement');
     } finally {
       saving.value = false;
     }
@@ -542,10 +544,14 @@
   };
 
   const showToast = (message, type = 'success') => {
-    toast.value = { show: true, message, type };
-    setTimeout(() => {
-      toast.value.show = false;
-    }, 3000);
+    const normalizedType = (type || 'success').toLowerCase();
+    if (normalizedType === 'error') {
+      showError(message);
+    } else if (normalizedType === 'success') {
+      showSuccess(message);
+    } else {
+      showSuccess(message);
+    }
   };
 
   onMounted(() => {

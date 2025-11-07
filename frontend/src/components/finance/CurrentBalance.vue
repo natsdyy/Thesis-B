@@ -487,8 +487,8 @@
     class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4"
   >
     <div class="card bg-white shadow border border-black/10">
-      <div class="card-body py-4">
-        <div class="text-xs text-gray-500">Capital</div>
+      <div class="card-body p-4 flex flex-col gap-2">
+        <span class="text-xs text-gray-500 font-medium">Capital</span>
         <div class="text-lg font-semibold text-primaryColor">
           <font-awesome-icon icon="fa-solid fa-peso-sign" class="!w-4 !h-4" />
           {{
@@ -501,8 +501,8 @@
       </div>
     </div>
     <div class="card bg-white shadow border border-black/10">
-      <div class="card-body py-4">
-        <div class="text-xs text-gray-500">Profit</div>
+      <div class="card-body p-4 flex flex-col gap-2">
+        <span class="text-xs text-gray-500 font-medium">Profit</span>
         <div class="text-lg font-semibold text-primaryColor">
           <font-awesome-icon icon="fa-solid fa-peso-sign" class="!w-4 !h-4" />
           {{
@@ -515,8 +515,8 @@
       </div>
     </div>
     <div class="card bg-white shadow border border-black/10">
-      <div class="card-body py-4">
-        <div class="text-xs text-gray-500">Sales Remittances</div>
+      <div class="card-body p-4 flex flex-col gap-2">
+        <span class="text-xs text-gray-500 font-medium">Sales Remittances</span>
         <div class="text-lg font-semibold text-primaryColor">
           <font-awesome-icon icon="fa-solid fa-peso-sign" class="!w-4 !h-4" />
           {{
@@ -529,8 +529,8 @@
       </div>
     </div>
     <div class="card bg-white shadow border border-black/10">
-      <div class="card-body py-4">
-        <div class="text-xs text-gray-500">Current Balance</div>
+      <div class="card-body p-4 flex flex-col gap-2">
+        <span class="text-xs text-gray-500 font-medium">Current Balance</span>
         <div class="text-lg font-semibold text-primaryColor">
           <font-awesome-icon icon="fa-solid fa-peso-sign" class="!w-4 !h-4" />
           {{
@@ -543,8 +543,8 @@
       </div>
     </div>
     <div class="card bg-white shadow border border-black/10">
-      <div class="card-body py-4">
-        <div class="text-xs text-gray-500">Total Expenses</div>
+      <div class="card-body p-4 flex flex-col gap-2">
+        <span class="text-xs text-gray-500 font-medium">Total Expenses</span>
         <div class="text-lg font-semibold text-warning">
           <font-awesome-icon icon="fa-solid fa-peso-sign" class="!w-4 !h-4" />
           {{
@@ -557,8 +557,8 @@
       </div>
     </div>
     <div class="card bg-white shadow border border-black/10">
-      <div class="card-body py-4">
-        <div class="text-xs text-gray-500">Total Loss</div>
+      <div class="card-body p-4 flex flex-col gap-2">
+        <span class="text-xs text-gray-500 font-medium">Total Loss</span>
         <div class="text-lg font-semibold text-error">
           <font-awesome-icon icon="fa-solid fa-peso-sign" class="!w-4 !h-4" />
           {{

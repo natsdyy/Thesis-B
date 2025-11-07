@@ -423,6 +423,7 @@ function requiresManagerAccess(routePath) {
     '/crm/dashboard',
     '/crm/customers-feedback',
     '/crm/analytics',
+    '/crm/faqs',
   ];
 
   return managerOnlyRoutes.some((route) => routePath.startsWith(route));

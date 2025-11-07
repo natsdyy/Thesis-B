@@ -263,7 +263,7 @@
                 ></iframe>
                 <video
                   v-else
-                  :src="announcement.video_url"
+                  :src="resolveMediaUrl(announcement.video_url)"
                   controls
                   class="absolute top-0 left-0 w-full h-full rounded-lg sm:rounded-xl object-cover"
                 >
@@ -362,6 +362,7 @@
 
 <script setup>
   import { ref, computed, watch, onUnmounted } from 'vue';
+  import { formatImageUrl } from '../../config/api.js';
 
   const props = defineProps({
     isOpen: {
@@ -476,6 +477,14 @@
     // Reset announcement auto-advance timer
     resetAnnouncementAutoNext();
   };
+  const resolveMediaUrl = (url) => {
+    if (!url) return '';
+    if (/^https?:\/\//i.test(url)) {
+      return formatImageUrl(url);
+    }
+    const normalized = url.startsWith('/') ? url : `/${url}`;
+    return formatImageUrl(normalized);
+  };
 
   const getAnnouncementImages = () => {
     if (!announcement.value) return [];
@@ -488,7 +497,9 @@
             ? JSON.parse(announcement.value.images)
             : announcement.value.images;
         if (Array.isArray(images) && images.length > 0) {
-          return images;
+          return images
+            .filter((img) => !!img)
+            .map((img) => resolveMediaUrl(img));
         }
       } catch {
         // Invalid JSON, fall through
@@ -497,7 +508,7 @@
 
     // Fallback to image_url
     if (announcement.value.image_url) {
-      return [announcement.value.image_url];
+      return [resolveMediaUrl(announcement.value.image_url)];
     }
 
     return [];

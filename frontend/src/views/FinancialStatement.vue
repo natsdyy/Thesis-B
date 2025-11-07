@@ -998,12 +998,14 @@
       </div>
     </div>
 
-    <div class="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+    <div
+      class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4"
+    >
       <!-- Revenue Card -->
       <div class="card bg-white shadow-lg">
-        <div class="card-body">
-          <div class="text-sm text-gray-500">Revenue</div>
-          <div class="text-2xl font-bold">
+        <div class="card-body p-4 flex flex-col gap-2">
+          <span class="text-sm text-gray-500 font-medium">Revenue</span>
+          <div class="text-2xl font-bold text-gray-900">
             <PhilippinePeso class="inline w-4 h-4 text-primaryColor" />
             <template v-if="loading">
               <div
@@ -1023,9 +1025,11 @@
 
       <!-- Cost of Goods Sold Card -->
       <div class="card bg-white shadow-lg">
-        <div class="card-body">
-          <div class="text-sm text-gray-500">Cost of Goods Sold</div>
-          <div class="text-2xl font-bold">
+        <div class="card-body p-4 flex flex-col gap-2">
+          <span class="text-sm text-gray-500 font-medium"
+            >Cost of Goods Sold</span
+          >
+          <div class="text-2xl font-bold text-gray-900">
             <PhilippinePeso class="inline w-4 h-4 text-primaryColor" />
             <template v-if="loading">
               <div
@@ -1045,9 +1049,9 @@
 
       <!-- Gross Profit Card -->
       <div class="card bg-white shadow-lg">
-        <div class="card-body">
-          <div class="text-sm text-gray-500">Gross Profit</div>
-          <div class="text-2xl font-bold">
+        <div class="card-body p-4 flex flex-col gap-2">
+          <span class="text-sm text-gray-500 font-medium">Gross Profit</span>
+          <div class="text-2xl font-bold text-gray-900">
             <PhilippinePeso class="inline w-4 h-4 text-primaryColor" />
             <template v-if="loading">
               <div
@@ -1067,9 +1071,11 @@
 
       <!-- Operating Expenses Card -->
       <div class="card bg-white shadow-lg">
-        <div class="card-body">
-          <div class="text-sm text-gray-500">Operating Expenses</div>
-          <div class="text-2xl font-bold">
+        <div class="card-body p-4 flex flex-col gap-2">
+          <span class="text-sm text-gray-500 font-medium"
+            >Operating Expenses</span
+          >
+          <div class="text-2xl font-bold text-gray-900">
             <PhilippinePeso class="inline w-4 h-4 text-primaryColor" />
             <template v-if="loading">
               <div
@@ -1090,9 +1096,9 @@
 
       <!-- Net Income Card -->
       <div class="card bg-white shadow-lg">
-        <div class="card-body">
-          <div class="text-sm text-gray-500">Net Income</div>
-          <div class="text-2xl font-bold">
+        <div class="card-body p-4 flex flex-col gap-2">
+          <span class="text-sm text-gray-500 font-medium">Net Income</span>
+          <div class="text-2xl font-bold text-gray-900">
             <PhilippinePeso class="inline w-4 h-4 text-primaryColor" />
             <template v-if="loading">
               <div
@@ -1112,9 +1118,9 @@
 
       <!-- Cash on Hand Card -->
       <div class="card bg-white shadow-lg">
-        <div class="card-body">
-          <div class="text-sm text-gray-500">Cash on Hand</div>
-          <div class="text-2xl font-bold">
+        <div class="card-body p-4 flex flex-col gap-2">
+          <span class="text-sm text-gray-500 font-medium">Cash on Hand</span>
+          <div class="text-2xl font-bold text-gray-900">
             <PhilippinePeso class="inline w-4 h-4 text-primaryColor" />
             <template v-if="loading">
               <div

@@ -34,7 +34,7 @@
   const searchQuery = ref('');
   const statusFilter = ref('');
   const resultFilter = ref('');
-  const dateFilter = ref('');
+  const dateFilter = ref('today'); // 'today', 'this_week', 'this_month', or ''
   const showCreateModal = ref(false);
   const showDetailsModal = ref(false);
   const selectedInspection = ref(null);
@@ -111,6 +111,50 @@
     }
   });
 
+  // Helper function to get date range based on filter
+  const getDateRange = (filter) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    switch (filter) {
+      case 'today': {
+        return {
+          start: new Date(today),
+          end: new Date(today),
+        };
+      }
+      case 'this_week': {
+        const startOfWeek = new Date(today);
+        const day = startOfWeek.getDay();
+        const diff = startOfWeek.getDate() - day;
+        startOfWeek.setDate(diff);
+
+        const endOfWeek = new Date(startOfWeek);
+        endOfWeek.setDate(startOfWeek.getDate() + 6);
+
+        return {
+          start: startOfWeek,
+          end: endOfWeek,
+        };
+      }
+      case 'this_month': {
+        const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+        const endOfMonth = new Date(
+          today.getFullYear(),
+          today.getMonth() + 1,
+          0
+        );
+
+        return {
+          start: startOfMonth,
+          end: endOfMonth,
+        };
+      }
+      default:
+        return null;
+    }
+  };
+
   // Computed properties
   const filteredInspections = computed(() => {
     let filtered = qualityInspections.value;
@@ -138,9 +182,16 @@
     }
 
     if (dateFilter.value) {
-      filtered = filtered.filter(
-        (inspection) => inspection.inspection_date === dateFilter.value
-      );
+      const dateRange = getDateRange(dateFilter.value);
+      if (dateRange) {
+        filtered = filtered.filter((inspection) => {
+          const inspectionDate = new Date(inspection.inspection_date);
+          inspectionDate.setHours(0, 0, 0, 0);
+          return (
+            inspectionDate >= dateRange.start && inspectionDate <= dateRange.end
+          );
+        });
+      }
     }
 
     return filtered.sort((a, b) => {
@@ -745,7 +796,7 @@
 </script>
 
 <template>
-  <div class=" mx-auto p-2 sm:p-4 lg:p-6">
+  <div class="mx-auto p-2 sm:p-4 lg:p-6">
     <!-- Header -->
     <div class="text-center mb-4 sm:mb-6 lg:mb-8">
       <h1
@@ -937,12 +988,12 @@
                 <option value="Pending">Pending</option>
                 <option value="Retest Required">Retest Required</option>
               </select>
-              <input
-                v-model="dateFilter"
-                type="date"
-                class="input input-bordered"
-                placeholder="Filter by date"
-              />
+              <select v-model="dateFilter" class="select select-bordered">
+                <option value="">All Time</option>
+                <option value="today">Today</option>
+                <option value="this_week">This Week</option>
+                <option value="this_month">This Month</option>
+              </select>
             </div>
           </div>
 

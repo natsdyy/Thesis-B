@@ -34,12 +34,135 @@
   import { useUserStore } from '../../stores/userStore.js';
   import { useRouter, useRoute } from 'vue-router';
   import ProductionTransactionModal from '../../components/production/ProductionTransactionModal.vue';
+  // TinyMCE (self-hosted) for completion notes with proof capture
+  import Editor from '@tinymce/tinymce-vue';
+  const TinyMCEEditor = Editor;
+  import { sanitizeHtml } from '../../utils/sanitizeHtml.js';
+  import { formatImageUrl, getApiUrl } from '../../config/api.js';
+  import tinymce from 'tinymce/tinymce';
+  import 'tinymce/tinymce';
+  import 'tinymce/icons/default';
+  import 'tinymce/themes/silver';
+  import 'tinymce/models/dom/model';
+  import 'tinymce/plugins/link';
+  import 'tinymce/plugins/lists';
+  import 'tinymce/plugins/image';
+  import 'tinymce/skins/ui/oxide/skin.min.css';
+  try {
+    tinymce?.EditorManager?.overrideDefaults?.({ license_key: 'gpl' });
+  } catch (_) {}
 
   const productionStore = useProductionStore();
   const authStore = useAuthStore();
   const userStore = useUserStore();
   const router = useRouter();
   const route = useRoute();
+
+  // TinyMCE configuration for batch completion notes
+  const tinyMCEConfig = computed(() => ({
+    menubar: false,
+    height: 220,
+    plugins: 'link lists',
+    toolbar: 'uploadimage | bold italic underline | bullist numlist | link',
+    toolbar_mode: 'wrap',
+    automatic_uploads: false,
+    images_upload_handler: async (blobInfo, progress) => {
+      return new Promise((resolve, reject) => {
+        const token = localStorage.getItem('token');
+        const formData = new FormData();
+        formData.append('file', blobInfo.blob(), blobInfo.filename());
+
+        fetch(getApiUrl('/uploads/proofs'), {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+          body: formData,
+        })
+          .then((response) => response.json())
+          .then((data) => {
+            if (data.location) {
+              resolve(formatImageUrl(data.location));
+            } else {
+              reject(data.message || 'Upload failed');
+            }
+          })
+          .catch((error) => {
+            reject(error.message || 'Upload failed');
+          });
+      });
+    },
+    file_picker_types: 'image',
+    content_style:
+      'html,body{max-width:100%;} img{max-width:100%;height:auto;display:block;margin:6px 0;}',
+    valid_elements:
+      'p,b,i,u,strong,em,ul,ol,li,br,a[href|target|rel],img[src|alt|title|class|style],span[class|style],div[class|style]',
+    setup: (ed) => {
+      ed.ui.registry.addButton('uploadimage', {
+        text: 'Upload Image',
+        tooltip: 'Upload image proof',
+        onAction: () => {
+          pickAndUploadImage(
+            (url) => ed.insertContent(`<img src="${formatImageUrl(url)}" />`),
+            'batch_modal'
+          );
+        },
+      });
+    },
+    branding: false,
+    skin: false,
+    content_css: false,
+    license_key: 'gpl',
+    ui_container: 'body',
+  }));
+
+  // Image upload handler for TinyMCE
+  const pickAndUploadImage = (callback, modalId = 'batch_modal') => {
+    try {
+      const modal = document.getElementById(modalId);
+      const wasOpen = !!modal?.open;
+      // Close modal to avoid z-index issues with native pickers
+      if (wasOpen)
+        try {
+          modal.close();
+        } catch (_) {}
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/png,image/jpeg';
+      input.onchange = async () => {
+        const file = input.files && input.files[0];
+        if (!file) return;
+        const fd = new FormData();
+        fd.append('file', file);
+        try {
+          const token = localStorage.getItem('token');
+          const res = await fetch(getApiUrl('/uploads/proofs'), {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+            body: fd,
+          });
+          const json = await res.json();
+          if (res.ok && json.location) {
+            callback(json.location);
+          } else {
+            alert(json.message || 'Upload failed');
+          }
+        } catch (e) {
+          alert('Upload failed: ' + e.message);
+        }
+        // Reopen modal after upload attempt
+        if (wasOpen)
+          try {
+            modal.showModal();
+          } catch (_) {}
+      };
+      input.click();
+    } catch (err) {
+      console.error('Image picker error:', err);
+    }
+  };
 
   // Reactive state
   const activeTab = ref('ready');
@@ -63,6 +186,10 @@
   const productionStaff = ref([]);
   const loading = ref(false);
   const error = ref(null);
+
+  // Pagination for production history
+  const historyCurrentPage = ref(1);
+  const historyItemsPerPage = ref(10);
 
   // Production execution form
   const executionForm = ref({
@@ -146,6 +273,21 @@
     return selectedItem.value.batch_size || 10;
   });
 
+  // Pagination computed properties for production history
+  const paginatedProductionHistory = computed(() => {
+    const start = (historyCurrentPage.value - 1) * historyItemsPerPage.value;
+    return productionHistory.value.slice(
+      start,
+      start + historyItemsPerPage.value
+    );
+  });
+
+  const historyTotalPages = computed(() => {
+    return Math.ceil(
+      productionHistory.value.length / historyItemsPerPage.value
+    );
+  });
+
   const canExecuteProduction = computed(() => {
     return (
       executionForm.value.batch_size > 0 &&
@@ -166,6 +308,25 @@
       if (item.category) categories.add(item.category);
     });
     return Array.from(categories).sort();
+  });
+
+  // Filter production staff to show only department managers
+  const productionManagers = computed(() => {
+    return productionStaff.value.filter((staff) => {
+      // Check if the staff member is a manager based on their role
+      const role = staff.role?.toLowerCase() || '';
+      const roleName = staff.role_name?.toLowerCase() || '';
+      const position = staff.position?.toLowerCase() || '';
+
+      return (
+        role === 'manager' ||
+        role.includes('supervisor') ||
+        roleName === 'manager' ||
+        roleName.includes('supervisor') ||
+        position.includes('manager') ||
+        position.includes('supervisor')
+      );
+    });
   });
 
   // Check if an item is already in production
@@ -517,7 +678,7 @@
   const loadProductionHistory = async () => {
     try {
       const response = await productionStore.getProductionHistory();
-      productionHistory.value = response.slice(0, 10); // Latest 10 records
+      productionHistory.value = response; // Load all records, pagination handled in computed
     } catch (err) {
       console.error('Error loading production history:', err);
       showToast('error', 'Failed to load production history');
@@ -704,19 +865,6 @@
           Active production batches
         </div>
       </div>
-    </div>
-
-    <!-- Action Buttons -->
-    <div class="flex flex-col sm:flex-row gap-2 sm:gap-3 mb-4 sm:mb-6 w-full">
-      <button
-        @click="refreshData"
-        class="btn btn-sm sm:btn-md bg-primaryColor text-white font-thin hover:bg-primaryColor/80 hover:border-none hover:shadow-none w-full sm:w-auto"
-        :disabled="loading"
-      >
-        <RefreshCcw class="w-4 h-4 mr-1 sm:mr-2" />
-        <span class="hidden sm:inline">Refresh</span>
-        <span class="sm:hidden">Refresh Data</span>
-      </button>
     </div>
 
     <!-- Tab Navigation -->
@@ -1188,7 +1336,7 @@
             <!-- Mobile Card Layout -->
             <div class="block sm:hidden space-y-4">
               <div
-                v-for="history in productionHistory"
+                v-for="history in paginatedProductionHistory"
                 :key="history.id"
                 class="card bg-white border border-gray-200 p-4"
               >
@@ -1249,7 +1397,10 @@
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="history in productionHistory" :key="history.id">
+                <tr
+                  v-for="history in paginatedProductionHistory"
+                  :key="history.id"
+                >
                   <td>
                     <div>
                       <div class="font-medium">
@@ -1279,6 +1430,32 @@
                 </tr>
               </tbody>
             </table>
+          </div>
+
+          <!-- Pagination -->
+          <div
+            v-if="historyTotalPages > 1"
+            class="flex justify-center mt-6 sm:mt-8"
+          >
+            <div class="btn-group">
+              <button
+                @click="historyCurrentPage--"
+                :disabled="historyCurrentPage === 1"
+                class="btn btn-sm"
+              >
+                Previous
+              </button>
+              <button class="btn btn-sm">
+                Page {{ historyCurrentPage }} of {{ historyTotalPages }}
+              </button>
+              <button
+                @click="historyCurrentPage++"
+                :disabled="historyCurrentPage === historyTotalPages"
+                class="btn btn-sm"
+              >
+                Next
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -1350,13 +1527,18 @@
                   v-model="executionForm.assigned_to"
                   class="select select-sm sm:select-md select-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
                 >
-                  <option value="">Select Staff</option>
+                  <option value="">Select Manager</option>
                   <option
-                    v-for="staff in productionStaff"
-                    :key="staff.id"
-                    :value="staff.id"
+                    v-for="manager in productionManagers"
+                    :key="manager.id"
+                    :value="manager.id"
                   >
-                    {{ staff.first_name }} {{ staff.last_name }}
+                    {{ manager.first_name }} {{ manager.last_name }}
+                    {{
+                      manager.role || manager.position || manager.role_name
+                        ? `(${manager.department || ''} ${manager.role || manager.position || manager.role_name})`
+                        : ''
+                    }}
                   </option>
                 </select>
               </div>
@@ -1535,10 +1717,23 @@
                 <label class="label mb-1">
                   <span
                     class="label-text text-black/70 font-medium text-sm sm:text-base"
-                    >Notes (Optional)</span
                   >
+                    {{
+                      batchStatusForm.status === 'Completed'
+                        ? 'Completion Notes & Proof'
+                        : 'Notes (Optional)'
+                    }}
+                  </span>
                 </label>
+                <!-- Use TinyMCE editor for Completed status to allow proof uploads -->
+                <TinyMCEEditor
+                  v-if="batchStatusForm.status === 'Completed'"
+                  v-model="batchStatusForm.notes"
+                  :init="tinyMCEConfig"
+                />
+                <!-- Use simple textarea for other statuses -->
                 <textarea
+                  v-else
                   v-model="batchStatusForm.notes"
                   class="textarea textarea-sm sm:textarea-md textarea-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
                   placeholder="Status update notes..."
@@ -1704,8 +1899,26 @@
               v-if="selectedBatchForDetails.notes"
               class="bg-white border border-black/10 p-4 rounded-xl"
             >
-              <h4 class="font-semibold text-lg text-black/80 mb-3">Notes</h4>
-              <p class="text-black/70">{{ selectedBatchForDetails.notes }}</p>
+              <h4 class="font-semibold text-lg text-black/80 mb-3">
+                {{
+                  selectedBatchForDetails.status === 'Completed'
+                    ? 'Completion Notes & Proof'
+                    : 'Notes'
+                }}
+              </h4>
+              <!-- Render HTML content for completed batches (may contain images/proofs) -->
+              <div
+                v-if="
+                  selectedBatchForDetails.status === 'Completed' &&
+                  selectedBatchForDetails.notes.includes('<')
+                "
+                class="text-black/70 prose prose-sm max-w-none"
+                v-html="sanitizeHtml(selectedBatchForDetails.notes)"
+              ></div>
+              <!-- Plain text for other statuses -->
+              <p v-else class="text-black/70">
+                {{ selectedBatchForDetails.notes }}
+              </p>
             </div>
           </div>
 
@@ -1774,5 +1987,16 @@
 <style scoped>
   .text-shadow-xs {
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  }
+</style>
+
+<style>
+  /* Ensure TinyMCE dialogs (image dialog, link dialog, etc.) appear above DaisyUI modals */
+  .tox,
+  .tox-tinymce-aux,
+  .tox-silver-sink,
+  .tox-dialog-wrap,
+  .tox-dialog {
+    z-index: 99999 !important;
   }
 </style>

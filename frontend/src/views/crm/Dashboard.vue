@@ -153,11 +153,14 @@
       >
         No ratings found
       </div>
-      <div v-else class="divide-y divide-gray-200">
+      <div
+        v-else
+        class="max-h-[600px] overflow-y-auto divide-y divide-gray-200"
+      >
         <div
           v-for="rating in recentRatings"
           :key="rating.id"
-          class="px-6 py-4 flex items-center justify-between hover:bg-gray-50"
+          class="px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
         >
           <div class="flex items-center">
             <div class="flex-shrink-0">

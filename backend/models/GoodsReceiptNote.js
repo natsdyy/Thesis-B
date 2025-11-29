@@ -143,6 +143,12 @@ class GoodsReceiptNote {
           "gi.purchase_order_item_id",
           "poi.id"
         )
+        .leftJoin(
+          "supply_request_items as sri",
+          "poi.supply_request_item_id",
+          "sri.id"
+        )
+        .leftJoin("supplier_products as sp", "poi.supplier_product_id", "sp.id")
         .leftJoin("inventory_item_types as it", "gi.item_type_id", "it.id")
         .leftJoin("inventory_categories as ic", "it.category_id", "ic.id")
         .leftJoin("employees as u", "gi.inspected_by", "u.id")
@@ -151,6 +157,12 @@ class GoodsReceiptNote {
           "poi.item_name as po_item_name",
           "poi.quantity as po_quantity",
           "poi.unit as po_unit",
+          "poi.supplier_product_id as supplier_product_id",
+          "poi.item_sku as supplier_item_sku",
+          "sri.item_number as original_item_number",
+          "sp.product_name as supplier_product_name",
+          "sp.sku as supplier_sku",
+          "sp.item_type_id as supplier_item_type_id",
           "it.name as item_type_name",
           "it.unit_of_measure as item_unit_of_measure",
           "ic.name as category_name",
@@ -196,7 +208,7 @@ class GoodsReceiptNote {
         .insert({
           grn_number: grnNumber,
           purchase_order_id: purchaseOrderId,
-          supplier_id: po.supplier_id,
+          supplier_id: po.supplier_id || null,
           received_by: grnData.received_by,
           received_date: grnData.received_date || new Date(),
           status: "pending_inspection",
@@ -262,10 +274,31 @@ class GoodsReceiptNote {
           .whereNull("poi.deleted_at");
       }
 
+      // Calculate completed returns per PO item to adjust GRN received quantities
+      const returnRows = await trx("item_returns")
+        .where("purchase_order_id", purchaseOrderId)
+        .where("status", "Completed")
+        .whereNull("deleted_at")
+        .groupBy("purchase_order_item_id")
+        .select("purchase_order_item_id")
+        .sum({ total_returned: "return_quantity" });
+      const returnedByItemId = new Map(
+        returnRows.map((r) => [
+          r.purchase_order_item_id,
+          Number(r.total_returned) || 0,
+        ])
+      );
+
       const grnItems = poItemsWithInventoryData.map((item) => {
         // Use actual received quantity if available, otherwise fall back to ordered quantity
-        const actualReceivedQuantity = item.received_quantity || item.quantity;
-        const receivedQty = grnData.is_partial ? 0 : actualReceivedQuantity;
+        const baseReceivedQuantity = item.received_quantity || item.quantity;
+        // Subtract completed returns for this PO item (cannot go below zero)
+        const returnedQty = returnedByItemId.get(item.id) || 0;
+        const adjustedReceivedQuantity = Math.max(
+          (Number(baseReceivedQuantity) || 0) - (Number(returnedQty) || 0),
+          0
+        );
+        const receivedQty = grnData.is_partial ? 0 : adjustedReceivedQuantity;
 
         return {
           grn_id: grn.id,
@@ -281,6 +314,19 @@ class GoodsReceiptNote {
           quality_status: "pending",
         };
       });
+
+      // Prevent creating GRN with zero receivable quantities (non-partial)
+      if (!grnData.is_partial) {
+        const totalAdjustedReceived = grnItems.reduce(
+          (sum, gi) => sum + Number(gi.received_quantity || 0),
+          0
+        );
+        if (totalAdjustedReceived <= 0) {
+          throw new Error(
+            "Cannot create GRN: all items have zero receivable quantity after returns."
+          );
+        }
+      }
 
       await trx("grn_items").insert(grnItems);
 
@@ -396,16 +442,67 @@ class GoodsReceiptNote {
 
       for (const item of grnItems) {
         if (item.received_quantity > 0 && item.item_type_id) {
-          // Use only the PO item name without the unit
-          const itemName = item.po_item_name;
+          const itemName = item.po_item_name; // PO item name only
 
+          // Check if item type requires batching
+          const itemType = await trx("inventory_item_types")
+            .where("id", item.item_type_id)
+            .first();
+
+          const requiresBatch = !!itemType?.requires_batch;
+
+          if (!requiresBatch) {
+            // Merge into existing available row for this item_type AND item_name
+            const existing = await trx("inventory_items")
+              .where({
+                item_type_id: item.item_type_id,
+                item_name: itemName,
+              })
+              .whereNull("deleted_at")
+              .where("status", "available")
+              .first();
+
+            if (existing) {
+              const incomingQty = parseFloat(item.received_quantity || 0);
+              const incomingValue =
+                parseFloat(item.unit_cost || 0) * incomingQty;
+              const newQty = parseFloat(existing.quantity || 0) + incomingQty;
+              const newTotalValue =
+                parseFloat(existing.total_value || 0) + incomingValue;
+              const newUnitCost =
+                newQty > 0 ? newTotalValue / newQty : existing.unit_cost;
+
+              await trx("inventory_items").where({ id: existing.id }).update({
+                quantity: newQty,
+                total_value: newTotalValue,
+                unit_cost: newUnitCost,
+                updated_at: new Date(),
+              });
+
+              await trx("inventory_transactions").insert({
+                inventory_item_id: existing.id,
+                transaction_type: "receipt",
+                quantity: incomingQty,
+                unit_cost: item.unit_cost,
+                total_value: incomingValue,
+                reference_number: `GRN-${grnId}`,
+                reason: "GRN completion",
+                performed_by: addedBy,
+                transaction_date: new Date(),
+                created_at: new Date(),
+                updated_at: new Date(),
+              });
+              continue; // proceed to next item
+            }
+          }
+
+          // Create a new batch when batching is required or no existing row
           const [inventoryItem] = await trx("inventory_items")
             .insert({
               item_type_id: item.item_type_id,
-              item_name: itemName, // Use only the item name from PO
+              item_name: itemName,
               supplier_id: item.supplier_id,
               purchase_order_id: item.purchase_order_id,
-              // Prefer the PO unit; fallback to item type default via later backfill
               unit_of_measure: item.po_unit || null,
               grn_id: grnId,
               grn_item_id: item.id,

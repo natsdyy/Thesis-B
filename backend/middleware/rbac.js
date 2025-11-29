@@ -47,8 +47,20 @@ function requirePermission(permissionName) {
         });
       }
 
-      // Always allow Super Admin
+      // Always allow Super Admin and Board Members
       if (user.role === "Super Admin" || user.role_id === 1) {
+        return next();
+      }
+
+      // Allow Board Members (Chairman of the Board, Board of Directors)
+      const isBoardMember =
+        user.user_type === "board_member" ||
+        user.board_id ||
+        user.position?.includes("Board") ||
+        user.position?.includes("Chairman") ||
+        user.position === "Chairman of the Board";
+
+      if (isBoardMember) {
         return next();
       }
 
@@ -102,8 +114,20 @@ function requireAnyPermission(permissionNames) {
         });
       }
 
-      // Always allow Super Admin
+      // Always allow Super Admin and Board Members
       if (user.role === "Super Admin" || user.role_id === 1) {
+        return next();
+      }
+
+      // Allow Board Members (Chairman of the Board, Board of Directors)
+      const isBoardMember =
+        user.user_type === "board_member" ||
+        user.board_id ||
+        user.position?.includes("Board") ||
+        user.position?.includes("Chairman") ||
+        user.position === "Chairman of the Board";
+
+      if (isBoardMember) {
         return next();
       }
 

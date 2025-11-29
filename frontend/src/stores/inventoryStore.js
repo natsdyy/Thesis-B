@@ -120,6 +120,7 @@ export const useInventoryStore = defineStore('inventory', () => {
     unit_price,
     quantity,
     branch_id,
+    mode = 'add', // 'add' to accumulate, 'set' to replace quantity
   }) => {
     if (!branch_id && !distributionCart.value.branch_id) {
       throw new Error('Branch is required');
@@ -137,7 +138,8 @@ export const useInventoryStore = defineStore('inventory', () => {
     const existing = distributionCart.value.items.find((it) => it.key === key);
     const newQuantity = Number(quantity || 0);
     const currentQuantity = existing ? Number(existing.quantity) : 0;
-    const totalQuantity = currentQuantity + newQuantity;
+    const totalQuantity =
+      mode === 'set' ? newQuantity : currentQuantity + newQuantity;
 
     // Get available stock from the item
     const availableStock =
@@ -176,7 +178,7 @@ export const useInventoryStore = defineStore('inventory', () => {
         name,
         unit,
         unit_price: Number(unit_price || 0),
-        quantity: newQuantity,
+        quantity: totalQuantity, // respects mode
       });
     }
   };
@@ -507,7 +509,7 @@ export const useInventoryStore = defineStore('inventory', () => {
 
     try {
       const response = await axios.get(
-        `${apiConfig.baseURL}/inventory/alerts/low-stock`
+        `${apiConfig.baseURL}/inventory/alerts/low-stock-batches`
       );
       if (response.data.success) {
         lowStockItems.value = response.data.data;

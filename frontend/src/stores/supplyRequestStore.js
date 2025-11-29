@@ -125,6 +125,11 @@ export const useSupplyRequestStore = defineStore('supplyRequest', () => {
     error.value = null;
 
     try {
+      // Check if requestId is valid before making the API call
+      if (!requestId || requestId === 'null' || requestId === 'undefined') {
+        throw new Error('Invalid request ID provided');
+      }
+
       const response = await axios.get(
         `${apiConfig.baseURL}/supply-requests/request/${requestId}`
       );
@@ -164,6 +169,10 @@ export const useSupplyRequestStore = defineStore('supplyRequest', () => {
           menu_item_id: item.menu_item_id || null,
           category: item.category || null,
           source: item.source || null,
+          // Supplier linkage (optional)
+          supplier_id: item.supplier_id || null,
+          supplier_product_id: item.supplier_product_id || null,
+          item_sku: item.item_sku || item.sku || null,
         })),
       };
 
@@ -210,6 +219,10 @@ export const useSupplyRequestStore = defineStore('supplyRequest', () => {
           menu_item_id: item.menu_item_id || null,
           category: item.category || null,
           source: item.source || null,
+          // Preserve supplier linkage on update
+          supplier_id: item.supplier_id || null,
+          supplier_product_id: item.supplier_product_id || null,
+          item_sku: item.item_sku || item.sku || null,
         }));
       }
 

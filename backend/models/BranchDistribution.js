@@ -28,6 +28,8 @@ class BranchDistribution {
         prepared_by: distributionData.prepared_by,
         total_amount: distributionData.total_amount,
         notes: distributionData.notes,
+        prepared_proof_html: distributionData.prepared_proof_html || null,
+        received_proof_html: distributionData.received_proof_html || null,
         status: "delivered",
       });
       // Handle different driver return shapes
@@ -571,9 +573,7 @@ class BranchDistribution {
    * @returns {Promise<Object>} Updated distribution
    */
   static async rejectDistribution(id, rejectionData) {
-    const trx = await db.transaction();
-
-    try {
+    return await db.transaction(async (trx) => {
       // Get the distribution with items
       const distribution = await trx("branch_distributions")
         .leftJoin("branches", "branch_distributions.branch_id", "branches.id")
@@ -607,7 +607,7 @@ class BranchDistribution {
             reference_number: distribution.reference,
             reason: "Branch Distribution Rejection",
             notes:
-              `Distribution rejected by branch: ${rejectionData.rejection_reason}. ${rejectionData.rejection_notes || ""}`.trim(),
+              `Distribution rejected by branch: ${rejectionData.rejection_reason || ""}. ${rejectionData.rejection_notes || ""}`.trim(),
             performed_by: rejectionData.rejected_by || "Branch Manager",
             transaction_date: db.fn.now(),
             adjustment_type: "rejection",
@@ -630,7 +630,7 @@ class BranchDistribution {
               reference_number: distribution.reference,
               reason: "Branch Distribution Rejection",
               notes:
-                `Distribution rejected by branch: ${rejectionData.rejection_reason}. ${rejectionData.rejection_notes || ""}`.trim(),
+                `Distribution rejected by branch: ${rejectionData.rejection_reason || ""}. ${rejectionData.rejection_notes || ""}`.trim(),
               performed_by: rejectionData.rejected_by || "Branch Manager",
               transaction_date: db.fn.now(),
               adjustment_type: "rejection",
@@ -667,14 +667,10 @@ class BranchDistribution {
         updated_at: db.fn.now(),
       });
 
-      await trx.commit();
-
-      // Return updated distribution
-      return await this.findByIdWithItems(id);
-    } catch (error) {
-      await trx.rollback();
-      throw error;
-    }
+      // Return updated distribution (query outside transaction to ensure fresh data)
+      const updatedDistribution = await this.findByIdWithItems(id);
+      return updatedDistribution;
+    });
   }
 
   /**
@@ -872,13 +868,17 @@ class BranchDistribution {
         }
       }
 
-      // Update distribution status to completed
-      await trx("branch_distributions").where("id", id).update({
-        status: "completed",
-        completed_by: completionData.completed_by,
-        completed_at: db.fn.now(),
-        updated_at: db.fn.now(),
-      });
+      // Update distribution status to completed and optionally save received proof
+      await trx("branch_distributions")
+        .where("id", id)
+        .update({
+          status: "completed",
+          completed_by: completionData.completed_by,
+          completed_at: db.fn.now(),
+          received_proof_html:
+            completionData.received_proof_html || db.raw("received_proof_html"),
+          updated_at: db.fn.now(),
+        });
 
       await trx.commit();
 
@@ -1162,13 +1162,25 @@ class BranchDistribution {
                 "Debug - Updating existing branch inventory item:",
                 existingItem.id
               );
+              // Update selling price for SCM beverages if not already set
+              const updateData = {
+                quantity: db.raw(`quantity + ${item.qty}`),
+                total_value: db.raw(`total_value + ${item.amount}`),
+                updated_at: db.fn.now(),
+              };
+
+              // Set selling price for SCM beverages if not already set (use unit_cost as transfer price)
+              if (
+                item.source === "scm" &&
+                item.category === "Beverages" &&
+                !existingItem.selling_price
+              ) {
+                updateData.selling_price = item.unit_price; // This is the transfer price from distribution modal
+              }
+
               await trx("branch_inventory")
                 .where("id", existingItem.id)
-                .update({
-                  quantity: db.raw(`quantity + ${item.qty}`),
-                  total_value: db.raw(`total_value + ${item.amount}`),
-                  updated_at: db.fn.now(),
-                });
+                .update(updateData);
               console.log("Debug - Branch inventory item updated successfully");
             } else {
               // Create new branch inventory item
@@ -1186,7 +1198,9 @@ class BranchDistribution {
                 selling_price:
                   item.source === "production" && item.menu_selling_price
                     ? item.menu_selling_price
-                    : null,
+                    : item.source === "scm" && item.category === "Beverages"
+                      ? item.unit_price // Use unit_cost (transfer price) as selling price for SCM beverages
+                      : null,
                 total_value: item.amount,
                 minimum_stock: Math.ceil(item.qty * 0.15),
                 expiry_date: item.expiry_date || null,

@@ -185,8 +185,13 @@
 }
 
 /* Custom CSS for your application */
-body {
+html, body {
+  height: 100%;
   margin: 0;
+  padding: 0;
+}
+
+body {
   font-family: Poppins;
   transition:
     background-color 0.3s ease,
@@ -294,9 +299,7 @@ p {
   #branch_distribution_receipt_modal *,
   /* POS receipt modal */
   #pos_receipt_modal,
-  #pos_receipt_modal * {
-    visibility: visible !important;
-  }
+  #pos_receipt_modal *,
 
   /* Force modal content to be visible during print */
   #purchase_order_receipt_modal .modal-box,
@@ -309,8 +312,8 @@ p {
   #pos_receipt_modal > div {
     visibility: visible !important;
     display: block !important;
-    width: 80mm !important; /* 58mm thermal receipt */
-    max-width: 80mm !important;
+    width: 150mm !important; /* 58mm thermal receipt */
+    max-width: 150mm !important;
     background: #ffffff !important;
     color: #000000 !important;
     box-shadow: none !important;
@@ -330,7 +333,7 @@ p {
 
   /* Page size and margins optimized for 58mm thermal receipt */
   @page {
-    size: 80mm auto;
+    size: 150mm auto;
     margin: 2mm;
   }
 
@@ -390,6 +393,7 @@ p {
     overflow: visible !important;
     display: block !important;
   }
+
   #purchase_order_receipt_modal table,
   #branch_distribution_receipt_modal table,
   #cash_request_receipt_modal table,

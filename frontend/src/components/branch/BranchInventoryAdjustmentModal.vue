@@ -79,9 +79,6 @@
       return [{ value: 'disposal', label: 'Dispose Item' }];
     }
     const base = [
-      { value: 'set_quantity', label: 'Set Exact Quantity' },
-      { value: 'add_quantity', label: 'Add Quantity' },
-      { value: 'reduce_quantity', label: 'Reduce Quantity' },
       { value: 'mark_expired', label: 'Mark as Expired' },
       { value: 'mark_damaged', label: 'Mark as Damaged' },
       { value: 'set_expiry_date', label: 'Set Expiry Date' },
@@ -105,8 +102,23 @@
     'Other',
   ];
 
+  // Map adjustment types to their relevant reasons
+  const adjustmentTypeReasons = {
+    mark_expired: ['Expiry'],
+    mark_damaged: ['Damage'],
+    set_expiry_date: ['Expiry'],
+    disposal: ['Expiry', 'Damage', 'Theft/Loss', 'Other'],
+  };
+
   const availableReasons = computed(() => {
-    return isExpiredItem.value ? ['Expiry'] : allReasons;
+    // If item is expired, only allow Expiry
+    if (isExpiredItem.value) return ['Expiry'];
+
+    // If no adjustment type selected, show all reasons
+    if (!form.value.adjustment_type) return allReasons;
+
+    // Return relevant reasons based on adjustment type
+    return adjustmentTypeReasons[form.value.adjustment_type] || allReasons;
   });
 
   // Force reason to Expiry for expired items
@@ -122,9 +134,6 @@
 
   // Auto-populate reason based on selected adjustment type
   const defaultReasonByAdjustment = {
-    set_quantity: 'Physical Count Discrepancy',
-    add_quantity: 'Received Additional Stock',
-    reduce_quantity: 'Physical Count Discrepancy',
     mark_expired: 'Expiry',
     mark_damaged: 'Damage',
     set_expiry_date: 'Expiry',
@@ -139,14 +148,23 @@
         form.value.reason = 'Expiry';
         return;
       }
-      form.value.reason = defaultReasonByAdjustment[type] || '';
+
+      // Get the default reason for this adjustment type
+      const defaultReason = defaultReasonByAdjustment[type];
+
+      // Check if the default reason is available in the filtered reasons
+      const availableReasonsForType = adjustmentTypeReasons[type] || [];
+      if (defaultReason && availableReasonsForType.includes(defaultReason)) {
+        form.value.reason = defaultReason;
+      } else {
+        // If default reason is not available, clear the selection
+        form.value.reason = '';
+      }
     }
   );
 
   const requiresQuantityInput = computed(() => {
-    return ['set_quantity', 'add_quantity', 'reduce_quantity'].includes(
-      form.value.adjustment_type
-    );
+    return false; // No quantity adjustments available
   });
 
   const requiresDateInput = computed(
@@ -172,12 +190,9 @@
     return true;
   });
 
-  const getMinQuantity = () =>
-    form.value.adjustment_type === 'set_quantity' ? 0 : 0.001;
-  const getMaxQuantity = () =>
-    form.value.adjustment_type === 'reduce_quantity' && selectedStock.value
-      ? parseFloat(selectedStock.value.quantity)
-      : 999999;
+  // Quantity validation functions no longer needed
+  // const getMinQuantity = () => 0;
+  // const getMaxQuantity = () => 999999;
 
   const resetForm = () => {
     form.value = {
@@ -199,32 +214,21 @@
     const baseQty = parseFloat(selectedStock.value?.quantity || 0);
     let finalQuantity = baseQty;
     switch (form.value.adjustment_type) {
-      case 'set_quantity':
-        finalQuantity = parseFloat(form.value.new_quantity);
-        break;
-      case 'add_quantity':
-        finalQuantity = baseQty + parseFloat(form.value.new_quantity || 0);
-        break;
-      case 'reduce_quantity':
-        finalQuantity = baseQty - parseFloat(form.value.new_quantity || 0);
-        break;
       case 'mark_expired':
       case 'mark_damaged':
       case 'disposal':
         finalQuantity = 0;
+        break;
+      case 'set_expiry_date':
+        // Keep the same quantity, just update expiry date
+        finalQuantity = baseQty;
         break;
     }
 
     emit('submit', {
       inventory_item_id: form.value.inventory_item_id,
       adjustment_type: form.value.adjustment_type,
-      new_quantity: [
-        'set_quantity',
-        'add_quantity',
-        'reduce_quantity',
-      ].includes(form.value.adjustment_type)
-        ? parseFloat(form.value.new_quantity)
-        : null,
+      new_quantity: null, // No quantity adjustments available
       new_expiry_date:
         form.value.adjustment_type === 'set_expiry_date'
           ? form.value.expiry_date
@@ -395,7 +399,11 @@
         <!-- Current Stock Info / Expired Notice -->
         <div
           v-if="selectedStock"
-          :class="isExpiredItem ? 'alert bg-error/20 text-error' : 'alert bg-success/20 text-success'"
+          :class="
+            isExpiredItem
+              ? 'alert bg-error/10 border-error'
+              : 'alert bg-success/10 border-success '
+          "
           class="mb-6 w-full"
         >
           <div class="flex items-center w-full">
@@ -420,20 +428,7 @@
                     parseFloat(selectedStock.quantity).toLocaleString()
                   }}</span>
                 </div>
-                <div class="flex justify-between text-sm overflow-x-auto">
-                  <span class="text-sm">Current Value:</span>
-                  <span
-                    >₱{{
-                      parseFloat(
-                        selectedStock.total_value || 0
-                      ).toLocaleString()
-                    }}</span
-                  >
-                </div>
-                <div class="flex justify-between text-sm overflow-x-auto">
-                  <span class="text-sm">Batch:</span>
-                  <span>{{ selectedStock.batch_number || 'N/A' }}</span>
-                </div>
+
                 <div
                   v-if="isExpiredItem"
                   class="flex justify-between text-sm overflow-x-auto"

@@ -7,29 +7,30 @@
     ></div>
 
     <!-- Modal -->
-    <div class="flex min-h-full items-center justify-center p-4">
+    <div class="flex min-h-full items-center justify-center p-2 sm:p-4">
       <div
-        class="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl transform transition-all duration-300 animate-in slide-in-from-bottom-4 fade-in-0 zoom-in-95"
+        class="relative w-full max-w-2xl bg-white rounded-xl sm:rounded-2xl shadow-2xl transform transition-all duration-300 animate-in slide-in-from-bottom-4 fade-in-0 zoom-in-95 max-h-[95vh] overflow-y-auto"
       >
         <!-- Header -->
         <div
-          class="bg-gradient-to-r from-green-600 to-green-700 text-white px-6 py-4 rounded-t-2xl shadow-lg"
+          class="bg-gradient-to-r from-green-600 to-green-700 text-white px-4 sm:px-6 py-3 sm:py-4 rounded-t-xl sm:rounded-t-2xl shadow-lg sticky top-0 z-10"
         >
           <div class="flex items-center justify-between">
-            <div class="flex items-center space-x-3">
+            <div class="flex items-center space-x-2 sm:space-x-3 flex-1 min-w-0">
               <img
                 src="/src/assets/crm/GrabFood.png"
                 alt="Grabfood Logo"
-                class="w-8 h-8 object-contain"
+                class="w-6 h-6 sm:w-8 sm:h-8 object-contain flex-shrink-0"
               />
-              <h2 class="text-2xl font-bold">Order on Grabfood</h2>
+              <h2 class="text-lg sm:text-xl lg:text-2xl font-bold truncate">Order on Grabfood</h2>
             </div>
             <button
               @click="closeModal"
-              class="text-white hover:text-gray-200 transition-colors p-2 hover:bg-white/10 rounded-full"
+              class="text-white hover:text-gray-200 transition-colors p-1.5 sm:p-2 hover:bg-white/10 rounded-full flex-shrink-0 ml-2"
+              aria-label="Close modal"
             >
               <svg
-                class="w-6 h-6"
+                class="w-5 h-5 sm:w-6 sm:h-6"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -43,27 +44,27 @@
               </svg>
             </button>
           </div>
-          <p class="text-green-100 mt-2">
+          <p class="text-green-100 mt-2 text-xs sm:text-sm">
             Choose your preferred branch to order from
           </p>
         </div>
 
         <!-- Content -->
-        <div class="p-6">
+        <div class="p-4 sm:p-6">
           <!-- Branch Selection -->
-          <div class="grid md:grid-cols-2 gap-4 mb-6">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-4 sm:mb-6">
             <!-- Burol Main Branch -->
             <div
-              class="border-2 border-gray-200 rounded-xl p-4 hover:border-green-300 hover:shadow-lg hover:-translate-y-1 transition-all duration-300 cursor-pointer bg-white"
+              class="border-2 border-gray-200 rounded-lg sm:rounded-xl p-3 sm:p-4 hover:border-green-300 hover:shadow-lg hover:-translate-y-1 transition-all duration-300 cursor-pointer bg-white"
               :class="{
                 'border-green-500 bg-green-50 shadow-lg scale-105':
                   selectedBranch === 'burol-main',
               }"
               @click="selectBranch('burol-main')"
             >
-              <div class="flex items-center space-x-3">
+              <div class="flex items-center space-x-2 sm:space-x-3">
                 <div
-                  class="w-4 h-4 rounded-full border-2 flex items-center justify-center"
+                  class="w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0"
                   :class="
                     selectedBranch === 'burol-main'
                       ? 'border-green-500 bg-green-500'
@@ -75,9 +76,9 @@
                     class="w-2 h-2 bg-white rounded-full"
                   ></div>
                 </div>
-                <div>
-                  <h3 class="font-semibold text-gray-800">Burol Main Branch</h3>
-                  <p class="text-sm text-gray-600">
+                <div class="min-w-0 flex-1">
+                  <h3 class="font-semibold text-gray-800 text-sm sm:text-base">Burol Main Branch</h3>
+                  <p class="text-xs sm:text-sm text-gray-600 truncate">
                     PMI Building Congressional Road
                   </p>
                 </div>
@@ -86,16 +87,16 @@
 
             <!-- Cantimbuhan Branch -->
             <div
-              class="border-2 border-gray-200 rounded-xl p-4 hover:border-green-300 hover:shadow-lg hover:-translate-y-1 transition-all duration-300 cursor-pointer bg-white"
+              class="border-2 border-gray-200 rounded-lg sm:rounded-xl p-3 sm:p-4 hover:border-green-300 hover:shadow-lg hover:-translate-y-1 transition-all duration-300 cursor-pointer bg-white"
               :class="{
                 'border-green-500 bg-green-50 shadow-lg scale-105':
                   selectedBranch === 'cantimbuhan',
               }"
               @click="selectBranch('cantimbuhan')"
             >
-              <div class="flex items-center space-x-3">
+              <div class="flex items-center space-x-2 sm:space-x-3">
                 <div
-                  class="w-4 h-4 rounded-full border-2 flex items-center justify-center"
+                  class="w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0"
                   :class="
                     selectedBranch === 'cantimbuhan'
                       ? 'border-green-500 bg-green-500'
@@ -107,11 +108,11 @@
                     class="w-2 h-2 bg-white rounded-full"
                   ></div>
                 </div>
-                <div>
-                  <h3 class="font-semibold text-gray-800">
+                <div class="min-w-0 flex-1">
+                  <h3 class="font-semibold text-gray-800 text-sm sm:text-base">
                     Cantimbuhan Branch
                   </h3>
-                  <p class="text-sm text-gray-600">
+                  <p class="text-xs sm:text-sm text-gray-600 truncate">
                     Back of 7eleven Cantimbuhan Street
                   </p>
                 </div>
@@ -120,11 +121,11 @@
 
             <!-- Coming Soon Branches -->
             <div
-              class="border-2 border-gray-200 rounded-xl p-4 bg-gray-50 opacity-60"
+              class="border-2 border-gray-200 rounded-lg sm:rounded-xl p-3 sm:p-4 bg-gray-50 opacity-60"
             >
-              <div class="flex items-center space-x-3">
+              <div class="flex items-center space-x-2 sm:space-x-3">
                 <div
-                  class="w-4 h-4 rounded-full border-2 border-gray-300 bg-gray-300 flex items-center justify-center"
+                  class="w-4 h-4 rounded-full border-2 border-gray-300 bg-gray-300 flex items-center justify-center flex-shrink-0"
                 >
                   <svg
                     class="w-2 h-2 text-gray-500"
@@ -140,19 +141,19 @@
                     ></path>
                   </svg>
                 </div>
-                <div>
-                  <h3 class="font-semibold text-gray-500">Burol Branch</h3>
-                  <p class="text-sm text-gray-400">Coming Soon on Grabfood</p>
+                <div class="min-w-0 flex-1">
+                  <h3 class="font-semibold text-gray-500 text-sm sm:text-base">Burol Branch</h3>
+                  <p class="text-xs sm:text-sm text-gray-400">Coming Soon on Grabfood</p>
                 </div>
               </div>
             </div>
 
             <div
-              class="border-2 border-gray-200 rounded-xl p-4 bg-gray-50 opacity-60"
+              class="border-2 border-gray-200 rounded-lg sm:rounded-xl p-3 sm:p-4 bg-gray-50 opacity-60"
             >
-              <div class="flex items-center space-x-3">
+              <div class="flex items-center space-x-2 sm:space-x-3">
                 <div
-                  class="w-4 h-4 rounded-full border-2 border-gray-300 bg-gray-300 flex items-center justify-center"
+                  class="w-4 h-4 rounded-full border-2 border-gray-300 bg-gray-300 flex items-center justify-center flex-shrink-0"
                 >
                   <svg
                     class="w-2 h-2 text-gray-500"
@@ -168,18 +169,18 @@
                     ></path>
                   </svg>
                 </div>
-                <div>
-                  <h3 class="font-semibold text-gray-500">Malihan Branch</h3>
-                  <p class="text-sm text-gray-400">Coming Soon on Grabfood</p>
+                <div class="min-w-0 flex-1">
+                  <h3 class="font-semibold text-gray-500 text-sm sm:text-base">Malihan Branch</h3>
+                  <p class="text-xs sm:text-sm text-gray-400">Coming Soon on Grabfood</p>
                 </div>
               </div>
             </div>
           </div>
 
           <!-- Branch Details -->
-          <div v-if="selectedBranch" class="bg-gray-50 rounded-xl p-4 mb-6">
-            <h4 class="font-semibold text-gray-800 mb-2">Branch Information</h4>
-            <div class="grid md:grid-cols-2 gap-4 text-sm">
+          <div v-if="selectedBranch" class="bg-gray-50 rounded-lg sm:rounded-xl p-3 sm:p-4 mb-4 sm:mb-6">
+            <h4 class="font-semibold text-gray-800 mb-2 text-sm sm:text-base">Branch Information</h4>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 text-xs sm:text-sm">
               <div>
                 <span class="font-medium text-gray-600">Address:</span>
                 <p class="text-gray-800">
@@ -208,12 +209,12 @@
           </div>
 
           <!-- Action Buttons -->
-          <div class="flex flex-col sm:flex-row gap-3">
+          <div class="flex flex-col sm:flex-row gap-2 sm:gap-3">
             <!-- Order on Grabfood Website -->
             <button
               v-if="selectedBranch"
               @click="orderOnWebsite"
-              class="flex-1 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-300 flex items-center justify-center space-x-2 group shadow-lg hover:shadow-xl hover:-translate-y-1"
+              class="flex-1 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white px-4 sm:px-6 py-2.5 sm:py-3 rounded-lg sm:rounded-xl font-medium sm:font-semibold transition-all duration-300 flex items-center justify-center space-x-2 group shadow-lg hover:shadow-xl hover:-translate-y-1 text-sm sm:text-base"
             >
               <svg
                 class="w-5 h-5 group-hover:scale-110 transition-transform"
@@ -234,7 +235,7 @@
             <!-- Download App -->
             <button
               @click="downloadApp"
-              class="flex-1 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-300 flex items-center justify-center space-x-2 group shadow-lg hover:shadow-xl hover:-translate-y-1"
+              class="flex-1 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white px-4 sm:px-6 py-2.5 sm:py-3 rounded-lg sm:rounded-xl font-medium sm:font-semibold transition-all duration-300 flex items-center justify-center space-x-2 group shadow-lg hover:shadow-xl hover:-translate-y-1 text-sm sm:text-base"
             >
               <svg
                 class="w-5 h-5 group-hover:scale-110 transition-transform"
@@ -254,13 +255,13 @@
           </div>
 
           <!-- Additional Info -->
-          <div class="mt-6 p-4 bg-green-50 rounded-xl border border-green-200">
-            <div class="flex items-start space-x-3">
+          <div class="mt-4 sm:mt-6 p-3 sm:p-4 bg-green-50 rounded-lg sm:rounded-xl border border-green-200">
+            <div class="flex items-start space-x-2 sm:space-x-3">
               <div
-                class="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5"
+                class="w-5 h-5 sm:w-6 sm:h-6 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5"
               >
                 <svg
-                  class="w-4 h-4 text-white"
+                  class="w-3 h-3 sm:w-4 sm:h-4 text-white"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -273,7 +274,7 @@
                   ></path>
                 </svg>
               </div>
-              <div class="text-sm text-green-800">
+              <div class="text-xs sm:text-sm text-green-800">
                 <p class="font-medium mb-1">💡 Pro Tip:</p>
                 <p>
                   Download the Grabfood app for the best ordering experience
@@ -285,13 +286,13 @@
           </div>
 
           <!-- Coming Soon Notice -->
-          <div class="mt-4 p-4 bg-blue-50 rounded-xl border border-blue-200">
-            <div class="flex items-start space-x-3">
+          <div class="mt-3 sm:mt-4 p-3 sm:p-4 bg-blue-50 rounded-lg sm:rounded-xl border border-blue-200">
+            <div class="flex items-start space-x-2 sm:space-x-3">
               <div
-                class="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5"
+                class="w-5 h-5 sm:w-6 sm:h-6 bg-blue-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5"
               >
                 <svg
-                  class="w-4 h-4 text-white"
+                  class="w-3 h-3 sm:w-4 sm:h-4 text-white"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -304,7 +305,7 @@
                   ></path>
                 </svg>
               </div>
-              <div class="text-sm text-blue-800">
+              <div class="text-xs sm:text-sm text-blue-800">
                 <p class="font-medium mb-1">🕒 Coming Soon:</p>
                 <p>
                   More branches will be available on Grabfood soon! For now, you
@@ -472,5 +473,12 @@
     box-shadow:
       0 20px 25px -5px rgba(0, 0, 0, 0.1),
       0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  }
+
+  /* Mobile responsive improvements */
+  @media (max-width: 640px) {
+    .overflow-y-auto {
+      -webkit-overflow-scrolling: touch;
+    }
   }
 </style>

@@ -2,13 +2,21 @@ const express = require("express");
 const router = express.Router();
 const PurchaseOrder = require("../models/PurchaseOrder");
 const Supplier = require("../models/Supplier");
+const NotificationService = require("../services/NotificationService");
+const EmailService = require("../services/emailService");
 const { db } = require("../config/database");
 
-// GET /api/purchase-orders - Get all purchase orders
+// GET /api/purchase-orders - Get all purchase orders (supports supplier_id filter)
 router.get("/", async (req, res) => {
   try {
     const includeDeleted = req.query.includeDeleted === "true";
-    const purchaseOrders = await PurchaseOrder.getAll(includeDeleted);
+    const supplierId = req.query.supplier_id
+      ? Number(req.query.supplier_id)
+      : null;
+
+    const purchaseOrders = await PurchaseOrder.getAll(includeDeleted, {
+      supplierId,
+    });
 
     res.json({
       success: true,
@@ -104,21 +112,22 @@ router.get("/supply-request/:id/items", async (req, res) => {
   }
 });
 
-// POST /api/purchase-orders - Create purchase order from supply request
+// POST /api/purchase-orders/from-supply-request - Create purchase order from supply request
+// Note: supplierId is optional for manual requests (supplier-less)
 router.post("/from-supply-request", async (req, res) => {
   try {
     const { supplyRequestId, supplierId, poData } = req.body;
 
-    if (!supplyRequestId || !supplierId || !poData) {
+    if (!supplyRequestId || !poData) {
       return res.status(400).json({
         success: false,
-        message: "Supply request ID, supplier ID, and PO data are required",
+        message: "Supply request ID and PO data are required",
       });
     }
 
     const poId = await PurchaseOrder.createFromSupplyRequest(
       supplyRequestId,
-      supplierId,
+      supplierId || null,
       poData
     );
 
@@ -139,27 +148,26 @@ router.post("/from-supply-request", async (req, res) => {
 });
 
 // POST /api/purchase-orders/from-supply-request-with-items - Create purchase order from supply request with selected items
+// Note: supplierId is optional for manual requests (supplier-less)
 router.post("/from-supply-request-with-items", async (req, res) => {
   try {
     const { supplyRequestId, supplierId, poData, selectedItems } = req.body;
 
     if (
       !supplyRequestId ||
-      !supplierId ||
       !poData ||
       !selectedItems ||
       selectedItems.length === 0
     ) {
       return res.status(400).json({
         success: false,
-        message:
-          "Supply request ID, supplier ID, PO data, and selected items are required",
+        message: "Supply request ID, PO data, and selected items are required",
       });
     }
 
     const poId = await PurchaseOrder.createFromSupplyRequestWithItems(
       supplyRequestId,
-      supplierId,
+      supplierId || null,
       poData,
       selectedItems
     );
@@ -217,6 +225,19 @@ router.post("/", async (req, res) => {
     const poId = await PurchaseOrder.create(poData, items);
     const purchaseOrder = await PurchaseOrder.getById(poId);
 
+    // Create notification if PO status is "Sent" (notify supplier)
+    if (purchaseOrder.status === "Sent") {
+      try {
+        await NotificationService.createPurchaseOrderNotification(poId, "sent");
+      } catch (notificationError) {
+        console.error(
+          "Error creating purchase order sent notification:",
+          notificationError
+        );
+        // Don't fail the main request if notification fails
+      }
+    }
+
     res.status(201).json({
       success: true,
       message: "Purchase order created successfully",
@@ -226,6 +247,56 @@ router.post("/", async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Error creating purchase order",
+      error: error.message,
+    });
+  }
+});
+
+// POST /api/purchase-orders/:id/notify-supplier - Send supplier order email
+router.post("/:id/notify-supplier", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const po = await PurchaseOrder.getById(id);
+
+    if (!po) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Purchase order not found" });
+    }
+
+    if (!po.supplier_email) {
+      return res.status(400).json({
+        success: false,
+        message: "Supplier email not available for this order",
+      });
+    }
+
+    const result = await EmailService.sendSupplierOrderNotification(
+      po.supplier_email,
+      po.supplier_contact || po.supplier_name || "Supplier",
+      {
+        request: {
+          id: po.id,
+          request_id: po.supply_request_number,
+          total_amount: po.total_amount,
+        },
+        items: po.items || [],
+      }
+    );
+
+    if (result?.success) {
+      return res.json({ success: true, message: "Supplier notified" });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to send supplier email",
+      error: result?.error || "Unknown error",
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error sending supplier notification",
       error: error.message,
     });
   }
@@ -256,6 +327,110 @@ router.put("/:id", async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Error updating purchase order",
+      error: error.message,
+    });
+  }
+});
+
+// PUT /api/purchase-orders/:id/confirm - Confirm purchase order (for suppliers)
+router.put("/:id/confirm", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { confirmed_by } = req.body || {};
+
+    // Update status to Confirmed
+    const poData = {
+      status: "Confirmed",
+      confirmed_at: new Date(),
+      confirmed_by: confirmed_by || "Supplier",
+    };
+
+    const updated = await PurchaseOrder.update(id, poData);
+
+    if (!updated) {
+      return res.status(404).json({
+        success: false,
+        message: "Purchase order not found",
+      });
+    }
+
+    const purchaseOrder = await PurchaseOrder.getById(id);
+
+    // Create notification for SCM
+    try {
+      await NotificationService.createPurchaseOrderNotification(
+        id,
+        "confirmed"
+      );
+    } catch (notificationError) {
+      console.error(
+        "Error creating purchase order confirmation notification:",
+        notificationError
+      );
+      // Don't fail the main request if notification fails
+    }
+
+    res.json({
+      success: true,
+      message: "Purchase order confirmed successfully",
+      data: purchaseOrder,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error confirming purchase order",
+      error: error.message,
+    });
+  }
+});
+
+// PUT /api/purchase-orders/:id/in-progress - Mark purchase order as in progress (for suppliers)
+router.put("/:id/in-progress", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { updated_by } = req.body || {};
+
+    // Update status to In Progress
+    const poData = {
+      status: "In Progress",
+      updated_at: new Date(),
+      updated_by: updated_by || "Supplier",
+    };
+
+    const updated = await PurchaseOrder.update(id, poData);
+
+    if (!updated) {
+      return res.status(404).json({
+        success: false,
+        message: "Purchase order not found",
+      });
+    }
+
+    const purchaseOrder = await PurchaseOrder.getById(id);
+
+    // Create notification for SCM
+    try {
+      await NotificationService.createPurchaseOrderNotification(
+        id,
+        "in_progress"
+      );
+    } catch (notificationError) {
+      console.error(
+        "Error creating purchase order in-progress notification:",
+        notificationError
+      );
+      // Don't fail the main request if notification fails
+    }
+
+    res.json({
+      success: true,
+      message: "Purchase order marked as in progress",
+      data: purchaseOrder,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error updating purchase order status",
       error: error.message,
     });
   }
@@ -389,4 +564,52 @@ router.get("/:id/can-create-grn", async (req, res) => {
     });
   }
 });
+
+// GET /api/purchase-orders/:id/statistics - Get comprehensive order statistics
+router.get("/:id/statistics", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const orderStats = await PurchaseOrder.getOrderStatistics(id);
+
+    res.json({
+      success: true,
+      data: orderStats,
+    });
+  } catch (error) {
+    console.error("Error fetching order statistics:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching order statistics",
+      error: error.message,
+    });
+  }
+});
+
+// GET /api/purchase-orders/supplier/:supplierId/product-fulfillment - Get supplier product fulfillment
+router.get("/supplier/:supplierId/product-fulfillment", async (req, res) => {
+  try {
+    const { supplierId } = req.params;
+    const { productId } = req.query;
+
+    const fulfillment = await PurchaseOrder.getSupplierProductFulfillment(
+      supplierId,
+      productId || null
+    );
+
+    res.json({
+      success: true,
+      data: fulfillment,
+      count: fulfillment.length,
+    });
+  } catch (error) {
+    console.error("Error fetching supplier product fulfillment:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching supplier product fulfillment",
+      error: error.message,
+    });
+  }
+});
+
 module.exports = router;

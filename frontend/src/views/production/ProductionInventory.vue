@@ -29,21 +29,27 @@
     Handshake,
     Minus,
     Settings,
+    Grid3X3,
+    List,
   } from 'lucide-vue-next';
   import { useProductionStore } from '../../stores/productionStore.js';
   import { useAuthStore } from '../../stores/authStore.js';
-  import MenuItemApprovalChart from '../../components/production/MenuItemApprovalChart.vue';
-  import SampleProductionTrendsChart from '../../components/production/SampleProductionTrendsChart.vue';
-  import ProductionMetricsChart from '../../components/production/ProductionMetricsChart.vue';
-  import InventoryTrendsChart from '../../components/production/InventoryTrendsChart.vue';
+  import { useRouter } from 'vue-router';
   import ProductionTransactionModal from '../../components/production/ProductionTransactionModal.vue';
   import { apiConfig, formatImageUrl } from '../../config/api.js';
+  import {
+    getCurrentPhilippineTime,
+    formatForAPI,
+    parseFromAPI,
+  } from '../../utils/timezoneUtils.js';
 
   const productionStore = useProductionStore();
   const authStore = useAuthStore();
+  const router = useRouter();
 
   // Reactive state
   const activeTab = ref('inventory');
+  const viewMode = ref('list'); // Add view mode for inventory items - default to list
   const searchQuery = ref('');
   const categoryFilter = ref('');
   const statusFilter = ref('');
@@ -107,6 +113,20 @@
   );
   const productionInventoryStats = computed(
     () => productionStore.productionInventoryStats
+  );
+
+  // Role-based UI control
+  const isBoardMember = computed(
+    () =>
+      authStore.userRole === 'Board of Directors' ||
+      authStore.userRole === 'Chairman of the Board'
+  );
+
+  // Check if user is Staff in Production department (view-only access)
+  const isProductionStaff = computed(
+    () =>
+      authStore.userRole === 'Staff' &&
+      authStore.userDepartment === 'Production'
   );
 
   // Calculate real-time statistics from current inventory data
@@ -319,6 +339,19 @@
       unitCost: unitCost,
       totalItemValue: totalItemValue,
     };
+  });
+
+  // Format image URLs to full URLs
+  const formattedInventory = computed(() => {
+    return productionInventory.value.map((item) => {
+      if (item.image_url) {
+        return {
+          ...item,
+          image_url: formatImageUrl(item.image_url),
+        };
+      }
+      return item;
+    });
   });
 
   const filteredInventory = computed(() => {
@@ -573,19 +606,6 @@
     };
   });
 
-  // Format image URLs to full URLs
-  const formattedInventory = computed(() => {
-    return productionInventory.value.map((item) => {
-      if (item.image_url) {
-        return {
-          ...item,
-          image_url: formatImageUrl(item.image_url),
-        };
-      }
-      return item;
-    });
-  });
-
   // Helper functions
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-PH', {
@@ -701,12 +721,13 @@
     if (diffDays < 7) return `${diffDays}d ago`;
 
     // For older dates, show the actual date and time
-    return date.toLocaleDateString('en-PH', {
+    return parseFromAPI(date).toLocaleDateString('en-PH', {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
       hour: '2-digit',
       minute: '2-digit',
+      timeZone: 'Asia/Manila',
     });
   };
 
@@ -811,10 +832,11 @@
 
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleDateString('en-PH', {
+    return parseFromAPI(dateString).toLocaleDateString('en-PH', {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
+      timeZone: 'Asia/Manila',
     });
   };
 
@@ -913,12 +935,18 @@
   // Methods
   const fetchData = async () => {
     try {
-      await Promise.all([
+      const promises = [
         productionStore.fetchProductionInventory(),
         productionStore.fetchProductionInventoryStats(),
         fetchBranches(),
-        fetchRecentActivity(),
-      ]);
+      ];
+
+      // Only fetch recent activity if user is not Staff
+      if (!isProductionStaff.value) {
+        promises.push(fetchRecentActivity());
+      }
+
+      await Promise.all(promises);
     } catch (error) {
       console.error('Error fetching data:', error);
     }
@@ -972,6 +1000,10 @@
   };
 
   const openUpdateModal = (item, type) => {
+    // Prevent Staff from opening update modal
+    if (isProductionStaff.value) {
+      return;
+    }
     if (!item || !item.id) {
       console.error('Invalid item provided to openUpdateModal:', item);
       return;
@@ -1020,6 +1052,10 @@
   };
 
   const openDistributionModal = (item) => {
+    // Prevent Staff from opening distribution modal
+    if (isProductionStaff.value) {
+      return;
+    }
     if (!item || !item.id) {
       console.error('Invalid item provided to openDistributionModal:', item);
       return;
@@ -1046,6 +1082,11 @@
   };
 
   const updateStock = async () => {
+    // Prevent Staff from updating stock
+    if (isProductionStaff.value) {
+      showToast('error', 'You do not have permission to update stock');
+      return;
+    }
     try {
       // Validate form before submission
       if (!stockUpdateValidation.value.isValid) {
@@ -1098,6 +1139,11 @@
   };
 
   const updatePricing = async () => {
+    // Prevent Staff from updating pricing
+    if (isProductionStaff.value) {
+      showToast('error', 'You do not have permission to update pricing');
+      return;
+    }
     try {
       await productionStore.updateInventoryPricing(
         selectedItem.value.id,
@@ -1111,6 +1157,11 @@
   };
 
   const recordDistribution = async () => {
+    // Prevent Staff from recording distributions
+    if (isProductionStaff.value) {
+      showToast('error', 'You do not have permission to record distributions');
+      return;
+    }
     try {
       if (
         !distributionForm.value.quantity ||
@@ -1143,15 +1194,48 @@
     }
   };
 
+  // Helper function to check if item is ready to produce
+  const isReadyToProduce = (item) => {
+    // Item is ready to produce if:
+    // 1. Available quantity is 0 (needs production)
+    // 2. OR available quantity is below reorder point (only if reorder point is set)
+    const currentStock = item.available_quantity || 0;
+    const reorderPoint = item.reorder_point || 0;
+
+    // If no reorder point is set (0), only allow production when stock is 0
+    if (reorderPoint === 0) {
+      return currentStock === 0;
+    }
+
+    // If reorder point is set, allow production when stock is at or below reorder point
+    return currentStock <= reorderPoint;
+  };
+
   const configureInventory = async (item) => {
+    // Prevent Staff from configuring inventory
+    if (isProductionStaff.value) {
+      showToast('error', 'You do not have permission to configure inventory');
+      return;
+    }
     try {
-      await productionStore.updateInitialStockFromRecipe(item.id);
+      // Navigate to Production Execution page
+      router.push({
+        path: '/production/production-execution',
+        query: {
+          menuItemId: item.menu_item_id,
+          itemName: item.menu_item_name,
+        },
+      });
+
       showToast(
-        'success',
-        `Production inventory configured - Stock remains at 0 until actual production`
+        'info',
+        `Navigating to Production Execution for ${item.menu_item_name}`
       );
     } catch (error) {
-      showToast('error', error.message || 'Failed to configure inventory');
+      showToast(
+        'error',
+        error.message || 'Failed to navigate to production execution'
+      );
     }
   };
 
@@ -1222,6 +1306,23 @@
     return range;
   };
 
+  // Distribution pagination navigation
+  const goToDistributionPage = (page) => {
+    distributionCurrentPage.value = page;
+  };
+
+  const prevDistributionPage = () => {
+    if (distributionCurrentPage.value > 1) {
+      distributionCurrentPage.value--;
+    }
+  };
+
+  const nextDistributionPage = () => {
+    if (distributionCurrentPage.value < totalDistributionPages.value) {
+      distributionCurrentPage.value++;
+    }
+  };
+
   // Lifecycle
   onMounted(() => {
     fetchData();
@@ -1234,7 +1335,14 @@
 
   // Watch for tab changes to fetch distributions
   watch(activeTab, (newTab) => {
-    if (newTab === 'distributions' && distributions.value.length === 0) {
+    // Reset to inventory tab if Staff tries to access restricted tabs
+    if (isProductionStaff.value && (newTab === 'distributions' || newTab === 'alerts')) {
+      activeTab.value = 'inventory';
+      return;
+    }
+    
+    // Only fetch distributions if user is not Staff
+    if (newTab === 'distributions' && !isProductionStaff.value && distributions.value.length === 0) {
       fetchDistributions();
     }
   });
@@ -1254,7 +1362,7 @@
 </script>
 
 <template>
-  <div class="container mx-auto p-2 sm:p-4 lg:p-6 max-w-6xl">
+  <div class="mx-auto p-2 sm:p-4 lg:p-6">
     <!-- Header -->
     <div class="text-center mb-4 sm:mb-6 lg:mb-8">
       <h1
@@ -1297,25 +1405,6 @@
         class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
       >
         <div class="stat-figure">
-          <Target class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-success" />
-        </div>
-        <div class="stat-title text-black/50 text-xs sm:text-sm">
-          Total Stock
-        </div>
-        <div
-          class="stat-value text-success text-lg sm:text-xl lg:text-2xl xl:text-3xl"
-        >
-          {{ realTimeStats.total_quantity || 0 }}
-        </div>
-        <div class="stat-desc text-black/50 !text-xs sm:text-sm">
-          Units available
-        </div>
-      </div>
-
-      <div
-        class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
-      >
-        <div class="stat-figure">
           <AlertTriangle
             class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-warning"
           />
@@ -1330,46 +1419,6 @@
         </div>
         <div class="stat-desc text-black/50 !text-xs sm:text-sm">
           Items below reorder point
-        </div>
-      </div>
-
-      <div
-        class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
-      >
-        <div class="stat-figure">
-          <TrendingUp
-            class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-black/50"
-          />
-        </div>
-        <div class="stat-title text-black/50 !text-xs sm:text-sm">
-          Avg. Margin
-        </div>
-        <div
-          class="stat-value text-black/50 text-lg sm:text-xl lg:text-2xl xl:text-3xl"
-        >
-          {{ Number(realTimeStats.average_margin || 0).toFixed(0) }}%
-        </div>
-        <div class="stat-desc text-black/50 !text-xs sm:text-sm">
-          Profit margin
-        </div>
-      </div>
-
-      <div
-        class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
-      >
-        <div class="stat-figure">
-          <Truck class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-warning" />
-        </div>
-        <div class="stat-title text-black/50 !text-xs sm:text-sm">
-          Distributed
-        </div>
-        <div
-          class="stat-value text-warning text-lg sm:text-xl lg:text-2xl xl:text-3xl"
-        >
-          {{ realTimeStats.total_distributed_all_time || 0 }}
-        </div>
-        <div class="stat-desc text-black/50 !text-xs sm:text-sm">
-          Units distributed to branches
         </div>
       </div>
     </div>
@@ -1399,14 +1448,7 @@
         Inventory
       </button>
       <button
-        @click="activeTab = 'analytics'"
-        class="tab"
-        :class="{ 'tab-active': activeTab === 'analytics' }"
-      >
-        <BarChart3 class="w-4 h-4 mr-1" />
-        Analytics
-      </button>
-      <button
+        v-if="!isProductionStaff"
         @click="activeTab = 'distributions'"
         class="tab"
         :class="{ 'tab-active': activeTab === 'distributions' }"
@@ -1415,6 +1457,7 @@
         Distributions
       </button>
       <button
+        v-if="!isProductionStaff"
         @click="activeTab = 'alerts'"
         class="tab"
         :class="{ 'tab-active': activeTab === 'alerts' }"
@@ -1456,6 +1499,48 @@
             </div>
           </div>
 
+          <!-- View Toggle -->
+          <div
+            class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4"
+          >
+            <div
+              class="flex flex-col sm:flex-row items-start sm:items-center gap-4"
+            >
+              <h3 class="text-base sm:text-lg font-medium text-gray-900">
+                Inventory Items
+              </h3>
+              <div class="flex items-center space-x-1 sm:space-x-2">
+                <button
+                  @click="viewMode = 'list'"
+                  :class="[
+                    'px-2 sm:px-3 py-1 rounded-md text-xs sm:text-sm font-medium transition-colors cursor-pointer flex items-center',
+                    viewMode === 'list'
+                      ? 'bg-primaryColor/10 text-primaryColor'
+                      : 'text-gray-500 hover:text-gray-700',
+                  ]"
+                >
+                  <List class="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                  <span class="hidden sm:inline">List</span>
+                </button>
+                <button
+                  @click="viewMode = 'cards'"
+                  :class="[
+                    'px-2 sm:px-3 py-1 rounded-md text-xs sm:text-sm font-medium transition-colors cursor-pointer flex items-center',
+                    viewMode === 'cards'
+                      ? 'bg-primaryColor/10 text-primaryColor'
+                      : 'text-gray-500 hover:text-gray-700',
+                  ]"
+                >
+                  <Grid3X3 class="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                  <span class="hidden sm:inline">Cards</span>
+                </button>
+              </div>
+            </div>
+            <div class="text-xs sm:text-sm text-gray-500">
+              {{ paginatedInventory.length }} inventory items
+            </div>
+          </div>
+
           <!-- Search and Filters -->
           <div class="flex flex-col sm:flex-row gap-4 mb-6">
             <div class="flex-1">
@@ -1494,13 +1579,16 @@
               >
                 <option value="">All Status</option>
                 <option value="low_stock">Low Stock</option>
-                <option value="featured">Featured</option>
               </select>
             </div>
           </div>
 
           <!-- Inventory Grid -->
-          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <!-- Cards View -->
+          <div
+            v-if="viewMode === 'cards'"
+            class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+          >
             <!-- Loading State - Skeleton Cards -->
             <div
               v-if="loading"
@@ -1579,9 +1667,7 @@
                     >
                       {{ item.item_name }}
                     </h3>
-                    <p class="text-sm text-gray-600 mb-2">
-                      {{ item.recipe_name }}
-                    </p>
+
                     <div class="flex items-center gap-2 mb-3">
                       <span
                         class="badge"
@@ -1592,24 +1678,31 @@
                       <span class="badge badge-sm bg-gray-100 text-gray-600">
                         {{ item.category }}
                       </span>
+                      <!-- Promo Discount Badge -->
                       <span
-                        v-if="item.is_featured || item.total_distributed >= 100"
-                        class="badge badge-sm bg-yellow-100 text-yellow-800"
+                        v-if="item.promo_info"
+                        class="badge badge-sm"
+                        :class="
+                          item.promo_info.is_active
+                            ? 'bg-success/20 text-success border border-success/30'
+                            : 'bg-gray/20 text-gray-600 border border-gray/30'
+                        "
+                        :title="
+                          item.promo_info.is_active
+                            ? 'Active promotional discount available'
+                            : 'Promotional discount (inactive)'
+                        "
                       >
                         <Star class="w-3 h-3 mr-1" />
-                        {{ item.is_featured ? 'Featured' : 'Popular' }}
+                        {{
+                          item.promo_info.is_active ? 'Promo Active' : 'Promo'
+                        }}
                       </span>
                     </div>
                   </div>
                   <div class="text-right">
                     <div class="text-lg font-bold text-primaryColor">
                       {{ item.available_quantity }}
-                    </div>
-                    <div class="text-xs text-gray-500">
-                      {{ item.unit_of_measure }}
-                    </div>
-                    <div class="text-xs text-gray-500 mt-1">
-                      Reorder: {{ item.reorder_point || 0 }}
                     </div>
                   </div>
                 </div>
@@ -1633,16 +1726,7 @@
                               )
                             )
                       "
-                    >
-                      {{
-                        calculateProfitMargin(
-                          item.selling_price,
-                          item.unit_cost
-                        ) === null
-                          ? 'Cost Data Needed'
-                          : `${calculateProfitMargin(item.selling_price, item.unit_cost)}% margin`
-                      }}
-                    </div>
+                    ></div>
                   </div>
                   <div class="text-right text-sm text-gray-600">
                     <div>Last produced:</div>
@@ -1686,30 +1770,16 @@
 
                 <div class="flex gap-2">
                   <button
-                    v-if="item.available_quantity === 0"
+                    v-if="isReadyToProduce(item) && !isProductionStaff"
                     @click.stop="configureInventory(item)"
-                    class="btn btn-ghost btn-xs text-warning hover:bg-warning/10 flex-1"
+                    class="btn bg-primaryColor btn-sm flex-1 text-white font-thin hover:border-none hover:shadow-none hover:bg-primaryColor/90"
                     :disabled="loading"
                   >
                     <RefreshCcw
                       class="w-4 h-4 mr-1"
                       :class="{ 'animate-spin': loading }"
                     />
-                    Configure Inventory
-                  </button>
-                  <button
-                    v-else
-                    @click.stop="openUpdateModal(item, 'stock')"
-                    class="btn btn-ghost btn-xs text-primaryColor hover:bg-primaryColor/10 flex-1"
-                  >
-                    <Package class="w-4 h-4 mr-1" />
-                    Update Stock
-                  </button>
-                  <button
-                    @click.stop="openDetailsModal(item)"
-                    class="btn btn-ghost btn-xs text-gray-600 hover:bg-gray-100"
-                  >
-                    <Eye class="w-4 h-4" />
+                    Proceed to Execution
                   </button>
                 </div>
               </div>
@@ -1729,6 +1799,307 @@
                   searchQuery || categoryFilter || statusFilter
                     ? 'Try adjusting your filters'
                     : 'No approved menu items in inventory yet. Complete quality inspections to add items.'
+                }}
+              </p>
+            </div>
+          </div>
+
+          <!-- List View -->
+          <div
+            v-else-if="viewMode === 'list'"
+            class="bg-white rounded-lg shadow overflow-hidden"
+          >
+            <!-- Loading State for List -->
+            <div v-if="loading" class="p-6">
+              <div class="space-y-4">
+                <div
+                  v-for="n in 5"
+                  :key="`skeleton-list-${n}`"
+                  class="animate-pulse"
+                >
+                  <div class="flex items-center space-x-4">
+                    <div class="w-16 h-16 bg-gray-200 rounded"></div>
+                    <div class="flex-1 space-y-2">
+                      <div class="h-4 bg-gray-200 rounded w-1/4"></div>
+                      <div class="h-3 bg-gray-200 rounded w-1/2"></div>
+                    </div>
+                    <div class="w-20 h-8 bg-gray-200 rounded"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- List Content -->
+            <div
+              v-else-if="paginatedInventory.length > 0"
+              class="overflow-x-auto"
+            >
+              <!-- Mobile Card Layout (hidden on larger screens) -->
+              <div class="block sm:hidden space-y-3 p-4">
+                <div
+                  v-for="item in paginatedInventory"
+                  :key="item.id"
+                  class="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer"
+                  @click="openDetailsModal(item)"
+                >
+                  <div class="flex items-start space-x-3">
+                    <!-- Item Image -->
+                    <div class="flex-shrink-0">
+                      <img
+                        v-if="item.image_url"
+                        :src="item.image_url"
+                        :alt="item.item_name"
+                        class="h-16 w-16 rounded-lg object-cover"
+                      />
+                      <div
+                        v-else
+                        class="h-16 w-16 rounded-lg bg-gray-200 flex items-center justify-center"
+                      >
+                        <Package class="w-8 h-8 text-gray-400" />
+                      </div>
+                    </div>
+
+                    <!-- Item Details -->
+                    <div class="flex-1 min-w-0">
+                      <h3 class="text-sm font-medium text-gray-900 truncate">
+                        {{ item.item_name }}
+                      </h3>
+                      <p class="text-xs text-gray-500 truncate">
+                        {{ item.recipe_name }}
+                      </p>
+
+                      <!-- Stock and Price Info -->
+                      <div class="mt-2 space-y-1">
+                        <div class="flex items-center justify-between text-xs">
+                          <span class="text-gray-600">Stock:</span>
+                          <span class="font-medium"
+                            >{{ item.available_quantity }}
+                            {{ item.unit_of_measure }}</span
+                          >
+                        </div>
+                        <div class="flex items-center justify-between text-xs">
+                          <span class="text-gray-600">Price:</span>
+                          <span class="font-medium text-primaryColor"
+                            >₱{{ item.selling_price || 0 }}</span
+                          >
+                        </div>
+                      </div>
+
+                      <!-- Badges -->
+                      <div class="flex items-center gap-2 mt-2">
+                        <span
+                          class="badge badge-xs"
+                          :class="getStockLevelBadgeClass(item)"
+                        >
+                          {{ getStockLevelText(item) }}
+                        </span>
+                        <span class="badge badge-xs bg-gray-100 text-gray-600">
+                          {{ item.category }}
+                        </span>
+                        <span
+                          v-if="item.promo_info"
+                          class="badge badge-xs"
+                          :class="
+                            item.promo_info.is_active
+                              ? 'bg-success/20 text-success'
+                              : 'bg-gray/20 text-gray-600'
+                          "
+                        >
+                          <Star class="w-3 h-3 mr-1" />
+                          Promo
+                        </span>
+                      </div>
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="flex flex-col space-y-1">
+                      <button
+                        @click.stop="openDetailsModal(item)"
+                        class="text-primaryColor hover:text-primaryColor/80 p-1"
+                        title="View Details"
+                      >
+                        <Eye class="w-4 h-4" />
+                      </button>
+                      <button
+                        v-if="
+                          !isBoardMember &&
+                          !isProductionStaff &&
+                          isReadyToProduce(item)
+                        "
+                        @click.stop="configureInventory(item)"
+                        class="text-warning hover:text-warning/80 p-1"
+                        title="Proceed to Execution"
+                      >
+                        <Settings class="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Desktop Table Layout (hidden on mobile) -->
+              <table
+                class="min-w-full divide-y divide-gray-200 hidden sm:table"
+              >
+                <thead class="bg-gray-50">
+                  <tr>
+                    <th
+                      class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    >
+                      Item
+                    </th>
+                    <th
+                      class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    >
+                      Stock
+                    </th>
+                    <th
+                      class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell"
+                    >
+                      Price
+                    </th>
+                    <th
+                      class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    >
+                      Status
+                    </th>
+                    <th
+                      class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden lg:table-cell"
+                    >
+                      Last Produced
+                    </th>
+                    <th
+                      class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    >
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                  <tr
+                    v-for="item in paginatedInventory"
+                    :key="item.id"
+                    class="hover:bg-gray-50 cursor-pointer"
+                    @click="openDetailsModal(item)"
+                  >
+                    <td class="px-3 sm:px-6 py-4 whitespace-nowrap">
+                      <div class="flex items-center">
+                        <div class="flex-shrink-0 h-10 w-10 sm:h-12 sm:w-12">
+                          <img
+                            v-if="item.image_url"
+                            :src="item.image_url"
+                            :alt="item.item_name"
+                            class="h-10 w-10 sm:h-12 sm:w-12 rounded-lg object-cover"
+                          />
+                          <div
+                            v-else
+                            class="h-10 w-10 sm:h-12 sm:w-12 rounded-lg bg-gray-200 flex items-center justify-center"
+                          >
+                            <Package
+                              class="w-5 h-5 sm:w-6 sm:h-6 text-gray-400"
+                            />
+                          </div>
+                        </div>
+                        <div class="ml-3 sm:ml-4">
+                          <div
+                            class="text-sm font-medium text-gray-900 truncate"
+                          >
+                            {{ item.item_name }}
+                          </div>
+
+                          <div class="flex items-center gap-1 sm:gap-2 mt-1">
+                            <span
+                              class="badge badge-xs bg-gray-100 text-gray-600"
+                            >
+                              {{ item.category }}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+                    <td class="px-3 sm:px-6 py-4 whitespace-nowrap">
+                      <div class="text-sm font-medium text-gray-900">
+                        {{ item.available_quantity }} {{ item.unit_of_measure }}
+                      </div>
+                    </td>
+                    <td
+                      class="px-3 sm:px-6 py-4 whitespace-nowrap hidden md:table-cell"
+                    >
+                      <div class="text-sm font-medium text-gray-900">
+                        ₱{{ item.selling_price || 0 }}
+                      </div>
+                    </td>
+                    <td class="px-3 sm:px-6 py-4 whitespace-nowrap">
+                      <span
+                        class="badge badge-xs sm:badge-sm"
+                        :class="getStockLevelBadgeClass(item)"
+                      >
+                        {{ getStockLevelText(item) }}
+                      </span>
+                      <div v-if="item.promo_info" class="mt-1">
+                        <span
+                          class="badge badge-xs"
+                          :class="
+                            item.promo_info.is_active
+                              ? 'bg-success/20 text-success'
+                              : 'bg-gray/20 text-gray-600'
+                          "
+                        >
+                          <Star class="w-3 h-3 mr-1" />
+                          Promo
+                        </span>
+                      </div>
+                    </td>
+                    <td
+                      class="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-500 hidden lg:table-cell"
+                    >
+                      {{
+                        item.last_produced_date
+                          ? formatDate(item.last_produced_date)
+                          : 'Never'
+                      }}
+                    </td>
+                    <td
+                      class="px-3 sm:px-6 py-4 whitespace-nowrap text-sm font-medium"
+                    >
+                      <div class="flex space-x-1 sm:space-x-2">
+                        <button
+                          @click.stop="openDetailsModal(item)"
+                          class=""
+                          title="View Details"
+                        >
+                          <Eye class="w-4 h-4" />
+                        </button>
+                        <button
+                          v-if="
+                            !isBoardMember &&
+                            !isProductionStaff &&
+                            isReadyToProduce(item)
+                          "
+                          @click.stop="configureInventory(item)"
+                          class="text-warning hover:text-warning/80"
+                          title="Proceed to Execution"
+                        >
+                          <Settings class="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Empty State for List -->
+            <div v-else class="text-center py-12">
+              <Package class="w-16 h-16 mx-auto text-gray-400 mb-4" />
+              <h3 class="text-lg font-medium text-gray-900 mb-2">
+                No inventory items found
+              </h3>
+              <p class="text-gray-500 mb-4">
+                {{
+                  searchQuery || categoryFilter || statusFilter
+                    ? 'Try adjusting your filters'
+                    : 'No approved menu items in inventory yet.'
                 }}
               </p>
             </div>
@@ -1860,42 +2231,8 @@
           </div>
         </div>
 
-        <!-- Analytics Tab -->
-        <div v-if="activeTab === 'analytics'" class="space-y-6">
-          <div
-            class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6"
-          >
-            <div>
-              <h2
-                class="card-title text-primaryColor text-lg sm:text-xl lg:text-2xl mb-2"
-              >
-                Production Analytics Dashboard
-              </h2>
-              <p class="text-sm text-gray-600">
-                Comprehensive analytics for menu management, production
-                efficiency, and inventory performance.
-              </p>
-            </div>
-          </div>
-
-          <!-- Analytics Components -->
-          <div class="space-y-6">
-            <!-- Menu Item Approval Chart -->
-            <MenuItemApprovalChart />
-
-            <!-- Sample Production Trends Chart -->
-            <SampleProductionTrendsChart />
-
-            <!-- Production Metrics Chart -->
-            <ProductionMetricsChart />
-
-            <!-- Inventory Trends Chart -->
-            <InventoryTrendsChart />
-          </div>
-        </div>
-
         <!-- Distributions Tab -->
-        <div v-if="activeTab === 'distributions'" class="space-y-6">
+        <div v-if="activeTab === 'distributions' && !isProductionStaff" class="space-y-6">
           <div
             class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6"
           >
@@ -1945,12 +2282,12 @@
               <div class="card-body p-4">
                 <div class="flex items-center justify-between">
                   <div>
-                    <div class="text-2xl font-bold text-info">
+                    <div class="text-2xl font-bold text-gray-500">
                       {{ productionInventoryStats.recent_distributions || 0 }}
                     </div>
                     <div class="text-sm text-gray-600">Recent (30 days)</div>
                   </div>
-                  <Activity class="w-8 h-8 text-info" />
+                  <Activity class="w-8 h-8 text-gray-500" />
                 </div>
               </div>
             </div>
@@ -2145,7 +2482,7 @@
                         </div>
                       </div>
                       <div class="text-right">
-                        <div class="font-bold text-success">
+                        <div class="font-bold text-primaryColor">
                           {{
                             formatCurrency(
                               branchPerformance.topBranch.total_value
@@ -2167,7 +2504,7 @@
                         </div>
                       </div>
                       <div class="text-right">
-                        <div class="font-bold text-info">
+                        <div class="font-bold text-gray-700">
                           {{ branchPerformance.averageDistributionSize }}
                           units
                         </div>
@@ -2470,56 +2807,113 @@
                   </tbody>
                 </table>
 
-                <!-- Distribution Pagination -->
+                <!-- Enhanced Distribution Pagination (matching inventory pattern) -->
                 <div
-                  v-if="totalDistributionPages > 1"
-                  class="flex justify-center items-center mt-6 space-x-2"
+                  class="flex flex-col sm:flex-row justify-between items-center mt-6"
+                  v-if="!distributionLoading && totalDistributionPages > 1"
                 >
-                  <button
-                    @click="
-                      distributionCurrentPage = Math.max(
-                        1,
-                        distributionCurrentPage - 1
+                  <div class="text-sm text-black/60 mb-2 sm:mb-0">
+                    Showing
+                    {{
+                      (distributionCurrentPage - 1) * distributionItemsPerPage +
+                      1
+                    }}
+                    to
+                    {{
+                      Math.min(
+                        distributionCurrentPage * distributionItemsPerPage,
+                        filteredDistributions.length
                       )
-                    "
-                    :disabled="distributionCurrentPage <= 1"
-                    class="btn btn-sm btn-outline"
-                  >
-                    <ChevronLeft class="w-4 h-4" />
-                    Previous
-                  </button>
+                    }}
+                    of {{ filteredDistributions.length }} distribution records
+                  </div>
 
-                  <div class="join">
+                  <div class="join space-x-1">
+                    <button
+                      class="join-item btn font-thin !bg-gray-200 text-black/50 btn-sm border border-none hover:bg-gray-300"
+                      :disabled="distributionCurrentPage <= 1"
+                      @click="prevDistributionPage"
+                    >
+                      « Prev
+                    </button>
+
+                    <!-- First page -->
+                    <button
+                      v-if="totalDistributionPages > 1"
+                      class="join-item btn font-thin !bg-gray-200 text-black/50 border border-none btn-sm shadow-none"
+                      :class="{
+                        'btn-active': distributionCurrentPage === 1,
+                        '!bg-primaryColor text-white':
+                          distributionCurrentPage === 1,
+                      }"
+                      @click="goToDistributionPage(1)"
+                    >
+                      1
+                    </button>
+
+                    <!-- Ellipsis before current page group -->
+                    <button
+                      v-if="distributionCurrentPage > 4"
+                      class="join-item btn font-thin btn-sm !bg-gray-200 text-black/50 border border-none"
+                      disabled
+                    >
+                      ...
+                    </button>
+
+                    <!-- Current page group -->
                     <button
                       v-for="page in getDistributionPageRange()"
                       :key="page"
-                      @click="distributionCurrentPage = page"
-                      :class="[
-                        'btn btn-sm join-item',
-                        page === distributionCurrentPage
-                          ? 'btn-primary'
-                          : 'btn-outline',
-                      ]"
+                      class="join-item btn font-thin !bg-gray-200 text-black/50 border border-none btn-sm shadow-none"
+                      :class="{
+                        'btn-active': distributionCurrentPage === page,
+                        '!bg-primaryColor text-white':
+                          distributionCurrentPage === page,
+                      }"
+                      @click="goToDistributionPage(page)"
                     >
                       {{ page }}
                     </button>
-                  </div>
 
-                  <button
-                    @click="
-                      distributionCurrentPage = Math.min(
-                        totalDistributionPages,
-                        distributionCurrentPage + 1
-                      )
-                    "
-                    :disabled="
-                      distributionCurrentPage >= totalDistributionPages
-                    "
-                    class="btn btn-sm btn-outline"
-                  >
-                    Next
-                    <ChevronRight class="w-4 h-4" />
-                  </button>
+                    <!-- Ellipsis after current page group -->
+                    <button
+                      v-if="
+                        distributionCurrentPage < totalDistributionPages - 3
+                      "
+                      class="join-item btn font-thin btn-sm !bg-gray-200 text-black/50 border border-none"
+                      disabled
+                    >
+                      ...
+                    </button>
+
+                    <!-- Last page -->
+                    <button
+                      v-if="
+                        totalDistributionPages > 1 &&
+                        distributionCurrentPage < totalDistributionPages
+                      "
+                      class="join-item btn font-thin !bg-gray-200 text-black/50 border border-none btn-sm shadow-none"
+                      :class="{
+                        'btn-active':
+                          distributionCurrentPage === totalDistributionPages,
+                        '!bg-primaryColor text-white':
+                          distributionCurrentPage === totalDistributionPages,
+                      }"
+                      @click="goToDistributionPage(totalDistributionPages)"
+                    >
+                      {{ totalDistributionPages }}
+                    </button>
+
+                    <button
+                      class="join-item btn font-thin btn-sm !bg-gray-200 text-black/50 border border-none"
+                      :disabled="
+                        distributionCurrentPage >= totalDistributionPages
+                      "
+                      @click="nextDistributionPage"
+                    >
+                      Next »
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -2527,7 +2921,7 @@
         </div>
 
         <!-- Alerts Tab -->
-        <div v-if="activeTab === 'alerts'" class="space-y-6">
+        <div v-if="activeTab === 'alerts' && !isProductionStaff" class="space-y-6">
           <div
             class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6"
           >
@@ -2656,6 +3050,7 @@
 
     <!-- Recent Activity Section -->
     <div
+      v-if="!isProductionStaff"
       class="card bg-gradient-to-br from-base-100 to-base-50 border border-gray-200 shadow-lg"
     >
       <div class="card-body p-6 overflow-y-auto max-h-[500px]">
@@ -2677,7 +3072,7 @@
           </div>
           <button
             @click="fetchData"
-            class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10"
+            class="btn btn-sm text-primaryColor hover:bg-primaryColor/10"
             :disabled="loading"
           >
             <RefreshCcw class="w-4 h-4 mr-1" />
@@ -3353,7 +3748,7 @@
         'modal-open': showDetailsModal && selectedItem && selectedItem.id,
       }"
     >
-      <div class="modal-box max-w-4xl">
+      <div class="modal-box max-w-4xl max-h-[90vh] overflow-y-auto">
         <h3 class="font-bold text-lg text-primaryColor mb-6">
           {{ selectedItem?.item_name }} Details
         </h3>
@@ -3534,45 +3929,85 @@
               <label class="label mb-1">
                 <span
                   class="label-text text-black/70 font-medium text-sm sm:text-base"
-                  >Profit Margin</span
-                >
-              </label>
-              <div
-                class="text-sm font-semibold"
-                :class="
-                  calculateProfitMargin(
-                    selectedItem?.selling_price,
-                    selectedItem?.unit_cost
-                  ) === null
-                    ? 'text-gray-500'
-                    : getProfitMarginColor(
-                        calculateProfitMargin(
-                          selectedItem?.selling_price,
-                          selectedItem?.unit_cost
-                        )
-                      )
-                "
-              >
-                {{
-                  calculateProfitMargin(
-                    selectedItem?.selling_price,
-                    selectedItem?.unit_cost
-                  ) === null
-                    ? 'Cost Data Needed'
-                    : `${calculateProfitMargin(selectedItem?.selling_price, selectedItem?.unit_cost)}%`
-                }}
-              </div>
-            </div>
-
-            <div class="form-control">
-              <label class="label mb-1">
-                <span
-                  class="label-text text-black/70 font-medium text-sm sm:text-base"
                   >Last Updated</span
                 >
               </label>
               <div class="text-sm text-primaryColor font-semibold">
                 {{ formatDate(selectedItem?.updated_at) }}
+              </div>
+            </div>
+          </div>
+
+          <!-- Promo Discount Information -->
+          <div
+            v-if="
+              selectedItem?.promo_info && selectedItem?.promo_info.is_active
+            "
+          >
+            <h4 class="font-semibold text-primaryColor mb-3">
+              <Star class="w-4 h-4 inline mr-1" />
+              Active Promotion
+            </h4>
+            <div class="bg-success/10 border border-success/30 p-4 rounded-lg">
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                <div>
+                  <div class="font-medium text-success mb-1">
+                    Discount Details
+                  </div>
+                  <p
+                    v-if="
+                      selectedItem.promo_info.discount_type === 'percentage'
+                    "
+                  >
+                    <strong
+                      >{{
+                        selectedItem.promo_info.discount_percentage
+                      }}%</strong
+                    >
+                    off
+                  </p>
+                  <p v-else>
+                    <strong
+                      >₱{{ selectedItem.promo_info.discount_amount }}</strong
+                    >
+                    off
+                  </p>
+                  <p class="text-xs text-success/70">
+                    Minimum quantity:
+                    {{ selectedItem.promo_info.minimum_quantity }} items
+                  </p>
+                </div>
+                <div>
+                  <div class="font-medium text-success mb-1">Valid Period</div>
+                  <p class="text-xs text-success/70">
+                    <span v-if="selectedItem.promo_info.start_date">
+                      From:
+                      {{
+                        parseFromAPI(
+                          selectedItem.promo_info.start_date
+                        ).toLocaleDateString('en-PH', {
+                          timeZone: 'Asia/Manila',
+                        })
+                      }}
+                    </span>
+                    <span v-if="selectedItem.promo_info.end_date">
+                      Until:
+                      {{
+                        parseFromAPI(
+                          selectedItem.promo_info.end_date
+                        ).toLocaleDateString('en-PH', {
+                          timeZone: 'Asia/Manila',
+                        })
+                      }}
+                    </span>
+                  </p>
+                </div>
+              </div>
+              <div v-if="selectedItem.promo_info.description" class="mt-3">
+                <div class="font-medium text-success mb-1">Description</div>
+                <p class="text-sm text-success/80">
+                  {{ selectedItem.promo_info.description }}
+                </p>
               </div>
             </div>
           </div>
@@ -3747,13 +4182,6 @@
             class="btn btn-sm bg-white text-black/70 border border-black/20 hover:bg-primaryColor/10 hover:border-primaryColor/40 rounded-lg shadow-none font-thin"
           >
             Close
-          </button>
-          <button
-            @click="openUpdateModal(selectedItem, 'stock')"
-            class="btn btn-sm bg-primaryColor text-white font-thin border-none hover:bg-primaryColor/80"
-          >
-            <Package class="w-4 h-4 mr-2" />
-            Update Stock
           </button>
         </div>
       </div>

@@ -1,4 +1,5 @@
 const { db } = require("../config/database");
+const { PHILIPPINE_TIMEZONE } = require("../utils/timezoneUtils");
 
 class POSOrder {
   // Generate unique order number
@@ -21,6 +22,7 @@ class POSOrder {
         order_type = null,
         date_from = null,
         date_to = null,
+        remittance_id = null,
         limit = 20,
         offset = 0,
       } = filters;
@@ -30,6 +32,7 @@ class POSOrder {
         .leftJoin("employees as c", "pso.cashier_id", "c.id")
         .leftJoin("employees as m", "pso.manager_id", "m.id")
         .leftJoin("employees as v", "pso.voided_by", "v.id")
+        .leftJoin("branch_remittances as br", "pso.remittance_id", "br.id")
         .select(
           "pso.*",
           "b.name as branch_name",
@@ -38,7 +41,8 @@ class POSOrder {
           "m.first_name as manager_first_name",
           "m.last_name as manager_last_name",
           "v.first_name as voided_by_first_name",
-          "v.last_name as voided_by_last_name"
+          "v.last_name as voided_by_last_name",
+          db.raw("COALESCE(br.status, NULL) as remittance_status")
         );
 
       // Apply filters
@@ -66,6 +70,10 @@ class POSOrder {
         query = query.where("pso.created_at", "<=", date_to);
       }
 
+      if (remittance_id) {
+        query = query.where("pso.remittance_id", remittance_id);
+      }
+
       // Get total count
       const countQuery = query.clone().clearSelect().count({ total: "pso.id" });
       const [countRow] = await countQuery;
@@ -82,9 +90,19 @@ class POSOrder {
       let items = [];
 
       if (orderIds.length > 0) {
+        // Return only fields used by the UI to keep payload small
         items = await db("pos_order_items as poi")
           .leftJoin("menu_items as mi", "poi.menu_item_id", "mi.id")
-          .select("poi.*", "mi.menu_item_name", "mi.image_url", "mi.category")
+          .select(
+            "poi.id",
+            "poi.order_id",
+            "poi.menu_item_id",
+            "poi.item_name",
+            "poi.quantity",
+            "poi.unit_price",
+            // fallback display name from menu_items when available
+            "mi.menu_item_name as menu_item_name"
+          )
           .whereIn("poi.order_id", orderIds)
           .orderBy("poi.order_id")
           .orderBy("poi.id");
@@ -112,6 +130,41 @@ class POSOrder {
     }
   }
 
+  // Mark completed, unremitted orders as remitted for a remittance
+  static async markOrdersRemitted({
+    branchId,
+    remittanceId,
+    dateFrom,
+    dateTo,
+  }) {
+    const trx = await db.transaction();
+    try {
+      const now = new Date();
+      // Update completed and void orders in range that are not yet linked
+      // Include void orders for complete record-keeping
+      await trx("pos_sales_orders")
+        .where("branch_id", branchId)
+        .whereIn("status", ["completed", "void"])
+        .whereNull("remittance_id")
+        .modify((qb) => {
+          if (dateFrom) qb.where("created_at", ">=", dateFrom);
+          if (dateTo) qb.where("created_at", "<=", dateTo);
+        })
+        .update({
+          remittance_id: remittanceId,
+          remitted_at: now,
+          updated_at: now,
+        });
+
+      await trx.commit();
+      return true;
+    } catch (error) {
+      await trx.rollback();
+      console.error("Error marking orders as remitted:", error);
+      throw new Error("Failed to mark orders as remitted");
+    }
+  }
+
   // Aggregate sales trends by time bucket
   static async getSalesTrends(
     branchId,
@@ -124,9 +177,13 @@ class POSOrder {
       const dateColVoided = "pos_sales_orders.voided_at";
 
       const bucketExpr = (col) => {
-        if (bucket === "hour") return db.raw("to_char(??, 'HH24:00')", [col]);
-        if (bucket === "month") return db.raw("to_char(??, 'YYYY-MM')", [col]);
-        return db.raw("to_char(??, 'YYYY-MM-DD')", [col]);
+        // Normalize to Philippine time for consistent bucket labels
+        const tzWrapped = db.raw("timezone(?, ??)", [PHILIPPINE_TIMEZONE, col]);
+        if (bucket === "hour")
+          return db.raw("to_char((" + tzWrapped + "), 'HH24:00')");
+        if (bucket === "month")
+          return db.raw("to_char((" + tzWrapped + "), 'YYYY-MM')");
+        return db.raw("to_char((" + tzWrapped + "), 'YYYY-MM-DD')");
       };
 
       // Completed (gross) sales by bucket
@@ -176,6 +233,21 @@ class POSOrder {
         .count({ value: "pos_sales_orders.id" })
         .groupBy("label");
 
+      // Actually remitted amount by bucket (only orders that are linked to approved remittances)
+      let remittedQ = db("pos_sales_orders as pso")
+        .leftJoin("branch_remittances as br", "pso.remittance_id", "br.id")
+        .where("pso.branch_id", branchId)
+        .where("pso.status", "completed")
+        .whereNotNull("pso.remittance_id")
+        .where("br.status", "approved");
+      if (dateFrom)
+        remittedQ = remittedQ.where("pso.created_at", ">=", dateFrom);
+      if (dateTo) remittedQ = remittedQ.where("pso.created_at", "<=", dateTo);
+      const remittedRows = await remittedQ
+        .select({ label: bucketExpr("pso.created_at") })
+        .sum({ value: "pso.total_amount" })
+        .groupBy("label");
+
       // Merge maps
       const labelsSet = new Set();
       const toMap = (rows) => {
@@ -191,16 +263,37 @@ class POSOrder {
       const grossMap = toMap(grossRows);
       const refundMap = toMap(refundRows);
       const voidMap = toMap(voidRows);
+      const remittedMap = toMap(remittedRows);
 
-      const labels = Array.from(labelsSet).sort();
+      const allLabels = Array.from(labelsSet).sort((a, b) => {
+        // Sort dates chronologically, not alphabetically
+        return new Date(a) - new Date(b);
+      });
 
-      const gross = labels.map((l) => Number(grossMap.get(l) || 0));
-      const refunds = labels.map((l) => Number(refundMap.get(l) || 0));
-      const disposed = labels.map((l) => Number(voidMap.get(l) || 0));
-      const net = labels.map((_, idx) =>
+      const gross = allLabels.map((l) => Number(grossMap.get(l) || 0));
+      const refunds = allLabels.map((l) => Number(refundMap.get(l) || 0));
+      const disposed = allLabels.map((l) => Number(voidMap.get(l) || 0));
+      const net = allLabels.map((_, idx) =>
         Math.max(0, gross[idx] - refunds[idx])
       );
-      const remitted = net.slice();
+
+      // For remitted amounts, only include labels that have actual remitted orders (remittance_id not null)
+      const remittedLabels = [];
+      const remittedValues = [];
+
+      remittedRows.forEach((r) => {
+        if (Number(r.value) > 0) {
+          remittedLabels.push(String(r.label));
+          remittedValues.push(Number(r.value));
+        }
+      });
+
+      // Use remitted labels for remitted data, all labels for other metrics
+      const labels = remittedLabels.length > 0 ? remittedLabels : allLabels;
+      const remitted =
+        remittedLabels.length > 0
+          ? remittedValues
+          : allLabels.map((l) => Number(remittedMap.get(l) || 0));
 
       return {
         labels,
@@ -386,6 +479,76 @@ class POSOrder {
       // Generate order number
       const orderNumber = this.generateOrderNumber();
 
+      // Compute order-level SC/PWD discount if applicable
+      const discountType = (orderData.discount_type || "NONE").toUpperCase();
+      const isDiscount = discountType === "SC" || discountType === "PWD";
+
+      // Determine gross from items. If SC/PWD is applied, ignore promos by using original prices.
+      let gross = 0;
+      let highestOriginalUnit = 0; // for one-meal-only discount
+      const normalizedItems = (orderData.items || []).map((it) => {
+        const qty = parseFloat(it.quantity || 0);
+        const postedUnit = parseFloat(it.unit_price || it.price || 0);
+        const originalUnit = parseFloat(
+          it.original_unit_price || it.price || postedUnit
+        );
+        const useUnit = isDiscount ? originalUnit : postedUnit; // promos excluded when SC/PWD
+        const total = useUnit * qty;
+        gross += total;
+        if (qty > 0 && originalUnit > highestOriginalUnit) {
+          highestOriginalUnit = originalUnit;
+        }
+        return {
+          ...it,
+          unit_price: useUnit,
+          total_price: total,
+        };
+      });
+
+      const VAT_RATE = 0.12;
+      let vatExemptSales = 0;
+      let discountAmount = 0;
+      let netAmount = 0;
+      let outputVat = 0;
+      let isVatExempt = false;
+
+      if (isDiscount) {
+        // One-meal-only discount: apply to the highest-priced single unit only; rest remain regular price.
+        isVatExempt = true;
+        const eligibleUnit = highestOriginalUnit || 0;
+        const eligibleBase =
+          eligibleUnit > 0 ? eligibleUnit / (1 + VAT_RATE) : 0; // net-of-VAT for one unit
+        vatExemptSales = Number(eligibleBase.toFixed(2));
+        discountAmount = Number((eligibleBase * 0.2).toFixed(2));
+        const adjustedEligible = Number(
+          (vatExemptSales - discountAmount).toFixed(2)
+        );
+        netAmount = Number(
+          (gross - eligibleUnit + adjustedEligible).toFixed(2)
+        );
+        outputVat = 0;
+      } else {
+        // Non-discounted: keep existing totals from client to preserve current behavior
+        vatExemptSales = 0;
+        discountAmount = 0;
+        netAmount = Number((orderData.total_amount || gross).toFixed(2));
+        outputVat = Number((orderData.tax_amount || 0).toFixed(2));
+      }
+
+      // Compute final payable total and change
+      // Keep client subtotal (typically gross) for intuitive display even with discounts
+      const finalSubtotal = Number((orderData.subtotal || gross).toFixed(2));
+      const finalTax = isDiscount
+        ? 0
+        : Number((orderData.tax_amount || 0).toFixed(2));
+      const finalTotal = isDiscount
+        ? netAmount
+        : Number((orderData.total_amount || gross).toFixed(2));
+      const amountPaid = Number((orderData.amount_paid || 0).toFixed(2));
+      const changeAmount = Number(
+        Math.max(0, amountPaid - finalTotal).toFixed(2)
+      );
+
       // Create the order
       const [order] = await trx("pos_sales_orders")
         .insert({
@@ -394,27 +557,59 @@ class POSOrder {
           cashier_id: orderData.cashier_id,
           manager_id: orderData.manager_id || null,
           order_type: orderData.order_type || "Dine In",
-          subtotal: orderData.subtotal,
-          tax_amount: orderData.tax_amount || 0,
-          total_amount: orderData.total_amount,
-          amount_paid: orderData.amount_paid,
-          change_amount: orderData.change_amount,
+          subtotal: finalSubtotal,
+          tax_amount: finalTax,
+          total_amount: finalTotal,
+          amount_paid: amountPaid,
+          change_amount: changeAmount,
           status: "pending",
           notes: orderData.notes || null,
+          // SC/PWD fields
+          discount_type: isDiscount ? discountType : "NONE",
+          beneficiary_name: isDiscount
+            ? orderData.beneficiary_name || null
+            : null,
+          beneficiary_id_no: isDiscount
+            ? orderData.beneficiary_id_no || null
+            : null,
+          discount_rate: isDiscount ? 0.2 : 0,
+          is_vat_exempt: isDiscount,
+          gross_amount: gross,
+          vat_exempt_sales: vatExemptSales,
+          discount_amount: discountAmount,
+          net_amount: isDiscount ? netAmount : finalTotal,
+          output_vat: outputVat,
         })
         .returning("*");
 
       // Create order items
-      if (orderData.items && orderData.items.length > 0) {
-        const orderItems = orderData.items.map((item) => ({
-          order_id: order.id,
-          menu_item_id: item.menu_item_id,
-          item_name: item.item_name,
-          quantity: item.quantity,
-          unit_price: item.unit_price,
-          total_price: item.total_price,
-          notes: item.notes || null,
-        }));
+      if (normalizedItems.length > 0) {
+        const orderItems = normalizedItems.map((item) => {
+          // Handle SCM items that don't have a valid menu_item_id
+          let menuItemId = item.menu_item_id;
+
+          // If the item ID starts with 'scm_', it's an SCM item and shouldn't have a menu_item_id
+          if (typeof item.id === "string" && item.id.startsWith("scm_")) {
+            menuItemId = null;
+          }
+          // If menu_item_id is not a valid number, set it to null
+          else if (
+            !Number.isFinite(Number(menuItemId)) ||
+            Number(menuItemId) <= 0
+          ) {
+            menuItemId = null;
+          }
+
+          return {
+            order_id: order.id,
+            menu_item_id: menuItemId,
+            item_name: item.item_name || item.name,
+            quantity: item.quantity,
+            unit_price: item.unit_price || item.price,
+            total_price: item.total_price,
+            notes: item.notes || null,
+          };
+        });
 
         await trx("pos_order_items").insert(orderItems);
       }
@@ -488,8 +683,11 @@ class POSOrder {
       const orderItems = await trx("pos_order_items").where("order_id", id);
 
       for (const item of orderItems) {
+        // Determine item type based on whether menu_item_id exists
+        const itemType = item.menu_item_id ? "production" : "scm";
+
         // Fetch eligible branch inventory rows for this item in this branch
-        // - item_type: production
+        // - item_type: production or scm based on whether it has menu_item_id
         // - not soft-deleted
         // - status not disposed/expired
         // Sort by expiry date ASC (earliest first), nulls last; then by updated_at DESC as tiebreaker
@@ -497,7 +695,7 @@ class POSOrder {
           .where({
             branch_id: updatedOrder.branch_id,
             item_name: item.item_name,
-            item_type: "production",
+            item_type: itemType,
           })
           .whereNull("deleted_at")
           .whereNotIn("status", ["disposed", "expired"]) // skip disposed/expired batches
@@ -798,6 +996,8 @@ class POSOrder {
         .first();
 
       // Get refunded orders to adjust total sales
+      // Only deduct voided orders that were completed first (actual refunds)
+      // Orders cancelled before completion should not be deducted
       let refundedAmount = 0;
       try {
         const refundedQuery = db("pos_sales_orders")
@@ -814,7 +1014,8 @@ class POSOrder {
             "Duplicate Order",
             "Payment Issue",
             "System Error",
-          ]);
+          ])
+          .whereNotNull("completed_at"); // Only include orders that were completed first
 
         if (dateFrom) {
           refundedQuery.where("voided_at", ">=", dateFrom);
@@ -837,6 +1038,8 @@ class POSOrder {
 
       try {
         // Single query to get both voided orders count and loss profit
+        // Only count orders that were completed first as "disposed" (actual disposals)
+        // Orders cancelled before completion should not be counted as disposed
         const disposalQuery = db("pos_sales_orders")
           .leftJoin(
             "loss_profit_records",
@@ -844,7 +1047,8 @@ class POSOrder {
             "loss_profit_records.order_id"
           )
           .where("pos_sales_orders.branch_id", branchId)
-          .where("pos_sales_orders.status", "void");
+          .where("pos_sales_orders.status", "void")
+          .whereNotNull("pos_sales_orders.completed_at"); // Only include orders that were completed first
 
         if (dateFrom) {
           disposalQuery.where("pos_sales_orders.voided_at", ">=", dateFrom);
@@ -973,11 +1177,12 @@ class POSOrder {
 
       // Helper: build date bucket expression
       const bucketExpr = (col) => {
+        const tzWrapped = db.raw("timezone(?, ??)", [PHILIPPINE_TIMEZONE, col]);
         if (bucket === "hour") {
-          return db.raw("to_char(??, 'HH24:00')", [col]);
+          return db.raw("to_char((" + tzWrapped + "), 'HH24:00')");
         }
         // default day bucket
-        return db.raw("to_char(??, 'YYYY-MM-DD')", [col]);
+        return db.raw("to_char((" + tzWrapped + "), 'YYYY-MM-DD')");
       };
 
       // 1) Build time range array of labels
@@ -1049,7 +1254,10 @@ class POSOrder {
       // 5) Build aligned arrays using labels; if labels empty (no range), fall back to rows' labels
       if (labels.length === 0) {
         const unique = new Set([...disposedMap.keys(), ...lossMap.keys()]);
-        labels = Array.from(unique).sort();
+        labels = Array.from(unique).sort((a, b) => {
+          // Sort dates chronologically, not alphabetically
+          return new Date(a) - new Date(b);
+        });
       }
 
       const disposed = labels.map((l) => disposedMap.get(l) || 0);

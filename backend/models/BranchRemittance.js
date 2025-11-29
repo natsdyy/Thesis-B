@@ -1,14 +1,32 @@
 const { db } = require("../config/database");
+const {
+  formatForDatabase,
+  formatForDatabaseWithTimezone,
+  getCurrentPhilippineTime,
+  parseFromDatabase,
+} = require("../utils/timezoneUtils");
 
 class BranchRemittance {
+  static async getById(id) {
+    const row = await db("branch_remittances")
+      .where({ id })
+      .whereNull("deleted_at")
+      .first();
+    return row || null;
+  }
   static async create(data) {
     const [row] = await db("branch_remittances")
       .insert({
         branch_id: data.branch_id,
         submitted_by: data.submitted_by,
         period_type: data.period_type,
-        date_from: data.date_from,
-        date_to: data.date_to,
+        // Ensure stored ranges are in Philippine timezone
+        date_from: data.date_from
+          ? formatForDatabase(new Date(data.date_from))
+          : null,
+        date_to: data.date_to
+          ? formatForDatabase(new Date(data.date_to))
+          : null,
         gross_sales: data.gross_sales || 0,
         net_sales: data.net_sales || 0,
         refunded_amount: data.refunded_amount || 0,
@@ -59,7 +77,28 @@ class BranchRemittance {
       .orderBy("br.created_at", "desc")
       .limit(limit)
       .offset(offset);
-    return { data, total };
+
+    // Format timestamps to Philippine timezone for response
+    const formattedData = data.map((record) => ({
+      ...record,
+      created_at: record.created_at
+        ? formatForDatabaseWithTimezone(new Date(record.created_at))
+        : null,
+      updated_at: record.updated_at
+        ? formatForDatabaseWithTimezone(new Date(record.updated_at))
+        : null,
+      approved_at: record.approved_at
+        ? formatForDatabaseWithTimezone(new Date(record.approved_at))
+        : null,
+      date_from: record.date_from
+        ? formatForDatabaseWithTimezone(new Date(record.date_from))
+        : null,
+      date_to: record.date_to
+        ? formatForDatabaseWithTimezone(new Date(record.date_to))
+        : null,
+    }));
+
+    return { data: formattedData, total };
   }
 
   static async approve(id, approvedBy) {
@@ -69,9 +108,30 @@ class BranchRemittance {
       .update({
         status: "approved",
         approved_by: approvedBy,
-        approved_at: new Date(),
+        // Record approval time in Philippine timezone with proper offset
+        approved_at: formatForDatabaseWithTimezone(getCurrentPhilippineTime()),
       })
       .returning("*");
+
+    // Format the returned timestamps
+    if (row) {
+      row.created_at = row.created_at
+        ? formatForDatabaseWithTimezone(new Date(row.created_at))
+        : null;
+      row.updated_at = row.updated_at
+        ? formatForDatabaseWithTimezone(new Date(row.updated_at))
+        : null;
+      row.approved_at = row.approved_at
+        ? formatForDatabaseWithTimezone(new Date(row.approved_at))
+        : null;
+      row.date_from = row.date_from
+        ? formatForDatabaseWithTimezone(new Date(row.date_from))
+        : null;
+      row.date_to = row.date_to
+        ? formatForDatabaseWithTimezone(new Date(row.date_to))
+        : null;
+    }
+
     return row;
   }
 
@@ -82,11 +142,52 @@ class BranchRemittance {
       .update({
         status: "rejected",
         approved_by: approvedBy,
-        approved_at: new Date(),
+        // Record rejection time in Philippine timezone with proper offset
+        approved_at: formatForDatabaseWithTimezone(getCurrentPhilippineTime()),
         notes,
       })
       .returning("*");
+
+    // Format the returned timestamps
+    if (row) {
+      row.created_at = row.created_at
+        ? formatForDatabaseWithTimezone(new Date(row.created_at))
+        : null;
+      row.updated_at = row.updated_at
+        ? formatForDatabaseWithTimezone(new Date(row.updated_at))
+        : null;
+      row.approved_at = row.approved_at
+        ? formatForDatabaseWithTimezone(new Date(row.approved_at))
+        : null;
+      row.date_from = row.date_from
+        ? formatForDatabaseWithTimezone(new Date(row.date_from))
+        : null;
+      row.date_to = row.date_to
+        ? formatForDatabaseWithTimezone(new Date(row.date_to))
+        : null;
+    }
+
     return row;
+  }
+
+  static async updateCsvMetadata(
+    id,
+    { url, filename, size, mime, uploadedAt }
+  ) {
+    const [row] = await db("branch_remittances")
+      .where({ id })
+      .whereNull("deleted_at")
+      .update(
+        {
+          csv_url: url || null,
+          csv_filename: filename || null,
+          csv_size: size || null,
+          csv_mime: mime || null,
+          csv_uploaded_at: uploadedAt || new Date(),
+        },
+        "*"
+      );
+    return row || null;
   }
 }
 

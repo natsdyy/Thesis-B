@@ -3,6 +3,7 @@
   import { useSupplyRequestStore } from '../../stores/supplyRequestStore.js';
   import { useBudgetReleaseStore } from '../../stores/budgetReleaseStore.js';
   import { useAuthStore } from '../../stores/authStore.js';
+  import { useSupplierStore } from '../../stores/supplierStore.js';
   import cashRequestReceiptModal from '../../components/scm/cashRequestReceiptModal.vue';
   import PikaDay from 'pikaday';
   import 'pikaday/css/pikaday.css';
@@ -14,7 +15,6 @@
     Clock,
     RefreshCcw,
     Plus,
-    EllipsisVertical,
     X,
     Send,
     Calendar,
@@ -34,6 +34,7 @@
   const supplyRequestStore = useSupplyRequestStore();
   const budgetReleaseStore = useBudgetReleaseStore();
   const authStore = useAuthStore();
+  const supplierStore = useSupplierStore();
 
   // Local state
   const loading = ref(false);
@@ -1302,6 +1303,13 @@
     await fetchRequests();
     await fetchPendingReceipts();
 
+    // Ensure suppliers are available for name resolution
+    try {
+      if (!supplierStore.suppliers?.length) {
+        await supplierStore.fetchActiveSuppliers();
+      }
+    } catch (_) {}
+
     // Update filter counts
     updateHistoryFilterCounts();
 
@@ -1351,6 +1359,22 @@
     });
   };
 
+  // Resolve supplier name for the modal from request fields, first item, or supplier list
+  const modalSupplierName = computed(() => {
+    const request = modal.value?.request;
+    if (!request) return 'N/A';
+    if (request.supplier_name) return request.supplier_name;
+    const itemName = request.items?.[0]?.supplier_name;
+    if (itemName) return itemName;
+    if (request.supplier_id && supplierStore?.suppliers?.length) {
+      const supplier = supplierStore.suppliers.find(
+        (s) => s.id === request.supplier_id
+      );
+      if (supplier?.name) return supplier.name;
+    }
+    return 'N/A';
+  });
+
   // Get the appropriate date based on request status
   const getStatusDate = (request) => {
     switch (request.request_status) {
@@ -1373,7 +1397,7 @@
 </script>
 
 <template>
-  <div class="container mx-auto p-6 max-w-6xl">
+  <div class="mx-auto p-6">
     <!-- Header -->
     <div class="text-center mb-8">
       <h1 class="text-4xl font-bold text-primaryColor mb-2 text-shadow-xs">
@@ -1392,77 +1416,15 @@
         class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
       >
         <div class="stat-figure">
-          <ReceiptText class="w-8 h-8 text-primaryColor" />
+          <ReceiptText class="w-8 h-8 text-warning" />
         </div>
         <div class="stat-title text-black/50">Pending Requests</div>
-        <div class="stat-value text-primaryColor">
+        <div class="stat-value text-warning">
           {{ pendingRequestsOnly.length }}
         </div>
         <div class="stat-desc text-black/50">
           {{ hasPendingRequests ? 'Awaiting review' : 'No pending requests' }}
         </div>
-      </div>
-
-      <div
-        class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
-      >
-        <div class="stat-figure">
-          <CheckCircle class="w-8 h-8 text-success" />
-        </div>
-        <div class="stat-title text-black/50">Total Approved</div>
-        <div class="stat-value text-success">
-          {{
-            requestStats.approved ||
-            allRequests.filter((r) => r.request_status === 'Approved').length
-          }}
-        </div>
-        <div class="stat-desc text-black/50">
-          {{
-            hasApprovedRequests
-              ? 'Approved requests'
-              : 'No approved requests yet'
-          }}
-        </div>
-      </div>
-
-      <div
-        class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
-      >
-        <div class="stat-figure">
-          <XCircle class="w-8 h-8 text-error" />
-        </div>
-        <div class="stat-title text-black/50">Total Rejected</div>
-        <div class="stat-value text-error">
-          {{
-            requestStats.rejected ||
-            allRequests.filter((r) => r.request_status === 'Rejected').length
-          }}
-        </div>
-        <div class="stat-desc text-black/50">
-          {{
-            hasRejectedRequests
-              ? 'Rejected requests'
-              : 'No rejected requests yet'
-          }}
-        </div>
-      </div>
-
-      <div
-        class="stat sm:!border sm:!border-l-0 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
-      >
-        <div class="stat-figure">
-          <FileText class="w-8 h-8 text-black/50" />
-        </div>
-        <div class="stat-title text-black/50">Total Value Approved</div>
-        <div class="stat-value text-black/50">
-          ₱{{
-            (
-              requestStats.total_approved_amount ||
-              requestHistoryStats.totalAmount
-            ).toLocaleString('en-PH')
-          }}
-        </div>
-        <div class="stat-desc text-black/50">Finance approved amount</div>
       </div>
     </div>
 
@@ -1742,10 +1704,8 @@
               <table
                 class="table table-zebra text-black/50 border border-black/10 custom-zebra"
               >
-                <thead class="text-secondaryColor">
-                  <tr class="bg-primaryColor text-accentColor">
-                    <th>Request ID</th>
-                    <th>Department</th>
+                <thead class="text-black/70 bg-white/5">
+                  <tr class="">
                     <th>Requested By</th>
                     <th>Priority</th>
                     <th class="w-1/4">Request Description</th>
@@ -1760,14 +1720,6 @@
                     :key="request.request_id"
                     class="hover:bg-secondaryColor/10"
                   >
-                    <td class="font-mono font-medium text-primaryColor">
-                      {{ request.request_id }}
-                    </td>
-                    <td>
-                      <div class="badge badge-outline badge-sm">
-                        {{ request.department }}
-                      </div>
-                    </td>
                     <td>{{ request.requested_by }}</td>
                     <td>
                       <div
@@ -1786,68 +1738,58 @@
                       </div>
                     </td>
                     <td class="text-wrap">{{ request.request_description }}</td>
-                    <td class="font-semibold">
-                      ₱{{
-                        parseFloat(request.total_amount || 0).toLocaleString(
-                          'en-PH',
-                          {
-                            minimumFractionDigits: 2,
-                          }
-                        )
+                    <td class="font-semibold text-black/80">
+                      <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                      {{
+                        Number(
+                          String(request.total_amount).replace(/,/g, '')
+                        ).toLocaleString('en-PH', {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })
                       }}
                     </td>
+
                     <td>
                       <div class="flex flex-col">
                         <span>{{
                           formatManilaDate(request.request_date)
                         }}</span>
                         <span class="text-xs text-black/40">
-                          Sent:
                           {{ formatManilaTime(request.created_at) }}
                         </span>
                       </div>
                     </td>
                     <td>
-                      <div class="dropdown dropdown-left">
-                        <label
-                          tabindex="0"
-                          class="btn btn-ghost btn-xs hover:outline-none hover:bg-white/10 hover:text-black/50 hover:border-none hover:shadow-none"
+                      <div class="flex gap-1">
+                        <button
+                          title="View Details"
+                          @click="viewRequest(request)"
+                          class="btn btn-ghost btn-xs hover:bg-white/10 hover:text-black/50"
                         >
-                          <EllipsisVertical class="w-4 h-4" />
-                        </label>
-                        <ul
-                          tabindex="0"
-                          class="dropdown-content z-[1] menu p-2 shadow bg-accentColor rounded-box w-52 border border-black/10"
+                          <font-awesome-icon icon="fa-solid fa-eye" />
+                        </button>
+                        <button
+                          title="Approve Request"
+                          @click="approveRequest(request)"
+                          class="btn btn-ghost btn-xs hover:bg-white/10 hover:text-success"
                         >
-                          <li class="hover:bg-black/10">
-                            <a
-                              @click="viewRequest(request)"
-                              class="text-primary"
-                              >View Details</a
-                            >
-                          </li>
-                          <li class="hover:bg-black/10">
-                            <a
-                              @click="approveRequest(request)"
-                              class="text-success"
-                              >Approve</a
-                            >
-                          </li>
-                          <li class="hover:bg-black/10">
-                            <a
-                              @click="sendBackRequest(request)"
-                              class="text-info"
-                              >Send Back for Revision</a
-                            >
-                          </li>
-                          <li class="hover:bg-black/10">
-                            <a
-                              @click="rejectRequest(request)"
-                              class="text-error"
-                              >Reject</a
-                            >
-                          </li>
-                        </ul>
+                          <font-awesome-icon icon="fa-solid fa-check-circle" />
+                        </button>
+                        <button
+                          title="Send Back for Revision"
+                          @click="sendBackRequest(request)"
+                          class="btn btn-ghost btn-xs hover:bg-white/10 hover:text-info"
+                        >
+                          <font-awesome-icon icon="fa-solid fa-undo" />
+                        </button>
+                        <button
+                          title="Reject Request"
+                          @click="rejectRequest(request)"
+                          class="btn btn-ghost btn-xs hover:bg-white/10 hover:text-error"
+                        >
+                          <font-awesome-icon icon="fa-solid fa-times-circle" />
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -2198,14 +2140,15 @@
               <table
                 class="table table-sm table-zebra text-black/50 border border-black/10 custom-zebra"
               >
-                <thead class="text-secondaryColor">
-                  <tr class="bg-primaryColor text-accentColor">
+                <thead class="text-black/70 bg-white/5">
+                  <tr class="">
                     <th class="w-16">No.</th>
-                    <th class="w-32">Request ID</th>
+
                     <th class="min-w-64">Description</th>
                     <th class="w-28">Date</th>
-                    <th class="w-24">Status</th>
+
                     <th class="w-32">Amount</th>
+                    <th class="w-24">Status</th>
                     <th class="min-w-48">Remarks</th>
                   </tr>
                 </thead>
@@ -2252,14 +2195,6 @@
                       }}
                     </td>
 
-                    <td>
-                      <div
-                        class="font-mono text-sm font-medium text-primaryColor"
-                      >
-                        {{ request.request_id }}
-                      </div>
-                    </td>
-
                     <td class="max-w-xs">
                       <div
                         class="tooltip tooltip-top"
@@ -2283,34 +2218,38 @@
                       </div>
                     </td>
 
+                    <td class="font-semibold text-left">
+                      <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                      {{
+                        Number(request.total_amount || 0).toLocaleString(
+                          'en-PH',
+                          {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          }
+                        )
+                      }}
+                    </td>
+
                     <td>
                       <div
-                        class="badge badge-sm border-none font-medium"
+                        class="badge badge-sm"
                         :class="{
-                          'bg-success/20 text-success':
+                          '!bg-success/10 !text-success':
                             request.request_status === 'Approved',
-                          'bg-error/20 text-error':
+                          '!bg-error/20 !text-error':
                             request.request_status === 'Rejected',
-                          'bg-info/20 text-info':
+                          '!bg-info/20 !text-info':
                             request.request_status === 'Sent Back',
-                          'bg-success/20 text-success':
+                          '!bg-success/20 !text-success':
                             request.request_status === 'Budget Released',
-                          'bg-primary/20 text-primary':
+                          '!bg-primary/20 !text-primary':
                             request.request_status === 'Completed',
                         }"
                       >
                         {{ request.request_status }}
                       </div>
                     </td>
-
-                    <td class="font-semibold text-left">
-                      ₱{{
-                        request.total_amount.toLocaleString('en-PH', {
-                          minimumFractionDigits: 2,
-                        })
-                      }}
-                    </td>
-
                     <td
                       class="!whitespace-normal !sm:max-w-sm !md:max-w-md !break-words"
                     >
@@ -2458,18 +2397,16 @@
           class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 p-4 bg-white/5 rounded-lg"
         >
           <div>
-            <span class="text-sm text-black/60">Request ID:</span>
-            <p class="font-mono font-medium text-primaryColor">
-              {{ modal.request?.request_id }}
-            </p>
-          </div>
-          <div>
             <span class="text-sm text-black/60">Department:</span>
             <p class="font-medium">{{ modal.request?.department }}</p>
           </div>
           <div>
             <span class="text-sm text-black/60">Requested By:</span>
             <p class="font-medium">{{ modal.request?.requested_by }}</p>
+          </div>
+          <div>
+            <span class="text-sm text-black/60">Supplier:</span>
+            <p class="font-medium">{{ modalSupplierName }}</p>
           </div>
           <div class="flex flex-col gap-2">
             <span class="text-sm text-black/60">Priority:</span>
@@ -2562,26 +2499,51 @@
 
       <!-- Approve Modal Content -->
       <template v-if="modal.type === 'approve'">
-        <h3 class="text-lg font-bold mb-4 text-success">Approve Request</h3>
+        <h3 class="text-lg font-bold mb-4 text-primaryColor">
+          Approve Request
+        </h3>
         <p>
           Are you sure you want to approve request
           <strong>#{{ modal.request?.request_id }}</strong
           >?
         </p>
-        <div class="bg-white/10 p-3 rounded mt-3">
-          <p><strong>Department:</strong> {{ modal.request?.department }}</p>
-          <p>
-            <strong>Requested By:</strong> {{ modal.request?.requested_by }}
-          </p>
-          <p>
-            <strong>Description:</strong>
-            {{ modal.request?.request_description }}
-          </p>
-          <p>
-            <strong>Total Amount:</strong> ₱{{
-              modal.request?.total_amount.toLocaleString('en-PH')
-            }}
-          </p>
+        <div class="bg-white/10 p-3 rounded mt-3 space-y-2">
+          <div class="grid grid-cols-3 gap-2">
+            <span class="font-semibold">Department:</span>
+            <span class="col-span-2 text-right">{{
+              modal.request?.department
+            }}</span>
+          </div>
+
+          <div class="grid grid-cols-3 gap-2">
+            <span class="font-semibold">Requested By:</span>
+            <span class="col-span-2 text-right">{{
+              modal.request?.requested_by
+            }}</span>
+          </div>
+
+          <div class="grid grid-cols-3 gap-2">
+            <span class="font-semibold">Supplier:</span>
+            <span class="col-span-2 text-right">{{ modalSupplierName }}</span>
+          </div>
+
+          <div class="grid grid-cols-3 gap-2">
+            <span class="font-semibold">Description:</span>
+            <span class="col-span-2 text-right">{{
+              modal.request?.request_description
+            }}</span>
+          </div>
+
+          <div class="grid grid-cols-3 gap-2">
+            <span class="font-semibold">Total Amount:</span>
+            <span class="col-span-2 text-right">
+              ₱{{
+                modal.request?.total_amount.toLocaleString('en-PH', {
+                  minimumFractionDigits: 2,
+                })
+              }}
+            </span>
+          </div>
         </div>
 
         <!-- Optional remarks for approval -->

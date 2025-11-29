@@ -29,6 +29,11 @@
   import { useAuthStore } from '../../stores/authStore.js';
   import { useUserStore } from '../../stores/userStore.js';
   import { apiConfig, formatImageUrl } from '../../config/api.js';
+  import {
+    getCurrentPhilippineTime,
+    formatForAPI,
+    parseFromAPI,
+  } from '../../utils/timezoneUtils.js';
 
   const productionStore = useProductionStore();
   const authStore = useAuthStore();
@@ -73,6 +78,15 @@
     // serving_size: 1, // Always 1 for customer portion
     serving_unit: 'serving',
     tags: '',
+    // Promo discount fields
+    has_promo_discount: false,
+    promo_minimum_quantity: null,
+    promo_discount_percentage: null,
+    promo_discount_amount: null,
+    promo_discount_type: 'percentage',
+    promo_description: '',
+    promo_start_date: '',
+    promo_end_date: '',
   });
 
   // Hybrid approach: Menu assignment strategy
@@ -90,9 +104,125 @@
   const imageInput = ref(null);
   // categories imported from config
   const availableRecipes = computed(() => {
-    // Use recipes from the store, filtered by active status
-    return productionStore.recipes.filter((recipe) => recipe.is_active);
+    // Use recipes from the store, filtered by active status and not yet used in menu items
+    const activeRecipes = productionStore.recipes.filter(
+      (recipe) => recipe.is_active
+    );
+
+    // Get recipe IDs that are already used in menu items
+    const usedRecipeIds = new Set(
+      menuItems.value
+        .filter((item) => item.recipe_id && !item.deleted_at) // Only non-deleted menu items
+        .filter((item) => {
+          // In edit mode, exclude the current item being edited from the used recipes
+          if (
+            menuItemForm.value.isEditing &&
+            menuItemForm.value.editingItemId
+          ) {
+            return item.id !== menuItemForm.value.editingItemId;
+          }
+          return true;
+        })
+        .map((item) => item.recipe_id)
+    );
+
+    // Filter out recipes that are already used in menu items
+    return activeRecipes.filter((recipe) => !usedRecipeIds.has(recipe.id));
   });
+
+  // Computed property to show used recipes for reference
+  const usedRecipes = computed(() => {
+    const activeRecipes = productionStore.recipes.filter(
+      (recipe) => recipe.is_active
+    );
+    const usedRecipeIds = new Set(
+      menuItems.value
+        .filter((item) => item.recipe_id && !item.deleted_at)
+        .filter((item) => {
+          // In edit mode, exclude the current item being edited from the used recipes
+          if (
+            menuItemForm.value.isEditing &&
+            menuItemForm.value.editingItemId
+          ) {
+            return item.id !== menuItemForm.value.editingItemId;
+          }
+          return true;
+        })
+        .map((item) => item.recipe_id)
+    );
+    return activeRecipes.filter((recipe) => usedRecipeIds.has(recipe.id));
+  });
+
+  // Computed property to get current recipe for edit mode
+  const currentRecipe = computed(() => {
+    if (menuItemForm.value.recipe_id) {
+      return productionStore.recipes.find(
+        (recipe) => recipe.id === menuItemForm.value.recipe_id
+      );
+    }
+    return null;
+  });
+
+  // Structured Tag Selection (for DSS readiness)
+  const tagGroups = [
+    {
+      label: 'Popularity',
+      tags: [
+        { key: 'popular', description: 'Best-selling items' },
+        { key: 'low-demand', description: 'Not frequently ordered' },
+        { key: 'new', description: 'Newly added item' },
+      ],
+    },
+    {
+      label: 'Seasonality',
+      tags: [
+        { key: 'summer', description: 'Preferred during hot months (Mar–May)' },
+        {
+          key: 'rainy',
+          description: 'Comfort food for rainy season (Jun–Oct)',
+        },
+        { key: 'christmas', description: 'Holiday items (Nov–Dec)' },
+        { key: 'all-season', description: 'Ordered consistently year-round' },
+      ],
+    },
+    {
+      label: 'Category / Protein',
+      tags: [
+        { key: 'pork' },
+        { key: 'beef' },
+        { key: 'chicken' },
+        { key: 'fish' },
+        { key: 'vegetarian' },
+      ],
+    },
+    {
+      label: 'Special',
+      tags: [
+        { key: 'signature', description: 'House specialty' },
+        { key: 'group-meal', description: 'Good for sharing / platters' },
+        { key: 'quick-serve', description: 'Fast prep (ready-to-serve)' },
+      ],
+    },
+  ];
+
+  const selectedTags = ref([]);
+
+  const parseTagsStringToArray = (value) => {
+    if (!value) return [];
+    return String(value)
+      .split(',')
+      .map((t) => t.trim())
+      .filter((t) => t.length > 0);
+  };
+
+  // Keep form tags string in sync with selected tags
+  watch(
+    selectedTags,
+    (newVal) => {
+      menuItemForm.value.tags = newVal.join(', ');
+    },
+    { deep: true }
+  );
 
   // Computed properties
   const menuStats = computed(() => productionStore.menuStats);
@@ -104,7 +234,7 @@
     console.log('Current status filter:', statusFilter.value);
     console.log('Current category filter:', categoryFilter.value);
     console.log('Current search query:', searchQuery.value);
-    console.log('Sample menu item data:', menuItems.value[0]);
+    console.log('Menu item data:', menuItems.value[0]);
     return menuItems.value;
   });
 
@@ -150,7 +280,7 @@
       console.log('After category filter:', filtered.length, 'items');
     }
 
-    // Status filtering - client-side like Sample Production Planning
+    // Status filtering - client-side
     if (statusFilter.value) {
       if (statusFilter.value === 'available') {
         filtered = filtered.filter((item) => item.is_available === true);
@@ -160,7 +290,8 @@
         filtered = filtered.filter((item) => item.passed_inspections > 0);
       } else if (statusFilter.value === 'inspection_pending') {
         filtered = filtered.filter(
-          (item) => item.sample_count > 0 && item.passed_inspections === 0
+          (item) =>
+            item.quality_inspections_count > 0 && item.passed_inspections === 0
         );
       } else if (statusFilter.value === 'deleted') {
         // For deleted items, we already fetched only deleted items from backend
@@ -190,6 +321,24 @@
       currency: 'PHP',
     }).format(amount || 0);
   };
+
+  // Suggested price per serving (30–35% markup) for create/edit modal
+  const suggestedPerServingRange = computed(() => {
+    const cost = Number(recipeCostInfo.value?.costPerServing || 0);
+    return {
+      min: cost * 1.3,
+      max: cost * 1.35,
+    };
+  });
+
+  // Suggested price per serving for Details modal
+  const detailsSuggestedPerServingRange = computed(() => {
+    const cost = Number(selectedMenuItem.value?.cost_price || 0);
+    return {
+      min: cost * 1.3,
+      max: cost * 1.35,
+    };
+  });
 
   const getStatusBadgeClass = (isAvailable) => {
     return isAvailable
@@ -221,9 +370,19 @@
       image_url: '', // Reset image URL
       isEditing: false, // Reset editing flags
       editingItemId: null,
+      // Promo discount fields
+      has_promo_discount: false,
+      promo_minimum_quantity: null,
+      promo_discount_percentage: null,
+      promo_discount_amount: null,
+      promo_discount_type: 'percentage',
+      promo_description: '',
+      promo_start_date: '',
+      promo_end_date: '',
     };
     menuAssignmentOption.value = 'auto'; // Reset to default
     availableMenus.value = []; // Clear available menus
+    selectedTags.value = [];
   };
 
   // Methods
@@ -271,6 +430,9 @@
     // Wait for dialog to mount before calling showModal to avoid double-click
     await nextTick();
     document.getElementById('menu_item_modal')?.showModal();
+
+    // Ensure selectedTags reflects any pre-filled tags when opening modal
+    selectedTags.value = parseTagsStringToArray(menuItemForm.value.tags);
   };
 
   const closeCreateModal = () => {
@@ -321,11 +483,42 @@
       serving_unit: item.serving_unit || 'serving',
       tags: item.tags || '',
       image_url: imageUrl,
+      // Promo discount fields
+      has_promo_discount: item.has_promo_discount || false,
+      promo_minimum_quantity: item.promo_minimum_quantity || null,
+      promo_discount_percentage: item.promo_discount_percentage || null,
+      promo_discount_amount: item.promo_discount_amount || null,
+      promo_discount_type: item.promo_discount_type || 'percentage',
+      promo_description: item.promo_description || '',
+      promo_start_date: item.promo_start_date || '',
+      promo_end_date: item.promo_end_date || '',
     };
+
+    // Initialize seasonal/standard tag selection from existing tags
+    selectedTags.value = parseTagsStringToArray(menuItemForm.value.tags);
 
     // Set editing mode
     menuItemForm.value.isEditing = true;
     menuItemForm.value.editingItemId = item.id;
+
+    // Populate cost info from the current recipe (ensure per-serving is derived from batch)
+    if (menuItemForm.value.recipe_id) {
+      const recipe = productionStore.recipes.find(
+        (r) => r.id === menuItemForm.value.recipe_id
+      );
+      if (recipe) {
+        const totalCost = Number(
+          recipe.total_estimated_cost ?? recipe.cost_per_batch ?? 0
+        );
+        const batchSize = Number(recipe.batch_size || 0);
+        const perServing = batchSize > 0 ? totalCost / batchSize : 0;
+
+        recipeCostInfo.value = {
+          totalCost: isFinite(totalCost) ? totalCost : 0,
+          costPerServing: isFinite(perServing) ? perServing : 0,
+        };
+      }
+    }
 
     console.log('Form populated with:', menuItemForm.value);
 
@@ -383,10 +576,13 @@
   };
 
   const openApproveModal = (item) => {
+    // If item has already passed quality inspection, auto-approve directly
+    const hasPassedInspection = item.passed_inspections > 0;
+
     approveModal.value = {
       show: true,
       item: item,
-      requireQualityCheck: false,
+      requireQualityCheck: !hasPassedInspection, // Only require if not already passed
       approvalReason: '',
     };
   };
@@ -439,58 +635,62 @@
     try {
       const formData = { ...menuItemForm.value };
 
-      // Validate required fields
-      if (!formData.recipe_id) {
-        showToast('error', 'Please select a recipe from the dropdown');
-        return;
-      }
-
-      if (!formData.item_name?.trim()) {
-        showToast('error', 'Please enter a menu item name');
-        return;
-      }
-
-      // Validate recipe_id is a valid number
-      const recipeIdNum = Number(formData.recipe_id);
-      if (!Number.isFinite(recipeIdNum) || recipeIdNum <= 0) {
-        showToast('error', 'Invalid recipe selected');
-        return;
-      }
-
-      // Ensure category is set (should come from recipe)
-      if (!formData.category?.trim()) {
-        showToast('error', 'Recipe category is required');
-        return;
-      }
-
-      // Hybrid approach validation
-      if (menuAssignmentOption.value === 'existing' && !formData.menu_id) {
-        showToast('error', 'Please select an existing menu for this category');
-        return;
-      }
-
-      if (menuAssignmentOption.value === 'manual') {
-        showToast(
-          'error',
-          'Please create a menu first before adding menu items'
-        );
-        return;
-      }
-
-      // Hybrid approach: Handle menu_id based on assignment strategy
-      if (menuAssignmentOption.value === 'existing') {
-        // User selected existing menu - keep the menu_id
-        if (!formData.menu_id) {
-          showToast('error', 'Please select an existing menu');
+      // Different validation for create vs edit
+      if (formData.isEditing) {
+        // For editing, validate editable fields
+        if (!formData.item_name?.trim()) {
+          showToast('error', 'Please enter menu item name');
           return;
         }
-      } else if (menuAssignmentOption.value === 'auto') {
-        // Auto-create menu - set menu_id to null to let backend handle it
-        formData.menu_id = null;
-      } else if (menuAssignmentOption.value === 'manual') {
-        // Manual creation - should not reach here due to validation
-        showToast('error', 'Please create a menu first');
-        return;
+        if (!formData.selling_price) {
+          showToast('error', 'Please enter selling price');
+          return;
+        }
+      } else {
+        // For creating, validate all required fields
+        if (!formData.recipe_id) {
+          showToast('error', 'Please select a recipe from the dropdown');
+          return;
+        }
+
+        if (!formData.item_name?.trim()) {
+          showToast('error', 'Please enter a menu item name');
+          return;
+        }
+
+        // Validate recipe_id is a valid number
+        const recipeIdNum = Number(formData.recipe_id);
+        if (!Number.isFinite(recipeIdNum) || recipeIdNum <= 0) {
+          showToast('error', 'Invalid recipe selected');
+          return;
+        }
+
+        // Ensure category is set (should come from recipe)
+        if (!formData.category?.trim()) {
+          showToast('error', 'Recipe category is required');
+          return;
+        }
+      }
+
+      // Simplified menu assignment logic (only for create mode)
+      if (!formData.isEditing) {
+        if (menuExistsForCategory(formData.category)) {
+          // Use existing menu - find and set the menu_id
+          const existingMenu = menus.value?.find?.(
+            (m) =>
+              (m.category || '').toLowerCase() ===
+              (formData.category || '').toLowerCase()
+          );
+          if (existingMenu) {
+            formData.menu_id = existingMenu.id;
+          } else {
+            showToast('error', 'Existing menu not found for this category');
+            return;
+          }
+        } else {
+          // Create new menu - set menu_id to null to let backend handle it
+          formData.menu_id = null;
+        }
       }
 
       // Convert null values to appropriate defaults for backend
@@ -510,9 +710,19 @@
       if (imageFile.value) {
         const fd = new FormData();
         Object.entries(formData).forEach(([key, value]) => {
-          // Handle null values properly for FormData
+          // Handle null values and empty date strings properly for FormData
           if (value !== undefined && value !== null) {
-            fd.append(key, value);
+            // Skip empty date strings that would cause PostgreSQL errors
+            if (
+              (key === 'promo_start_date' || key === 'promo_end_date') &&
+              value.trim() === ''
+            ) {
+              return; // Skip this field
+            }
+
+            // Map item_name to menu_item_name for backend compatibility
+            const backendKey = key === 'item_name' ? 'menu_item_name' : key;
+            fd.append(backendKey, value);
           } else if (value === null) {
             // For null values, append empty string for string fields or skip for integer fields
             if (
@@ -531,8 +741,43 @@
 
       // Check if we're editing or creating
       if (formData.isEditing && formData.editingItemId) {
-        // For update, use the payload (which includes image if present)
-        await productionStore.updateMenuItem(formData.editingItemId, payload);
+        // For update, filter to only include editable fields
+        let updatePayload = payload;
+
+        if (imageFile.value) {
+          // If image is being updated, use FormData
+          updatePayload = payload;
+        } else {
+          // For updates without image, create filtered object with only editable fields
+          updatePayload = {
+            menu_item_name: formData.item_name, // Map item_name to menu_item_name for backend
+            selling_price: formData.selling_price,
+            preparation_time_minutes: formData.preparation_time_minutes,
+            description: formData.description,
+            tags: formData.tags,
+            // Promo discount fields
+            has_promo_discount: formData.has_promo_discount,
+            promo_minimum_quantity: formData.promo_minimum_quantity,
+            promo_discount_percentage: formData.promo_discount_percentage,
+            promo_discount_amount: formData.promo_discount_amount,
+            promo_discount_type: formData.promo_discount_type,
+            promo_description: formData.promo_description,
+            // Only include date fields if they have actual values (not empty strings)
+            ...(formData.promo_start_date &&
+              formData.promo_start_date.trim() !== '' && {
+                promo_start_date: formData.promo_start_date,
+              }),
+            ...(formData.promo_end_date &&
+              formData.promo_end_date.trim() !== '' && {
+                promo_end_date: formData.promo_end_date,
+              }),
+          };
+        }
+
+        await productionStore.updateMenuItem(
+          formData.editingItemId,
+          updatePayload
+        );
         showToast('success', 'Menu item updated successfully');
       } else {
         // Create new item
@@ -724,7 +969,7 @@
     }
   };
 
-  const handleRecipeSelection = (recipeId) => {
+  const handleRecipeSelection = async (recipeId) => {
     const selectedRecipe = availableRecipes.value.find((r) => r.id == recipeId);
     if (selectedRecipe) {
       // Validate recipe is active
@@ -751,7 +996,24 @@
       menuItemForm.value.category = selectedRecipe.category;
       menuItemForm.value.serving_unit = selectedRecipe.batch_unit;
       // Note: serving_size is always 1 for customer portion
-      syncMenuWithCategory(selectedRecipe.category);
+
+      // Simplified menu assignment - automatically handle based on existing menus
+      const categoryExists = menuExistsForCategory(selectedRecipe.category);
+
+      if (categoryExists) {
+        // Auto-select the existing menu
+        const existingMenu = menus.value?.find?.(
+          (m) =>
+            (m.category || '').toLowerCase() ===
+            (selectedRecipe.category || '').toLowerCase()
+        );
+        if (existingMenu) {
+          menuItemForm.value.menu_id = existingMenu.id;
+        }
+      } else {
+        // No menu exists - will auto-create
+        menuItemForm.value.menu_id = null;
+      }
 
       // Populate cost info from recipe if available; otherwise fetch full details
       const setCostFromRecipe = (recipe) => {
@@ -842,52 +1104,33 @@
     menuItemForm.value.menu_id = matchedMenu ? matchedMenu.id : null;
   };
 
-  // New method for hybrid approach
-  const onCategoryChange = async () => {
+  // Check if menu exists for a category
+  const menuExistsForCategory = (category) => {
+    if (!category) return false;
+    return menus.value?.some?.(
+      (m) => (m.category || '').toLowerCase() === (category || '').toLowerCase()
+    );
+  };
+
+  // Simplified category change handling
+  const onCategoryChange = () => {
     if (menuItemForm.value.category) {
-      // Reset menu assignment option when category changes
-      menuAssignmentOption.value = 'auto';
-      menuItemForm.value.menu_id = null;
+      const categoryExists = menuExistsForCategory(menuItemForm.value.category);
 
-      // Fetch available menus for this category
-      await fetchAvailableMenusForCategory(menuItemForm.value.category);
-    }
-  };
-
-  // Fetch available menus for a specific category
-  const fetchAvailableMenusForCategory = async (category) => {
-    try {
-      const menus = await productionStore.fetchMenusByCategory(category);
-      availableMenus.value = menus;
-    } catch (error) {
-      console.error('Error fetching menus for category:', error);
-      availableMenus.value = [];
-    }
-  };
-
-  // Create menu for category (Option 3)
-  const createMenuForCategory = async () => {
-    try {
-      const menuData = {
-        menu_name: `${menuItemForm.value.category} Menu`,
-        category: menuItemForm.value.category,
-        description: `Menu for ${menuItemForm.value.category} items`,
-        is_active: true,
-      };
-
-      const newMenu = await productionStore.createMenu(menuData);
-
-      // Switch to existing menu option and select the new menu
-      menuAssignmentOption.value = 'existing';
-      menuItemForm.value.menu_id = newMenu.id;
-
-      // Refresh available menus
-      await fetchAvailableMenusForCategory(menuItemForm.value.category);
-
-      showToast('success', `Menu "${newMenu.menu_name}" created successfully!`);
-    } catch (error) {
-      console.error('Error creating menu:', error);
-      showToast('error', 'Failed to create menu. Please try again.');
+      if (categoryExists) {
+        // Auto-select the existing menu
+        const existingMenu = menus.value?.find?.(
+          (m) =>
+            (m.category || '').toLowerCase() ===
+            (menuItemForm.value.category || '').toLowerCase()
+        );
+        if (existingMenu) {
+          menuItemForm.value.menu_id = existingMenu.id;
+        }
+      } else {
+        // No menu exists - will auto-create
+        menuItemForm.value.menu_id = null;
+      }
     }
   };
 
@@ -925,7 +1168,7 @@
 </script>
 
 <template>
-  <div class="container mx-auto p-2 sm:p-4 lg:p-6 max-w-6xl">
+  <div class="mx-auto p-2 sm:p-4 lg:p-6">
     <!-- Header -->
     <div class="text-center mb-4 sm:mb-6 lg:mb-8">
       <h1
@@ -943,27 +1186,6 @@
     <div
       class="stats shadow w-full mb-4 sm:mb-6 bg-accentColor border border-black/10 stats-vertical lg:stats-horizontal xl:stats-horizontal rounded-lg"
     >
-      <div
-        class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
-      >
-        <div class="stat-figure">
-          <ChefHat
-            class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-primaryColor"
-          />
-        </div>
-        <div class="stat-title text-black/50 !text-xs sm:text-sm">
-          Total Menu Items
-        </div>
-        <div
-          class="stat-value text-primaryColor text-lg sm:text-xl lg:text-2xl xl:text-3xl"
-        >
-          {{ menuItemStats.total_items || 0 }}
-        </div>
-        <div class="stat-desc text-black/50 !text-xs sm:text-sm">
-          Menu items created
-        </div>
-      </div>
-
       <div
         class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
       >
@@ -997,23 +1219,6 @@
         </div>
         <div class="stat-desc text-black/50 !text-xs sm:text-sm">
           Active menu categories
-        </div>
-      </div>
-
-      <div
-        class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
-      >
-        <div class="stat-figure">
-          <Star class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-warning" />
-        </div>
-        <div class="stat-title text-black/50 !text-xs sm:text-sm">Featured</div>
-        <div
-          class="stat-value text-warning text-lg sm:text-xl lg:text-2xl xl:text-3xl"
-        >
-          {{ menuItemStats.featured_items || 0 }}
-        </div>
-        <div class="stat-desc text-black/50 !text-xs sm:text-sm">
-          Featured items
         </div>
       </div>
     </div>
@@ -1323,231 +1528,178 @@
             </div>
           </div>
 
-          <!-- Menu Items Grid -->
-          <div
-            class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6"
-          >
+          <!-- Menu Items List (replaces grid) -->
+          <div class="bg-white rounded-lg shadow overflow-hidden">
+            <!-- Loading State (optional simple) -->
+            <div v-if="loading" class="p-6 text-center text-sm text-gray-500">
+              Loading menu items...
+            </div>
+
+            <!-- Content -->
             <div
-              v-for="item in paginatedMenuItems"
-              :key="item.id"
-              class="card bg-white border border-gray-200 hover:shadow-xl duration-300 cursor-pointer"
-              @click="openDetailsModal(item)"
+              v-else-if="paginatedMenuItems.length > 0"
+              class="overflow-x-auto"
             >
-              <div class="card-body p-4 sm:p-6">
-                <!-- Header Section -->
+              <!-- Mobile Card Layout -->
+              <div class="block sm:hidden space-y-3 p-4">
                 <div
-                  class="flex flex-col sm:flex-row sm:items-start sm:justify-between mb-3 sm:mb-4 gap-2"
+                  v-for="item in paginatedMenuItems"
+                  :key="item.id"
+                  class="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer"
+                  @click="openDetailsModal(item)"
                 >
-                  <div class="flex-1 min-w-0">
-                    <h3
-                      class="card-title text-base sm:text-lg font-bold text-primaryColor mb-2 truncate"
-                    >
-                      {{ item.item_name }}
-                    </h3>
-
-                    <!-- Price Section - Mobile First -->
-                    <div class="sm:hidden mb-2">
-                      <div class="text-lg font-bold text-primaryColor">
-                        {{ formatCurrency(item.selling_price) }}
+                  <div class="flex items-start justify-between">
+                    <div class="min-w-0">
+                      <h3 class="text-sm font-medium text-gray-900 truncate">
+                        {{ item.item_name }}
+                      </h3>
+                      <p class="text-xs text-gray-500 truncate">
+                        {{ item.category }}
+                      </p>
+                      <div class="mt-2 text-xs text-gray-600">
+                        <span class="font-medium text-primaryColor">{{
+                          formatCurrency(item.selling_price)
+                        }}</span>
                       </div>
-                      <div class="text-xs text-gray-500">
-                        {{
-                          calculateProfitMargin(
-                            item.selling_price,
-                            item.cost_price
-                          )
-                        }}% margin
+                      <div class="flex items-center gap-2 mt-2">
+                        <span
+                          class="badge badge-xs"
+                          :class="getStatusBadgeClass(item.is_available)"
+                        >
+                          {{ getStatusText(item.is_available) }}
+                        </span>
+                        <span
+                          v-if="item.passed_inspections > 0"
+                          class="badge badge-xs bg-success/20 text-success border border-success/30"
+                        >
+                          Passed
+                        </span>
                       </div>
                     </div>
-                  </div>
-
-                  <!-- Price Section - Desktop -->
-                  <div class="hidden sm:block text-right">
-                    <div class="text-lg font-bold text-primaryColor">
-                      {{ formatCurrency(item.selling_price) }}
+                    <div class="flex flex-col space-y-1 ml-2">
+                      <button
+                        @click.stop.prevent="openDetailsModal(item)"
+                        class="btn btn-ghost btn-xs"
+                      >
+                        <Eye class="w-4 h-4" />
+                      </button>
+                      <button
+                        v-if="!item.is_available && !item.deleted_at"
+                        @click.stop.prevent="openApproveModal(item)"
+                        class="btn btn-ghost btn-xs text-success"
+                      >
+                        <CheckCircle class="w-4 h-4" />
+                      </button>
                     </div>
-                    <div class="text-xs text-gray-500">
-                      {{
-                        calculateProfitMargin(
-                          item.selling_price,
-                          item.cost_price
-                        )
-                      }}% margin
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Badges Section - Responsive -->
-                <div class="flex flex-wrap gap-1 sm:gap-2 mb-3 sm:mb-4">
-                  <span
-                    class="badge badge-xs sm:badge-sm"
-                    :class="getStatusBadgeClass(item.is_available)"
-                  >
-                    {{ getStatusText(item.is_available) }}
-                  </span>
-                  <span
-                    class="badge badge-xs sm:badge-sm bg-gray-100 text-gray-600"
-                  >
-                    {{ item.category }}
-                  </span>
-                  <!-- Quality Inspection Status -->
-                  <span
-                    v-if="item.passed_inspections > 0"
-                    class="badge badge-xs sm:badge-sm bg-success/20 text-success border border-success/30"
-                    title="Passed Quality Inspection - Ready for Production"
-                  >
-                    <Shield class="w-3 h-3 mr-1" />
-                    <span class="hidden xs:inline">Quality Passed</span>
-                    <span class="xs:hidden">Passed</span>
-                  </span>
-                  <span
-                    v-else-if="item.sample_count > 0"
-                    class="badge badge-xs sm:badge-sm bg-warning/20 text-warning border border-warning/30"
-                    title="Quality Inspection Pending - Consider quality check before approval"
-                  >
-                    <AlertTriangle class="w-3 h-3 mr-1" />
-                    <span class="hidden xs:inline">Needs Quality Check</span>
-                    <span class="xs:hidden">Pending</span>
-                  </span>
-                  <span
-                    v-else-if="!item.is_available"
-                    class="badge badge-xs sm:badge-sm bg-info/20 text-info border border-info/30"
-                    title="New menu item - Quality inspection recommended"
-                  >
-                    <Shield class="w-3 h-3 mr-1" />
-                    <span class="hidden xs:inline"
-                      >Quality Check Recommended</span
-                    >
-                    <span class="xs:hidden">Check Needed</span>
-                  </span>
-                </div>
-
-                <!-- Bottom Section - Responsive -->
-                <div
-                  class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-4"
-                >
-                  <div
-                    class="flex flex-col xs:flex-row xs:items-center gap-2 xs:gap-4 text-xs sm:text-sm text-gray-600"
-                  >
-                    <div class="flex items-center gap-1">
-                      <Clock class="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
-                      <span>{{ item.preparation_time_minutes }}m</span>
-                    </div>
-                    <div class="flex items-center gap-1">
-                      <Users class="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
-                      <span class="text-xs">
-                        <span class="font-medium">1 serving</span>
-                        <span class="text-gray-500"
-                          >/ {{ item.recipe_batch_size || 'N/A' }} batch</span
-                        >
-                      </span>
-                    </div>
-                  </div>
-                  <!-- Actions Dropdown -->
-                  <div
-                    class="dropdown dropdown-end flex-shrink-0"
-                    @click.stop
-                    @mousedown.stop
-                    @mouseup.stop
-                  >
-                    <button
-                      class="btn btn-ghost btn-xs sm:btn-sm"
-                      tabindex="0"
-                      @click.stop.prevent
-                      @mousedown.stop
-                      @mouseup.stop
-                    >
-                      <EllipsisVertical class="w-3 h-3 sm:w-4 sm:h-4" />
-                    </button>
-                    <ul
-                      class="dropdown-content menu p-2 shadow bg-base-100 rounded-box w-48 sm:w-52 z-50"
-                      tabindex="0"
-                      @click.stop
-                    >
-                      <!-- View Details -->
-                      <li>
-                        <button
-                          @click.stop.prevent="openDetailsModal(item)"
-                          @mousedown.stop
-                          class="text-sm"
-                        >
-                          <Eye class="w-3 h-3 mr-2" />
-                          View Details
-                        </button>
-                      </li>
-
-                      <!-- Create Quality Inspection -->
-                      <li v-if="!item.deleted_at">
-                        <button
-                          @click.stop.prevent="createQualityInspection(item)"
-                          @mousedown.stop
-                          class="text-sm text-primaryColor"
-                        >
-                          <Shield class="w-3 h-3 mr-2" />
-                          Create Quality Inspection
-                        </button>
-                      </li>
-
-                      <!-- Approve (only for draft items) -->
-                      <li v-if="!item.is_available && !item.deleted_at">
-                        <button
-                          @click.stop.prevent="openApproveModal(item)"
-                          @mousedown.stop
-                          class="text-sm text-success"
-                        >
-                          <CheckCircle class="w-3 h-3 mr-2" />
-                          Approve for Production
-                        </button>
-                      </li>
-
-                      <!-- Edit (only for non-deleted items) -->
-                      <li v-if="!item.deleted_at && statusFilter !== 'deleted'">
-                        <button
-                          @click.stop.prevent="openEditModal(item)"
-                          @mousedown.stop
-                          class="text-sm text-orange-500"
-                        >
-                          <Edit class="w-3 h-3 mr-2" />
-                          Edit Menu Item
-                        </button>
-                      </li>
-
-                      <!-- Delete (only for non-deleted items) -->
-                      <li v-if="!item.deleted_at && statusFilter !== 'deleted'">
-                        <button
-                          @click.stop.prevent="openConfirmModal('delete', item)"
-                          @mousedown.stop
-                          class="text-sm text-red-500"
-                        >
-                          <Trash2 class="w-3 h-3 mr-2" />
-                          Delete Menu Item
-                        </button>
-                      </li>
-
-                      <!-- Restore (only for deleted items) -->
-                      <li v-if="statusFilter === 'deleted' && item.deleted_at">
-                        <button
-                          @click.stop.prevent="
-                            openConfirmModal('restore', item)
-                          "
-                          @mousedown.stop
-                          class="text-sm text-blue-500"
-                        >
-                          <RefreshCcw class="w-3 h-3 mr-2" />
-                          Restore Menu Item
-                        </button>
-                      </li>
-                    </ul>
                   </div>
                 </div>
               </div>
+
+              <!-- Desktop Table Layout -->
+              <table
+                class="min-w-full divide-y divide-gray-200 hidden sm:table"
+              >
+                <thead class="bg-gray-50">
+                  <tr>
+                    <th
+                      class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    >
+                      Item Name
+                    </th>
+                    <th
+                      class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    >
+                      Category
+                    </th>
+                    <th
+                      class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    >
+                      Price
+                    </th>
+                    <th
+                      class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    >
+                      Status
+                    </th>
+                    <th
+                      class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    >
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                  <tr
+                    v-for="item in paginatedMenuItems"
+                    :key="item.id"
+                    class="hover:bg-gray-50"
+                  >
+                    <td
+                      class="px-3 sm:px-6 py-4 whitespace-nowrap font-medium text-gray-900"
+                    >
+                      {{ item.item_name }}
+                    </td>
+                    <td
+                      class="px-3 sm:px-6 py-4 whitespace-nowrap text-gray-700"
+                    >
+                      {{ item.category }}
+                    </td>
+                    <td
+                      class="px-3 sm:px-6 py-4 whitespace-nowrap text-primaryColor font-semibold"
+                    >
+                      {{ formatCurrency(item.selling_price) }}
+                    </td>
+                    <td class="px-3 sm:px-6 py-4 whitespace-nowrap">
+                      <span
+                        class="badge badge-xs sm:badge-sm"
+                        :class="getStatusBadgeClass(item.is_available)"
+                        >{{ getStatusText(item.is_available) }}</span
+                      >
+                    </td>
+                    <td
+                      class="px-3 sm:px-6 py-4 whitespace-nowrap text-sm font-medium"
+                    >
+                      <div class="flex items-center gap-2">
+                        <button
+                          @click.prevent="openDetailsModal(item)"
+                          class="btn btn-ghost btn-xs"
+                          title="View Details"
+                        >
+                          <Eye class="w-4 h-4" />
+                        </button>
+                        <button
+                          v-if="!item.is_available && !item.deleted_at"
+                          @click.prevent="openApproveModal(item)"
+                          class="btn btn-ghost btn-xs text-success"
+                          title="Approve"
+                        >
+                          <CheckCircle class="w-4 h-4" />
+                        </button>
+                        <button
+                          v-if="!item.deleted_at"
+                          @click.prevent="openEditModal(item)"
+                          class="btn btn-ghost btn-xs text-orange-500"
+                          title="Edit"
+                        >
+                          <Edit class="w-4 h-4" />
+                        </button>
+                        <button
+                          v-if="!item.deleted_at"
+                          @click.prevent="openConfirmModal('delete', item)"
+                          class="btn btn-ghost btn-xs text-red-500"
+                          title="Delete"
+                        >
+                          <Trash2 class="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
 
             <!-- Empty State -->
-            <div
-              v-if="paginatedMenuItems.length === 0"
-              class="col-span-full flex flex-col items-center justify-center py-12"
-            >
+            <div v-else class="text-center py-12">
               <ChefHat class="w-16 h-16 text-gray-300 mb-4" />
               <h3 class="text-lg font-medium text-gray-600 mb-2">
                 No menu items found
@@ -1618,17 +1770,32 @@
               <label class="label mb-1">
                 <span
                   class="label-text text-black/70 font-medium text-sm sm:text-base"
-                  >Recipe <span class="text-red-500">*</span></span
-                >
+                  >Recipe <span class="text-red-500">*</span>
+                  <span
+                    v-if="menuItemForm.isEditing"
+                    class="text-xs text-gray-500 ml-2"
+                    >(Read-only in edit mode)</span
+                  >
+                </span>
               </label>
               <select
                 v-model="menuItemForm.recipe_id"
                 @change="handleRecipeSelection(menuItemForm.recipe_id)"
                 class="select select-sm sm:select-md select-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
+                :class="{
+                  'bg-gray-100 cursor-not-allowed': menuItemForm.isEditing,
+                }"
+                :disabled="menuItemForm.isEditing"
                 required
                 placeholder="Select Recipe"
               >
-                <option value="" disabled>Select Recipe</option>
+                <option value="" disabled>
+                  {{
+                    availableRecipes.length > 0
+                      ? 'Select Recipe'
+                      : 'No available recipes'
+                  }}
+                </option>
                 <option
                   v-for="recipe in availableRecipes"
                   :key="recipe.id"
@@ -1637,14 +1804,58 @@
                   {{ recipe.recipe_name }} ({{ recipe.category }})
                 </option>
               </select>
+
+              <!-- Helper text for available recipes -->
+              <div class="text-xs text-black/50 mt-1">
+                <span v-if="availableRecipes.length > 0">
+                  {{ availableRecipes.length }} recipe{{
+                    availableRecipes.length !== 1 ? 's' : ''
+                  }}
+                  available (not yet used in menus)
+                </span>
+                <span v-else class="text-warning">
+                  All recipes are already used in menu items. Create new recipes
+                  first.
+                </span>
+              </div>
+
+              <!-- Show used recipes for reference when no available recipes -->
+              <div
+                v-if="availableRecipes.length === 0 && usedRecipes.length > 0"
+                class="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg"
+              >
+                <h5 class="text-sm font-medium text-blue-800 mb-2">
+                  📋 Already Used Recipes ({{ usedRecipes.length }})
+                </h5>
+                <div class="text-xs text-blue-700">
+                  <p class="mb-2">
+                    These recipes are already part of menu items:
+                  </p>
+                  <div class="flex flex-wrap gap-1">
+                    <span
+                      v-for="recipe in usedRecipes.slice(0, 6)"
+                      :key="recipe.id"
+                      class="inline-block px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs"
+                    >
+                      {{ recipe.recipe_name }}
+                    </span>
+                    <span
+                      v-if="usedRecipes.length > 6"
+                      class="inline-block px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs"
+                    >
+                      +{{ usedRecipes.length - 6 }} more...
+                    </span>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div class="form-control">
               <label class="label mb-1">
                 <span
                   class="label-text text-black/70 font-medium text-sm sm:text-base"
-                  >Menu Item Name <span class="text-red-500">*</span></span
-                >
+                  >Menu Item Name <span class="text-red-500">*</span>
+                </span>
               </label>
               <input
                 v-model="menuItemForm.item_name"
@@ -1664,13 +1875,22 @@
               <label class="label mb-1">
                 <span
                   class="label-text text-black/70 font-medium text-sm sm:text-base"
-                  >Food Category <span class="text-red-500">*</span></span
-                >
+                  >Food Category <span class="text-red-500">*</span>
+                  <span
+                    v-if="menuItemForm.isEditing"
+                    class="text-xs text-gray-500 ml-2"
+                    >(Read-only in edit mode)</span
+                  >
+                </span>
               </label>
               <select
                 v-model="menuItemForm.category"
                 @change="onCategoryChange"
                 class="select select-sm sm:select-md select-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
+                :class="{
+                  'bg-gray-100 cursor-not-allowed': menuItemForm.isEditing,
+                }"
+                :disabled="menuItemForm.isEditing"
                 required
               >
                 <option value="">Select Category</option>
@@ -1682,142 +1902,6 @@
                   {{ category }}
                 </option>
               </select>
-            </div>
-          </div>
-
-          <!-- Menu Assignment Options -->
-          <div
-            class="grid grid-cols-1 gap-3 sm:gap-4 bg-white border border-black/10 p-4 rounded-xl"
-            v-if="menuItemForm.category"
-          >
-            <div class="form-control">
-              <label class="label mb-2">
-                <span
-                  class="label-text text-black/70 font-medium text-sm sm:text-base"
-                >
-                  Menu Assignment Strategy
-                </span>
-              </label>
-
-              <!-- Option 1: Use existing menu -->
-              <div class="flex items-center mb-3">
-                <input
-                  type="radio"
-                  id="useExistingMenu"
-                  v-model="menuAssignmentOption"
-                  value="existing"
-                  class="radio radio-xs checked:text-primaryColor mr-3"
-                />
-                <label
-                  for="useExistingMenu"
-                  class="text-sm text-black/70 cursor-pointer"
-                >
-                  Use existing menu for "{{ menuItemForm.category }}"
-                </label>
-              </div>
-
-              <!-- Option 2: Auto-create menu -->
-              <div class="flex items-center mb-3">
-                <input
-                  type="radio"
-                  id="autoCreateMenu"
-                  v-model="menuAssignmentOption"
-                  value="auto"
-                  class="radio radio-xs checked:text-primaryColor mr-3"
-                />
-                <label
-                  for="autoCreateMenu"
-                  class="text-sm text-black/70 cursor-pointer"
-                >
-                  Auto-create new menu for "{{ menuItemForm.category }}"
-                </label>
-              </div>
-
-              <!-- Option 3: Create menu first -->
-              <div class="flex items-center mb-3">
-                <input
-                  type="radio"
-                  id="createMenuFirst"
-                  v-model="menuAssignmentOption"
-                  value="manual"
-                  class="radio radio-xs checked:text-primaryColor mr-3"
-                />
-                <label
-                  for="createMenuFirst"
-                  class="text-sm text-black/70 cursor-pointer"
-                >
-                  Create menu first, then add items
-                </label>
-              </div>
-            </div>
-
-            <!-- Existing Menu Selection (when Option 1 is selected) -->
-            <div v-if="menuAssignmentOption === 'existing'" class="mt-4">
-              <label class="label mb-2">
-                <span
-                  class="label-text text-black/70 font-medium text-sm sm:text-base"
-                >
-                  Select Existing Menu
-                </span>
-              </label>
-              <select
-                v-model="menuItemForm.menu_id"
-                class="select select-sm sm:select-md select-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
-                required
-              >
-                <option value="">Select Menu</option>
-                <option
-                  v-for="menu in availableMenus"
-                  :key="menu.id"
-                  :value="menu.id"
-                >
-                  {{ menu.menu_name }} ({{ menu.category }})
-                </option>
-              </select>
-              <p class="text-xs text-black/40 mt-2">
-                Available menus for category: "{{ menuItemForm.category }}"
-              </p>
-            </div>
-
-            <!-- Manual Menu Creation (when Option 3 is selected) -->
-            <div
-              v-if="menuAssignmentOption === 'manual'"
-              class="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg"
-            >
-              <h4 class="font-medium text-blue-800 mb-2">Create Menu First</h4>
-              <p class="text-sm text-blue-700 mb-3">
-                Please create a menu for category "{{ menuItemForm.category }}"
-                before adding menu items.
-              </p>
-              <button
-                type="button"
-                @click="createMenuForCategory"
-                class="btn bg-primaryColor text-white font-thin border-none hover:bg-primaryColor/80 btn-sm"
-                :disabled="loading"
-              >
-                <span
-                  v-if="loading"
-                  class="loading loading-spinner loading-xs mr-1"
-                ></span>
-                {{
-                  loading
-                    ? 'Creating...'
-                    : `Create Menu for ${menuItemForm.category}`
-                }}
-              </button>
-            </div>
-
-            <!-- Auto-create info (when Option 2 is selected) -->
-            <div
-              v-if="menuAssignmentOption === 'auto'"
-              class="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg"
-            >
-              <h4 class="font-medium text-green-800 mb-2">Auto-Create Menu</h4>
-              <p class="text-sm text-green-700">
-                A new menu will be automatically created for category "{{
-                  menuItemForm.category
-                }}" when you create this menu item.
-              </p>
             </div>
           </div>
 
@@ -1869,14 +1953,21 @@
               <div class="bg-gray-50 p-3 rounded-lg border border-gray-200">
                 <div class="text-sm text-gray-700">
                   <span class="font-medium">Batch Size:</span>
-                  <span class="text-primaryColor"
-                    >{{ selectedRecipe?.batch_size || 'N/A' }}
-                    {{ selectedRecipe?.batch_unit || 'servings' }}</span
+                  <span class="text-primaryColor ml-1"
+                    >{{
+                      (selectedRecipe || currentRecipe)?.batch_size || 'N/A'
+                    }}
+                    {{
+                      (selectedRecipe || currentRecipe)?.batch_unit ||
+                      'servings'
+                    }}</span
                   >
                 </div>
                 <div class="text-sm text-gray-700 mt-1">
                   <span class="font-medium">Serving Size:</span>
-                  <span class="text-success">1 serving per customer</span>
+                  <span class="text-primaryColor ml-1"
+                    >1 serving per customer</span
+                  >
                 </div>
               </div>
             </div>
@@ -1912,6 +2003,20 @@
                 :value="formatCurrency(recipeCostInfo.costPerServing)"
                 class="input input-sm sm:input-md input-bordered w-full bg-gray-50 text-black/70"
               />
+            </div>
+          </div>
+
+          <!-- Suggested Price (Per Serving, 30–35% markup) -->
+          <div
+            class="mt-2 p-2 rounded-lg bg-green-50 border border-green-200"
+            v-if="recipeCostInfo.costPerServing !== null"
+          >
+            <div class="text-xs text-green-800">
+              <span class="font-medium"
+                >Suggested price per serving (30–35% markup):</span
+              >
+              {{ formatCurrency(suggestedPerServingRange.min) }} –
+              {{ formatCurrency(suggestedPerServingRange.max) }}
             </div>
           </div>
 
@@ -1971,22 +2076,55 @@
             ></textarea>
           </div>
 
-          <!-- Tags -->
+          <!-- Tags (Structured Selection) -->
           <div
             class="form-control bg-white border border-black/10 p-4 rounded-xl"
           >
-            <label class="label mb-1">
+            <label class="label mb-2">
               <span
                 class="label-text text-black/70 font-medium text-sm sm:text-base"
-                >Tags</span
               >
+                Tags
+                <span class="text-xs text-black/40 ml-1"
+                  >(select all that apply)</span
+                >
+              </span>
             </label>
-            <input
-              v-model="menuItemForm.tags"
-              type="text"
-              class="input input-sm sm:input-md input-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
-              placeholder="e.g., popular, signature, seasonal"
-            />
+            <div class="space-y-4">
+              <div
+                v-for="group in tagGroups"
+                :key="group.label"
+                class="border border-black/5 rounded-lg p-3"
+              >
+                <div
+                  class="text-xs sm:text-sm font-medium text-primaryColor mb-2"
+                >
+                  {{ group.label }}
+                </div>
+                <div class="flex flex-wrap gap-2">
+                  <label
+                    v-for="tag in group.tags"
+                    :key="tag.key"
+                    class="cursor-pointer inline-flex items-center gap-2 px-2 py-1 rounded-md border border-primaryColor/20 bg-primaryColor/5 hover:bg-primaryColor/10 text-primaryColor text-xs"
+                    :title="tag.description || tag.key"
+                  >
+                    <input
+                      type="checkbox"
+                      class="checkbox checkbox-xs checked:bg-primaryColor checked:text-white"
+                      :value="tag.key"
+                      v-model="selectedTags"
+                    />
+                    <span class="capitalize">{{ tag.key }}</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+            <p class="mt-3 text-xs text-black/40">
+              Selected:
+              <span class="text-primaryColor">{{
+                selectedTags.join(', ') || 'None'
+              }}</span>
+            </p>
           </div>
 
           <!-- Image Upload -->
@@ -2057,6 +2195,182 @@
             <p class="text-xs text-black/50 mt-2">
               Max 5MB. JPG or PNG recommended.
             </p>
+          </div>
+
+          <!-- Promo Discount Section -->
+          <div class="bg-white border border-black/10 p-4 rounded-xl">
+            <div class="flex items-center gap-2 mb-4">
+              <Star class="w-5 h-5 text-primaryColor" />
+              <h4 class="font-semibold text-primaryColor text-sm sm:text-base">
+                Promotional Discount
+              </h4>
+            </div>
+
+            <!-- Enable Promo Toggle -->
+            <div class="form-control mb-4">
+              <label class="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  v-model="menuItemForm.has_promo_discount"
+                  class="checkbox checkbox-sm checked:bg-primaryColor checked:text-white"
+                />
+                <span class="text-sm text-black/70">
+                  Enable promotional discount for this menu item
+                </span>
+              </label>
+            </div>
+
+            <!-- Promo Fields (shown when enabled) -->
+            <div v-if="menuItemForm.has_promo_discount" class="space-y-4">
+              <!-- Discount Type and Amount -->
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="form-control">
+                  <label class="label mb-1">
+                    <span class="label-text text-black/70 font-medium text-sm">
+                      Discount Type
+                    </span>
+                  </label>
+                  <select
+                    v-model="menuItemForm.promo_discount_type"
+                    class="select select-sm select-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
+                  >
+                    <option value="percentage">Percentage</option>
+                    <option value="fixed_amount">Fixed Amount</option>
+                  </select>
+                </div>
+
+                <div class="form-control">
+                  <label class="label mb-1">
+                    <span class="label-text text-black/70 font-medium text-sm">
+                      {{
+                        menuItemForm.promo_discount_type === 'percentage'
+                          ? 'Discount Percentage (%)'
+                          : 'Discount Amount (₱)'
+                      }}
+                    </span>
+                  </label>
+                  <input
+                    v-model.number="menuItemForm.promo_discount_percentage"
+                    v-if="menuItemForm.promo_discount_type === 'percentage'"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="100"
+                    class="input input-sm input-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
+                    placeholder="e.g., 20"
+                  />
+                  <input
+                    v-model.number="menuItemForm.promo_discount_amount"
+                    v-else
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    class="input input-sm input-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
+                    placeholder="e.g., 50.00"
+                  />
+                </div>
+              </div>
+
+              <!-- Minimum Quantity -->
+              <div class="form-control">
+                <label class="label mb-1">
+                  <span class="label-text text-black/70 font-medium text-sm">
+                    Minimum Quantity for Discount
+                  </span>
+                </label>
+                <input
+                  v-model.number="menuItemForm.promo_minimum_quantity"
+                  type="number"
+                  min="1"
+                  class="input input-sm input-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
+                  placeholder="e.g., 2"
+                />
+                <p class="text-xs text-black/50 mt-1">
+                  Customer must order at least this many items to get the
+                  discount
+                </p>
+              </div>
+
+              <!-- Date Range -->
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="form-control">
+                  <label class="label mb-1">
+                    <span class="label-text text-black/70 font-medium text-sm">
+                      Start Date
+                    </span>
+                  </label>
+                  <input
+                    v-model="menuItemForm.promo_start_date"
+                    type="datetime-local"
+                    class="input input-sm input-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
+                  />
+                </div>
+
+                <div class="form-control">
+                  <label class="label mb-1">
+                    <span class="label-text text-black/70 font-medium text-sm">
+                      End Date
+                    </span>
+                  </label>
+                  <input
+                    v-model="menuItemForm.promo_end_date"
+                    type="datetime-local"
+                    class="input input-sm input-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
+                  />
+                </div>
+              </div>
+
+              <!-- Description -->
+              <div class="form-control">
+                <label class="label mb-1">
+                  <span class="label-text text-black/70 font-medium text-sm">
+                    Promo Description
+                  </span>
+                </label>
+                <textarea
+                  v-model="menuItemForm.promo_description"
+                  class="textarea textarea-sm textarea-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
+                  rows="2"
+                  placeholder="e.g., Buy 2 get 20% off! Limited time offer."
+                ></textarea>
+              </div>
+
+              <!-- Preview -->
+              <div
+                class="bg-primaryColor/5 border border-primaryColor/30 p-3 rounded-lg"
+              >
+                <h5 class="font-medium text-primaryColor mb-2">
+                  Discount Preview
+                </h5>
+                <div class="text-sm text-black/70">
+                  <p v-if="menuItemForm.promo_discount_type === 'percentage'">
+                    <strong
+                      >{{
+                        menuItemForm.promo_discount_percentage || 0
+                      }}%</strong
+                    >
+                    off when ordering
+                    <strong>{{
+                      menuItemForm.promo_minimum_quantity || 1
+                    }}</strong>
+                    or more items
+                  </p>
+                  <p v-else>
+                    <strong
+                      >₱{{ menuItemForm.promo_discount_amount || 0 }}</strong
+                    >
+                    off when ordering
+                    <strong>{{
+                      menuItemForm.promo_minimum_quantity || 1
+                    }}</strong>
+                    or more items
+                  </p>
+                  <p v-if="menuItemForm.promo_description" class="mt-1 text-xs">
+                    "{{ menuItemForm.promo_description }}"
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div class="flex justify-end gap-3 pt-4 border-t border-black/10">
@@ -2148,7 +2462,14 @@
             </p>
 
             <div class="space-y-3">
-              <label class="flex items-center gap-3 cursor-pointer">
+              <!-- Only show quality inspection option if item hasn't passed inspection yet -->
+              <label
+                v-if="
+                  approveModal.item &&
+                  approveModal.item.passed_inspections === 0
+                "
+                class="flex items-center gap-3 cursor-pointer"
+              >
                 <input
                   type="radio"
                   v-model="approveModal.requireQualityCheck"
@@ -2165,6 +2486,26 @@
                 </div>
               </label>
 
+              <!-- Show success message if already passed inspection -->
+              <div
+                v-if="
+                  approveModal.item && approveModal.item.passed_inspections > 0
+                "
+                class="flex items-center gap-3 p-3 bg-green-50 border border-green-200 rounded-lg"
+              >
+                <CheckCircle class="w-5 h-5 text-green-600" />
+                <div>
+                  <div class="font-medium text-green-800">
+                    Quality Inspection Already Passed
+                    <font-awesome-icon icon="fa-solid fa-check" />
+                  </div>
+                  <div class="text-xs text-green-600">
+                    This item has already passed quality inspection and is ready
+                    for approval.
+                  </div>
+                </div>
+              </div>
+
               <label class="flex items-center gap-3 cursor-pointer">
                 <input
                   type="radio"
@@ -2177,7 +2518,12 @@
                     Approve Directly
                   </div>
                   <div class="text-xs text-primaryColor">
-                    Skip quality check (use with caution)
+                    {{
+                      approveModal.item &&
+                      approveModal.item.passed_inspections > 0
+                        ? 'Item has passed quality inspection'
+                        : 'Skip quality check (use with caution)'
+                    }}
                   </div>
                 </div>
               </label>
@@ -2235,7 +2581,7 @@
 
     <!-- Menu Item Details Modal -->
     <div v-if="showDetailsModal && selectedMenuItem" class="modal modal-open">
-      <div class="modal-box max-w-4xl">
+      <div class="modal-box max-w-4xl max-h-[90vh] overflow-y-auto">
         <h3 class="font-bold text-lg text-primaryColor mb-4">
           {{ selectedMenuItem.item_name }}
         </h3>
@@ -2312,17 +2658,6 @@
                   }}</span>
                 </div>
                 <div class="flex justify-between">
-                  <span class="text-gray-600">Profit Margin:</span>
-                  <span class="font-medium text-primaryColor">
-                    {{
-                      calculateProfitMargin(
-                        selectedMenuItem.selling_price,
-                        selectedMenuItem.cost_price
-                      )
-                    }}%
-                  </span>
-                </div>
-                <div class="flex justify-between">
                   <span class="text-gray-600">Profit Amount:</span>
                   <span class="font-medium text-success">
                     {{
@@ -2332,6 +2667,18 @@
                       )
                     }}
                   </span>
+                </div>
+                <!-- Suggested per-serving price (30–35% markup) -->
+                <div
+                  class="mt-2 p-2 rounded-lg bg-green-50 border border-green-200"
+                >
+                  <div class="text-xs text-green-800">
+                    <span class="font-medium"
+                      >Suggested price per serving (30–35% markup):</span
+                    >
+                    {{ formatCurrency(detailsSuggestedPerServingRange.min) }} –
+                    {{ formatCurrency(detailsSuggestedPerServingRange.max) }}
+                  </div>
                 </div>
               </div>
             </div>
@@ -2359,24 +2706,80 @@
             </div>
           </div>
 
-          <!-- Recipe Ingredients Preview -->
-          <div>
+          <!-- Promo Discount Information -->
+          <div
+            v-if="
+              selectedMenuItem.promo_info &&
+              selectedMenuItem.promo_info.is_active
+            "
+          >
             <h4 class="font-semibold text-primaryColor mb-3">
-              Recipe Ingredients
+              <Star class="w-4 h-4 inline mr-1" />
+              Active Promotion
             </h4>
-            <div class="bg-gray-50 p-4 rounded-lg">
-              <p class="text-sm text-gray-600 mb-2">
-                This menu item is based on the "{{
-                  selectedMenuItem.recipe_name
-                }}" recipe. Full ingredient details available in Recipe
-                Management.
-              </p>
-              <button
-                @click="$router.push('/production/recipes')"
-                class="btn btn-outline btn-sm font-thin text-primaryColor hover:bg-primaryColor/10"
-              >
-                View Recipe Details
-              </button>
+            <div class="bg-success/10 border border-success/30 p-4 rounded-lg">
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                <div>
+                  <div class="font-medium text-success mb-1">
+                    Discount Details
+                  </div>
+                  <p
+                    v-if="
+                      selectedMenuItem.promo_info.discount_type === 'percentage'
+                    "
+                  >
+                    <strong
+                      >{{
+                        selectedMenuItem.promo_info.discount_percentage
+                      }}%</strong
+                    >
+                    off
+                  </p>
+                  <p v-else>
+                    <strong
+                      >₱{{
+                        selectedMenuItem.promo_info.discount_amount
+                      }}</strong
+                    >
+                    off
+                  </p>
+                  <p class="text-xs text-success/70">
+                    Minimum quantity:
+                    {{ selectedMenuItem.promo_info.minimum_quantity }} items
+                  </p>
+                </div>
+                <div>
+                  <div class="font-medium text-success mb-1">Valid Period</div>
+                  <p class="text-xs text-success/70">
+                    <span v-if="selectedMenuItem.promo_info.start_date">
+                      From:
+                      {{
+                        parseFromAPI(
+                          selectedMenuItem.promo_info.start_date
+                        ).toLocaleDateString('en-PH', {
+                          timeZone: 'Asia/Manila',
+                        })
+                      }}
+                    </span>
+                    <span v-if="selectedMenuItem.promo_info.end_date">
+                      Until:
+                      {{
+                        parseFromAPI(
+                          selectedMenuItem.promo_info.end_date
+                        ).toLocaleDateString('en-PH', {
+                          timeZone: 'Asia/Manila',
+                        })
+                      }}
+                    </span>
+                  </p>
+                </div>
+              </div>
+              <div v-if="selectedMenuItem.promo_info.description" class="mt-3">
+                <div class="font-medium text-success mb-1">Description</div>
+                <p class="text-sm text-success/80">
+                  {{ selectedMenuItem.promo_info.description }}
+                </p>
+              </div>
             </div>
           </div>
 
@@ -2389,8 +2792,24 @@
               <p class="text-sm text-gray-600 mb-3">
                 Track quality control history for this menu item.
               </p>
+
+              <!-- Show message when quality inspection already passed -->
+              <div
+                v-if="selectedMenuItem.passed_inspections > 0"
+                class="mb-3 p-3 bg-green-50 border border-green-200 rounded-lg"
+              >
+                <div class="flex items-center gap-2">
+                  <CheckCircle class="w-4 h-4 text-green-600" />
+                  <span class="text-sm text-green-800 font-medium">
+                    Quality inspection already passed! This item has been
+                    approved for production.
+                  </span>
+                </div>
+              </div>
+
               <div class="flex gap-2">
                 <button
+                  v-if="selectedMenuItem.passed_inspections === 0"
                   @click="createQualityInspection(selectedMenuItem)"
                   class="btn btn-sm bg-primaryColor text-white font-thin hover:bg-primaryColor/80 hover:border-none hover:shadow-none"
                   :disabled="loading"

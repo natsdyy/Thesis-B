@@ -440,6 +440,84 @@ export const useLeaveStore = defineStore('leave', () => {
     }
   };
 
+  // Fetch SIL credits for current employee
+  const fetchSILCredits = async () => {
+    try {
+      loading.value = true;
+      error.value = null;
+
+      const response = await axios.get(
+        getApiUrl('/leave/sil-credits'),
+        getAuthHeaders()
+      );
+
+      if (response.data.success) {
+        return response.data.data;
+      } else {
+        throw new Error(response.data.message);
+      }
+    } catch (err) {
+      error.value = err.response?.data?.message || err.message;
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  // Fetch all SIL credits (Admin/HR only)
+  const fetchAllSILCredits = async (filters = {}) => {
+    try {
+      loading.value = true;
+      error.value = null;
+
+      const params = new URLSearchParams();
+      if (filters.year) params.append('year', filters.year);
+      if (filters.department) params.append('department', filters.department);
+      if (filters.branch_id) params.append('branch_id', filters.branch_id);
+
+      const response = await axios.get(
+        getApiUrl(`/leave/sil-credits/all?${params.toString()}`),
+        getAuthHeaders()
+      );
+
+      if (response.data.success) {
+        return response.data.data;
+      } else {
+        throw new Error(response.data.message);
+      }
+    } catch (err) {
+      error.value = err.response?.data?.message || err.message;
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  // Initialize SIL credits for all employees (Admin/HR only)
+  const initializeSILCredits = async (year) => {
+    try {
+      loading.value = true;
+      error.value = null;
+
+      const response = await axios.post(
+        getApiUrl('/leave/sil-credits/initialize'),
+        { year },
+        getAuthHeaders()
+      );
+
+      if (response.data.success) {
+        return response.data;
+      } else {
+        throw new Error(response.data.message);
+      }
+    } catch (err) {
+      error.value = err.response?.data?.message || err.message;
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
   // Refresh all data
   const refreshAll = async () => {
     await Promise.all([
@@ -480,6 +558,9 @@ export const useLeaveStore = defineStore('leave', () => {
     fetchDepartmentEmployeeRequests,
     fetchLeaveStatistics,
     fetchLeaveHistory,
+    fetchSILCredits,
+    fetchAllSILCredits,
+    initializeSILCredits,
     clearError,
     refreshAll,
   };

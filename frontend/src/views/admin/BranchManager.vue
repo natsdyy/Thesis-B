@@ -3,6 +3,7 @@
   import { useBranchStore } from '../../stores/branchStore';
   import { useUserStore } from '../../stores/userStore';
   import { useThemeStore } from '../../stores/themeStore';
+  import { useAuthStore } from '../../stores/authStore';
   import { openaiService } from '../../services/openaiService';
   import { apiConfig } from '../../config/api.js';
   import {
@@ -23,11 +24,13 @@
     EllipsisVertical,
     BadgeCheck,
     UserCheck,
+    Building2,
   } from 'lucide-vue-next';
 
   const branchStore = useBranchStore();
   const userStore = useUserStore();
   const themeStore = useThemeStore();
+  const authStore = useAuthStore();
 
   // Reactive data
   const searchQuery = ref('');
@@ -79,12 +82,50 @@
   const selectedAddress = ref('');
   const selectedLat = ref(null);
   const selectedLng = ref(null);
+  const manualLat = ref(null);
+  const manualLng = ref(null);
   const mapContainer = ref(null);
   const map = ref(null);
   const marker = ref(null);
+  const countrysideMarkers = ref([]);
+
+  // Autocomplete state for OpenStreetMap (Nominatim)
+  const isSearching = ref(false);
+  const suggestions = ref([]);
+  const showSuggestions = ref(false);
+
+  // Simple debounce utility for input-driven fetches
+  const debounce = (fn, wait = 300) => {
+    let t;
+    return (...args) => {
+      clearTimeout(t);
+      t = setTimeout(() => fn(...args), wait);
+    };
+  };
+
+  // Cavite-only geocoding bounds (left, top, right, bottom)
+  // These coordinates cover Cavite province generously
+  const CAVITE_BOUNDS = {
+    left: 120.6, // min lon
+    top: 14.6, // max lat
+    right: 121.1, // max lon
+    bottom: 13.8, // min lat
+  };
+
+  const buildSearchUrl = (q, limit = 10) => {
+    const { left, top, right, bottom } = CAVITE_BOUNDS;
+    return (
+      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}` +
+      `&limit=${limit}&addressdetails=1&countrycodes=ph&dedupe=1` +
+      `&viewbox=${left},${top},${right},${bottom}&bounded=1`
+    );
+  };
 
   // Statistics
   const branchStats = computed(() => branchStore.stats);
+
+  // Check if user is Board Director
+  const isBoardDirector = computed(() => authStore.isBoardDirector);
 
   // Form data
   const branchForm = ref({
@@ -96,6 +137,7 @@
     country: '',
     is_active: true,
     description: '',
+    image_url: '',
     latitude: null,
     longitude: null,
     radius_meters: 2,
@@ -258,6 +300,14 @@
       locationSearch.value = branchForm.value.address;
     }
 
+    // Pre-fill manual coordinates if available
+    if (branchForm.value.latitude && branchForm.value.longitude) {
+      manualLat.value = branchForm.value.latitude;
+      manualLng.value = branchForm.value.longitude;
+      selectedLat.value = branchForm.value.latitude;
+      selectedLng.value = branchForm.value.longitude;
+    }
+
     // Reset selected address
     selectedAddress.value = '';
 
@@ -267,6 +317,20 @@
     // Initialize map after modal opens
     setTimeout(() => {
       initMap();
+      // If we have existing coordinates, place marker on map
+      if (
+        Number.isFinite(branchForm.value.latitude) &&
+        Number.isFinite(branchForm.value.longitude)
+      ) {
+        placeMarker(
+          {
+            lat: branchForm.value.latitude,
+            lng: branchForm.value.longitude,
+          },
+          false,
+          { preserveSelectedAddress: true }
+        );
+      }
     }, 100);
   };
 
@@ -291,6 +355,11 @@
         placeMarker(event.latlng, true);
       });
 
+      // Load and display Countryside Steakhouse locations after a short delay
+      setTimeout(() => {
+        loadCountrysideLocations();
+      }, 500);
+
       // If there's a search query, search for it
       if (locationSearch.value.trim()) {
         searchLocation();
@@ -310,112 +379,413 @@
     }
   };
 
+  // Load all Countryside Steakhouse locations in Cavite
+  const loadCountrysideLocations = async () => {
+    if (!map.value) {
+      console.log('Map not initialized yet, skipping Countryside locations');
+      return;
+    }
+
+    try {
+      console.log('Loading Countryside Steakhouse locations...');
+
+      // Hardcoded Countryside Steakhouse locations with geocoded coordinates
+      const countrysideLocations = [
+        {
+          name: 'Countryside Steakhouse Tanza',
+          address: '9VV3+6CR, Tanza, Cavite',
+          lat: 14.4056,
+          lng: 120.8531,
+        },
+        {
+          name: 'Countryside Steakhouse Malihan',
+          address: '14 Malihan St, Dasmariñas, 4114 Cavite',
+          lat: 14.3297,
+          lng: 120.9369,
+        },
+        {
+          name: 'Countryside Steakhouse Silang',
+          address: '6XFF+XMX, Silang, 4118 Cavite',
+          lat: 14.2306,
+          lng: 120.9742,
+        },
+        {
+          name: 'Countryside Burgerhouse Cantimbuhan',
+          address:
+            'Zone 4, Cantimbuhan Building, Cantimbuhan St, Poblacion, Dasmariñas, 4114 Cavite',
+          lat: 14.3297,
+          lng: 120.9369,
+        },
+        {
+          name: 'Countryside Steakhouse Noveleta',
+          address: 'Lotto Bldg Dr. J, M. Salud Rd, Noveleta, Cavite',
+          lat: 14.4292,
+          lng: 120.8769,
+        },
+        {
+          name: 'Countryside Steakhouse - P & N Countryside Steakhouse',
+          address:
+            'CW7R+8GJ, Ground Floor Robinson Place Imus, Imus, 4103 Cavite',
+          lat: 14.4297,
+          lng: 120.9369,
+        },
+        {
+          name: 'Countryside Steakhouse Poblacion Imus',
+          address:
+            'Castaneda Street, Imus Branch, Carsadang Bago, Imus, Cavite',
+          lat: 14.4297,
+          lng: 120.9369,
+        },
+        {
+          name: 'Countryside Binakayan',
+          address: 'Riverside Building, Covelandia Rd, Kawit, Cavite',
+          lat: 14.4442,
+          lng: 120.9019,
+        },
+        {
+          name: 'Countryside Steakhouse Burol Main',
+          address: 'Congressional Rd, Dasmariñas, Cavite',
+          lat: 14.3297,
+          lng: 120.9369,
+        },
+      ];
+
+      // Clear existing markers first
+      countrysideMarkers.value.forEach((marker) => {
+        if (map.value) {
+          map.value.removeLayer(marker);
+        }
+      });
+      countrysideMarkers.value = [];
+
+      // Add markers for each location
+      countrysideLocations.forEach((location, index) => {
+        console.log(
+          `Adding marker for ${location.name} at ${location.lat}, ${location.lng}`
+        );
+
+        let marker;
+
+        try {
+          // Create custom icon for Countryside Steakhouse
+          const customIcon = L.divIcon({
+            className: 'countryside-marker',
+            html: `
+              <div style="
+                background: #dc2626;
+                color: white;
+                border: 2px solid white;
+                border-radius: 50%;
+                width: 30px;
+                height: 30px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-weight: bold;
+                font-size: 12px;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+              ">CS</div>
+            `,
+            iconSize: [30, 30],
+            iconAnchor: [15, 15],
+            popupAnchor: [0, -15],
+          });
+
+          marker = L.marker([location.lat, location.lng], { icon: customIcon });
+        } catch (iconError) {
+          console.warn('Custom icon failed, using default marker:', iconError);
+          // Fallback to default marker with red color
+          marker = L.marker([location.lat, location.lng], {
+            icon: L.icon({
+              iconUrl:
+                'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-red.png',
+              shadowUrl:
+                'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+              iconSize: [25, 41],
+              iconAnchor: [12, 41],
+              popupAnchor: [1, -34],
+              shadowSize: [41, 41],
+            }),
+          });
+        }
+
+        marker.addTo(map.value).bindPopup(`
+            <div style="min-width: 250px;">
+              <h3 style="margin: 0 0 8px 0; color: #dc2626; font-weight: bold;">
+                🥩 ${location.name}
+              </h3>
+              <p style="margin: 0 0 4px 0; font-size: 14px; color: #333;">
+                ${location.address}
+              </p>
+              <p style="margin: 0; font-size: 12px; color: #666;">
+                Branch #${index + 1} • Cavite, Philippines
+              </p>
+            </div>
+          `);
+
+        countrysideMarkers.value.push(marker);
+      });
+
+      console.log(
+        `Successfully added ${countrysideMarkers.value.length} Countryside markers to map`
+      );
+      showToast(
+        'success',
+        `Loaded ${countrysideLocations.length} Countryside Steakhouse locations in Cavite`
+      );
+    } catch (error) {
+      console.error('Failed to load Countryside locations:', error);
+      showToast('warning', 'Could not load existing Countryside locations');
+    }
+  };
+
   // Search location using Nominatim (OpenStreetMap geocoding)
   const searchLocation = async () => {
     if (!locationSearch.value.trim()) return;
 
     try {
-      // Show loading state
-      const loadingDiv = document.createElement('div');
-      loadingDiv.innerHTML = `
-        <div class="flex items-center justify-center h-full bg-blue-50 text-blue-600">
-          <div class="text-center">
-            <div class="loading loading-spinner loading-lg mb-2"></div>
-            <p class="font-medium">Searching...</p>
-          </div>
-        </div>
-      `;
-      mapContainer.value.appendChild(loadingDiv);
+      isSearching.value = true;
+      showSuggestions.value = true;
 
-      // Search using Nominatim API
-      showToast('info', 'Searching location...');
-      const response = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(locationSearch.value)}&limit=1&addressdetails=1`
-      );
+      // Prefer exact match if available; fetch top candidates
+      const url = buildSearchUrl(locationSearch.value, 10);
+      const response = await fetch(url, {
+        headers: { 'Accept-Language': 'en' },
+      });
 
-      if (response.ok) {
-        const results = await response.json();
+      if (!response.ok) throw new Error('Search request failed');
+      let results = await response.json();
+      // Hard-filter to Cavite province just in case
+      results = results.filter((r) => {
+        const a = r.address || {};
+        return (
+          (a.state && String(a.state).toLowerCase().includes('cavite')) ||
+          (a.province && String(a.province).toLowerCase().includes('cavite')) ||
+          (r.display_name &&
+            String(r.display_name).toLowerCase().includes('cavite'))
+        );
+      });
+      suggestions.value = results.map((r) => ({
+        lat: parseFloat(r.lat),
+        lon: parseFloat(r.lon),
+        display_name: r.display_name,
+        address: r.address || {},
+        type: r.type,
+        class: r.class,
+      }));
 
-        if (results.length > 0) {
-          const location = results[0];
-          const lat = parseFloat(location.lat);
-          const lon = parseFloat(location.lon);
+      // Rank results to prefer administrative areas (e.g., barangay/city) matching the query
+      const ranked = rankSuggestions(locationSearch.value, suggestions.value);
+      suggestions.value = ranked;
 
-          // Center map on search result if map is ready
-          if (map.value) {
-            map.value.setView([lat, lon], 16);
-          }
-
-          // Place marker and notify (works even if map isn't ready)
-          placeMarker({ lat, lng: lon }, true);
-
-          // Update selected address
-          selectedAddress.value = location.display_name;
-
-          // Auto-populate individual address fields
-          if (location.address) {
-            // Update form fields with parsed address components
-            branchForm.value.city =
-              location.address.city ||
-              location.address.town ||
-              location.address.village ||
-              location.address.county ||
-              '';
-            branchForm.value.state =
-              location.address.state || location.address.province || '';
-            branchForm.value.postal_code = location.address.postcode || '';
-            branchForm.value.country = location.address.country || '';
-          }
-
-          // Remove loading state
-          mapContainer.value.removeChild(loadingDiv);
-        } else {
-          // Remove loading state
-          mapContainer.value.removeChild(loadingDiv);
-          showToast(
-            'warning',
-            `Location not found: "${locationSearch.value}". Please try a different search term or enter the address manually.`
-          );
-        }
+      const candidate = ranked[0];
+      if (candidate) {
+        await selectSuggestion(candidate);
       } else {
-        throw new Error('Search request failed');
+        showToast('warning', `No results for "${locationSearch.value}"`);
       }
     } catch (error) {
       console.error('Search failed:', error);
-      showToast(
-        'error',
-        `Search failed: ${error.message}. Please try again or enter the address manually.`
-      );
-
-      // Remove loading state if it exists
-      const loadingDiv = mapContainer.value.querySelector('.loading');
-      if (loadingDiv) {
-        mapContainer.value.removeChild(loadingDiv);
-      }
+      showToast('error', `Search failed: ${error.message}`);
+    } finally {
+      isSearching.value = false;
     }
   };
 
+  // Fetch suggestions as user types (debounced)
+  const fetchSuggestions = debounce(async () => {
+    const q = locationSearch.value.trim();
+    if (!q) {
+      suggestions.value = [];
+      showSuggestions.value = false;
+      return;
+    }
+    try {
+      const url = buildSearchUrl(q, 10);
+      const res = await fetch(url, { headers: { 'Accept-Language': 'en' } });
+      if (!res.ok) return;
+      let data = await res.json();
+      data = data.filter((r) => {
+        const a = r.address || {};
+        return (
+          (a.state && String(a.state).toLowerCase().includes('cavite')) ||
+          (a.province && String(a.province).toLowerCase().includes('cavite')) ||
+          (r.display_name &&
+            String(r.display_name).toLowerCase().includes('cavite'))
+        );
+      });
+      const mapped = data.map((r) => ({
+        lat: parseFloat(r.lat),
+        lon: parseFloat(r.lon),
+        display_name: r.display_name,
+        address: r.address || {},
+        type: r.type,
+        class: r.class,
+      }));
+      suggestions.value = rankSuggestions(locationSearch.value, mapped);
+      showSuggestions.value = suggestions.value.length > 0;
+    } catch (_) {
+      // ignore transient failures
+    }
+  }, 350);
+
+  const onSearchInput = () => {
+    showSuggestions.value = true;
+    fetchSuggestions();
+  };
+
+  const selectSuggestion = async (item) => {
+    // Center and drop marker
+    if (map.value) {
+      map.value.setView([item.lat, item.lon], 16);
+    }
+    // Place marker but preserve our formatted address (avoid overwriting with POI-rich reverse geocode)
+    placeMarker({ lat: item.lat, lng: item.lon }, true, {
+      preserveSelectedAddress: true,
+    });
+    selectedAddress.value = formatSuggestionAddress(item, locationSearch.value);
+
+    // Populate form fields
+    const a = item.address || {};
+    branchForm.value.city = a.city || a.town || a.village || a.county || '';
+    branchForm.value.state = a.state || a.province || '';
+    branchForm.value.postal_code = a.postcode || '';
+    branchForm.value.country = a.country || '';
+
+    // Hide suggestions after selection
+    showSuggestions.value = false;
+  };
+
+  // Display helpers for suggestion list
+  const getSuggestionTitle = (s) => {
+    const a = s.address || {};
+    const name = s.display_name || '';
+
+    // If it's a Countryside Steakhouse, show it prominently
+    if (
+      name.toLowerCase().includes('countryside') &&
+      name.toLowerCase().includes('steakhouse')
+    ) {
+      return name;
+    }
+
+    return a.village || a.suburb || a.neighbourhood || a.town || a.city || name;
+  };
+
+  const getSuggestionSubtitle = (s) => {
+    const a = s.address || {};
+    const city = a.city || a.town;
+    const province = a.state || a.province;
+    const country = a.country;
+    return [city, province, country].filter(Boolean).join(', ');
+  };
+
+  const highlightMatch = (text) => {
+    const q = locationSearch.value.trim();
+    if (!q) return text;
+    const re = new RegExp(
+      `(${q.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')})`,
+      'ig'
+    );
+    return text.replace(re, '<span class="font-semibold">$1</span>');
+  };
+
+  // Utilities: rank and format results to prefer exact Salawag-like matches
+  const rankSuggestions = (queryText, items) => {
+    const q = queryText.trim().toLowerCase();
+    const adminTypes = new Set([
+      'city',
+      'town',
+      'village',
+      'suburb',
+      'neighbourhood',
+      'hamlet',
+      'municipality',
+      'county',
+      'province',
+    ]);
+    const poiClasses = new Set(['amenity', 'shop', 'tourism', 'office']);
+
+    const score = (s) => {
+      const name = (s.display_name || '').toLowerCase();
+      const a = s.address || {};
+      const parts = [
+        a.city,
+        a.town,
+        a.village,
+        a.suburb,
+        a.neighbourhood,
+        a.hamlet,
+      ]
+        .filter(Boolean)
+        .map((x) => String(x).toLowerCase());
+
+      let sc = 0;
+
+      // Boost for Countryside Steakhouse matches
+      if (name.includes('countryside') && name.includes('steakhouse'))
+        sc += 2000;
+      if (name.includes('countryside steakhouse')) sc += 2500;
+
+      // Exact match on any admin field
+      if (parts.includes(q)) sc += 1000;
+      // Starts with query in display_name
+      if (name.startsWith(q + ',')) sc += 600;
+      if (name === q) sc += 800;
+      // Prefer administrative place types
+      if (adminTypes.has(s.type)) sc += 200;
+      // Penalize POIs unless exact name match
+      if (poiClasses.has(s.class)) sc -= 100;
+      // Minor boost if within Cavite/PH (common for your use case)
+      if ((a.state || '').toLowerCase().includes('cavite')) sc += 30;
+      if ((a.country || '').toLowerCase().includes('philippines')) sc += 10;
+      return sc;
+    };
+
+    return [...items].sort((a, b) => score(b) - score(a));
+  };
+
+  const formatSuggestionAddress = (s, queryText) => {
+    const a = s.address || {};
+    const namePref =
+      a.village || a.suburb || a.neighbourhood || a.town || a.city || queryText;
+    const city = a.city || a.town || '';
+    const province = a.state || a.province || '';
+    const country = a.country || '';
+    return [namePref, city, province, country]
+      .filter((x) => x && String(x).trim().length > 0)
+      .join(', ');
+  };
+
   // Wrapper to ensure toast fires immediately on UI action
-  const handleSearchClick = () => {
+  const handleSearchClick = async () => {
     if (!locationSearch.value.trim()) {
       showToast('warning', 'Please enter a location to search.');
       return;
     }
     showToast('info', 'Searching location...');
-    searchLocation();
+    await searchLocation();
+    // Close suggestions after search selects best candidate
+    showSuggestions.value = false;
   };
 
   // Apply the selected address to the form
   const applySelectedAddress = () => {
     if (selectedAddress.value.trim()) {
       branchForm.value.address = selectedAddress.value.trim();
-      // If coordinates were picked on the map, include them
+      // If coordinates were picked on the map or entered manually, include them
       if (
         Number.isFinite(selectedLat.value) &&
         Number.isFinite(selectedLng.value)
       ) {
         branchForm.value.latitude = selectedLat.value;
         branchForm.value.longitude = selectedLng.value;
+      } else if (
+        Number.isFinite(manualLat.value) &&
+        Number.isFinite(manualLng.value)
+      ) {
+        branchForm.value.latitude = manualLat.value;
+        branchForm.value.longitude = manualLng.value;
       }
 
       // If we have individual address components, use them
@@ -447,6 +817,102 @@
     }
   };
 
+  // Debounce timer for manual coordinate updates
+  let coordinateUpdateTimer = null;
+
+  // Update map marker and address when manual coordinates are entered
+  const updateCoordinatesFromManual = async () => {
+    // Clear previous timer
+    if (coordinateUpdateTimer) {
+      clearTimeout(coordinateUpdateTimer);
+    }
+
+    // Debounce the update to avoid feedback loops
+    coordinateUpdateTimer = setTimeout(async () => {
+      if (
+        Number.isFinite(manualLat.value) &&
+        Number.isFinite(manualLng.value) &&
+        map.value
+      ) {
+        const lat = manualLat.value;
+        const lng = manualLng.value;
+        
+        // Validate Philippines bounds
+        if (lat >= 4.5 && lat <= 21.1 && lng >= 116.9 && lng <= 127.0) {
+          // Only update if different from current selected coordinates
+          if (
+            !selectedLat.value ||
+            !selectedLng.value ||
+            Math.abs(selectedLat.value - lat) > 0.0001 ||
+            Math.abs(selectedLng.value - lng) > 0.0001
+          ) {
+            // Update selected coordinates
+            selectedLat.value = lat;
+            selectedLng.value = lng;
+            
+            // Get address using reverse geocoding
+            try {
+              const response = await fetch(
+                `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
+                {
+                  headers: {
+                    'User-Agent': 'CountrysideSteakhouse/1.0',
+                  },
+                }
+              );
+
+              if (response.ok) {
+                const data = await response.json();
+                if (data.display_name) {
+                  // Auto-populate the address field
+                  selectedAddress.value = data.display_name;
+
+                  // Auto-populate individual address fields
+                  if (data.address) {
+                    branchForm.value.city =
+                      data.address.city ||
+                      data.address.town ||
+                      data.address.village ||
+                      data.address.county ||
+                      '';
+                    branchForm.value.state =
+                      data.address.state || data.address.province || '';
+                    branchForm.value.postal_code = data.address.postcode || '';
+                    branchForm.value.country = data.address.country || '';
+                  }
+                } else {
+                  // Fallback to coordinates if no address found
+                  selectedAddress.value = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+                }
+              } else {
+                // Fallback to coordinates if geocoding fails
+                selectedAddress.value = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+              }
+            } catch (error) {
+              console.error('Reverse geocoding failed:', error);
+              // Fallback to coordinates
+              selectedAddress.value = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+            }
+            
+            // Update map marker
+            placeMarker({ lat, lng }, false, { preserveSelectedAddress: true });
+            
+            // Show feedback
+            showToast(
+              'success',
+              `Location updated: ${lat.toFixed(6)}, ${lng.toFixed(6)}. Address auto-filled.`
+            );
+          }
+        } else {
+          showToast(
+            'warning',
+            'Coordinates outside Philippines bounds. Please use valid coordinates.'
+          );
+        }
+      }
+    }, 800); // 800ms debounce
+  };
+
   // Close Google Maps modal
   const closeGoogleMapsModal = () => {
     googleMapsModal.value = false;
@@ -454,8 +920,18 @@
     selectedAddress.value = '';
     selectedLat.value = null;
     selectedLng.value = null;
+    manualLat.value = null;
+    manualLng.value = null;
 
     // Clean up map resources
+    // Remove Countryside markers
+    countrysideMarkers.value.forEach((marker) => {
+      if (map.value) {
+        map.value.removeLayer(marker);
+      }
+    });
+    countrysideMarkers.value = [];
+
     if (marker.value) {
       map.value?.removeLayer(marker.value);
       marker.value = null;
@@ -467,7 +943,8 @@
   };
 
   // Place marker on map and get address
-  const placeMarker = async (latLng, notify = false) => {
+  const placeMarker = async (latLng, notify = false, options = {}) => {
+    const preserveSelectedAddress = options.preserveSelectedAddress === true;
     // If map is initialized, maintain marker on the map
     if (map.value) {
       // Remove existing marker
@@ -485,6 +962,9 @@
     // Save selected coordinates
     selectedLat.value = latLng.lat;
     selectedLng.value = latLng.lng;
+    // Update manual input fields
+    manualLat.value = latLng.lat;
+    manualLng.value = latLng.lng;
 
     // Get address for this location using reverse geocoding
     try {
@@ -495,7 +975,9 @@
       if (response.ok) {
         const data = await response.json();
         if (data.display_name) {
-          selectedAddress.value = data.display_name;
+          if (!preserveSelectedAddress) {
+            selectedAddress.value = data.display_name;
+          }
 
           // Auto-populate individual address fields
           if (data.address) {
@@ -549,6 +1031,12 @@
     }
   };
 
+  // Reload Countryside markers
+  const reloadCountrysideMarkers = () => {
+    console.log('Manually reloading Countryside markers...');
+    loadCountrysideLocations();
+  };
+
   const zoomIn = () => {
     if (map.value) {
       map.value.zoomIn();
@@ -595,6 +1083,9 @@
               // Save coordinates from current location
               selectedLat.value = latitude;
               selectedLng.value = longitude;
+              // Update manual input fields
+              manualLat.value = latitude;
+              manualLng.value = longitude;
 
               // Auto-populate individual address fields
               if (data.address) {
@@ -745,10 +1236,33 @@
       country: '',
       is_active: true,
       description: '',
+      image_url: '',
       latitude: null,
       longitude: null,
       radius_meters: 2,
     };
+  };
+
+  // Handle image file selection and upload
+  const onImageFileSelected = async (event) => {
+    try {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      formLoading.value = true;
+      const url = await (
+        await import('../../services/branchService')
+      ).default.uploadImage(file);
+      const base = import.meta.env.VITE_API_URL || '';
+      branchForm.value.image_url = url.startsWith('http')
+        ? url
+        : `${base}${url}`;
+      showToast('success', 'Image uploaded');
+    } catch (error) {
+      console.error('Image upload failed:', error);
+      showToast('error', error.message || 'Image upload failed');
+    } finally {
+      formLoading.value = false;
+    }
   };
 
   const submitBranch = () => {
@@ -908,7 +1422,7 @@
   });
 </script>
 <template>
-  <div class="container mx-auto p-6 max-w-6xl">
+  <div class="container mx-auto p-4">
     <!-- Header -->
     <div class="text-center mb-8">
       <h1 class="text-4xl font-bold text-primaryColor mb-2">
@@ -920,11 +1434,8 @@
     </div>
 
     <!-- Add Branch Button -->
-    <div class="flex justify-end mb-6">
-      <button
-        @click="openCreateModal"
-        class="btn bg-primaryColor text-white hover:bg-primaryColor/80 border-none btn-sm font-thin"
-      >
+    <div v-if="!isBoardDirector" class="flex justify-end mb-6">
+      <button @click="openCreateModal" class="btn  btn-sm">
         <Plus class="w-4 h-4 mr-2" />
         Add Branch
       </button>
@@ -1000,7 +1511,7 @@
         </select>
         <button
           @click="loadBranches"
-          class="btn btn-outline text-primaryColor border-primaryColor hover:bg-primaryColor hover:text-white"
+          class="btn btn-outline border-gray-300"
           :disabled="branchStore.loading"
         >
           <RefreshCw
@@ -1040,32 +1551,35 @@
       <div class="card-body p-0">
         <div class="overflow-x-auto">
           <table
-            :class="[
-              'table transition-colors duration-300',
-              themeStore.isDarkMode ? 'table-zebra-dark' : 'table-zebra',
-            ]"
+            :class="['table transition-colors duration-300', 'table-zebra']"
           >
             <thead>
               <tr>
                 <th>Branch Info</th>
                 <th>Location</th>
                 <th>Status</th>
-                <th>Actions</th>
+                <th v-if="!isBoardDirector">Actions</th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="branch in filteredBranches" :key="branch.id">
                 <td>
-                  <div>
-                    <div class="font-bold">{{ branch.name }}</div>
-                    <div class="text-sm text-base-content/70">
-                      Code: {{ branch.code }}
-                    </div>
-                    <div
-                      v-if="branch.description"
-                      class="text-xs text-base-content/50 mt-1"
-                    >
-                      {{ branch.description }}
+                  <div class="flex items-center gap-3">
+                    <img
+                      v-if="branch.image_url"
+                      :src="branch.image_url"
+                      alt="Branch"
+                      class="w-12 h-12 rounded object-cover border"
+                      @error="(e) => (e.target.style.display = 'none')"
+                    />
+                    <div>
+                      <div class="font-bold">{{ branch.name }}</div>
+                      <div
+                        v-if="branch.description"
+                        class="text-xs text-base-content/50 mt-1"
+                      >
+                        {{ branch.description }}
+                      </div>
                     </div>
                   </div>
                 </td>
@@ -1098,7 +1612,7 @@
                     }}
                   </div>
                 </td>
-                <td>
+                <td v-if="!isBoardDirector">
                   <div class="dropdown dropdown-left">
                     <EllipsisVertical
                       class="w-4 h-4 cursor-pointer"
@@ -1161,7 +1675,7 @@
             }}
           </p>
           <button
-            v-if="!searchQuery"
+            v-if="!searchQuery && !isBoardDirector"
             @click="openCreateModal"
             class="btn bg-primaryColor text-white hover:bg-primaryColor/80 border-none"
           >
@@ -1237,10 +1751,10 @@
 
           <!-- Address Section -->
           <div
-            class="grid grid-cols-1 lg:grid-cols-1 gap-3 sm:gap-4 bg-white border border-black/10 p-4 rounded-xl"
+            class="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 bg-white border border-black/10 p-4 rounded-xl"
           >
             <!-- Address -->
-            <div class="form-control">
+            <div class="form-control col-span-2">
               <label class="label mb-1">
                 <span class="label-text"
                   >Address <span class="text-red-500">*</span></span
@@ -1262,6 +1776,35 @@
                   <font-awesome-icon icon="fa-solid fa-map" />
                   Map
                 </button>
+              </div>
+            </div>
+
+            <!-- Optional Image URL with preview or upload -->
+            <div class="form-control col-span-2">
+              <label class="label mb-1">
+                <span class="label-text">Branch Image (optional)</span>
+              </label>
+              <div class="flex gap-2">
+                <input
+                  v-model="branchForm.image_url"
+                  type="text"
+                  placeholder="https://example.com/image.jpg or /uploads/branch-images/file.png"
+                  class="input input-sm sm:input-md input-bordered w-full"
+                />
+                <input
+                  type="file"
+                  accept="image/*"
+                  class="file-input file-input-sm file-input-bordered"
+                  @change="onImageFileSelected"
+                />
+              </div>
+              <div v-if="branchForm.image_url" class="mt-2">
+                <img
+                  :src="branchForm.image_url"
+                  alt="Branch Image Preview"
+                  class="w-full h-32 object-cover rounded-lg border"
+                  @error="(e) => (e.target.style.display = 'none')"
+                />
               </div>
             </div>
           </div>
@@ -1323,10 +1866,15 @@
             </div>
 
             <!-- Radius (meters) -->
-            <div class="form-control">
+            <div
+              class="form-control w-full max-w-md mx-auto sm:max-w-sm md:max-w-md"
+            >
               <label class="label mb-1">
-                <span class="label-text">Allowed Radius (meters)</span>
+                <span class="label-text text-sm sm:text-base"
+                  >Allowed Radius (m)</span
+                >
               </label>
+
               <input
                 v-model.number="branchForm.radius_meters"
                 type="number"
@@ -1335,9 +1883,12 @@
                 placeholder="e.g., 2"
                 class="input input-sm sm:input-md input-bordered w-full"
               />
-              <span class="text-xs text-gray-500 mt-1"
-                >Used for attendance geofencing tolerance.</span
+
+              <span
+                class="text-xs text-gray-500 mt-1 block text-center sm:text-left"
               >
+                Used for attendance geofencing tolerance.
+              </span>
             </div>
           </div>
 
@@ -1417,7 +1968,7 @@
               <button
                 type="button"
                 @click="closeModal"
-                class="btn btn-outline btn-sm text-gray-600 hover:bg-gray-100 font-thin"
+                class="btn  btn-sm text-gray-600 hover:bg-gray-100 font-thin"
                 :disabled="branchStore.loading"
               >
                 <X class="w-4 h-4 mr-1" />
@@ -1524,25 +2075,87 @@
                 themeStore.themeClasses.input,
               ]"
               placeholder="Search for business location, landmark, or address..."
+              @input="onSearchInput"
               @keyup.enter="handleSearchClick"
             />
             <div class="flex gap-2 justify-end items-center">
               <button
                 @click="handleSearchClick"
-                class="btn btn-sm bg-gray-200 font-thin hover:bg-gray-300 text-gray-700 border-none"
+                class="btn bg-gray-200 font-thin hover:bg-gray-300 text-gray-700 border-none"
               >
                 <font-awesome-icon icon="fa-solid fa-search" />
                 Search
               </button>
               <button
                 @click="getCurrentLocation"
-                class="btn btn-sm bg-primaryColor font-thin hover:bg-primaryColor/80 text-white border-none"
+                class="btn bg-primaryColor !font-thin hover:bg-primaryColor/80 text-white border-none"
                 title="Get your current location"
               >
                 <font-awesome-icon icon="fa-solid fa-location-dot" />
                 Current
               </button>
             </div>
+          </div>
+
+          <!-- Autocomplete dropdown -->
+          <div
+            v-if="showSuggestions && suggestions.length"
+            class="mt-1 max-h-72 overflow-auto rounded-md border border-base-200 bg-base-100 shadow"
+          >
+            <ul>
+              <li
+                v-for="(s, idx) in suggestions"
+                :key="idx"
+                class="px-3 py-2 cursor-pointer hover:bg-base-200 text-sm border-b last:border-b-0"
+                @click="selectSuggestion(s)"
+              >
+                <div class="flex items-center gap-2">
+                  <span
+                    :class="[
+                      'text-primaryColor',
+                      (s.display_name || '')
+                        .toLowerCase()
+                        .includes('countryside') &&
+                      (s.display_name || '')
+                        .toLowerCase()
+                        .includes('steakhouse')
+                        ? 'text-red-500'
+                        : 'text-primaryColor',
+                    ]"
+                  >
+                    {{
+                      (s.display_name || '')
+                        .toLowerCase()
+                        .includes('countryside') &&
+                      (s.display_name || '')
+                        .toLowerCase()
+                        .includes('steakhouse')
+                        ? '🥩'
+                        : '📍'
+                    }}
+                  </span>
+                  <div class="flex-1">
+                    <div
+                      :class="[
+                        'font-medium',
+                        (s.display_name || '')
+                          .toLowerCase()
+                          .includes('countryside') &&
+                        (s.display_name || '')
+                          .toLowerCase()
+                          .includes('steakhouse')
+                          ? 'text-red-600 font-bold'
+                          : '',
+                      ]"
+                      v-html="highlightMatch(getSuggestionTitle(s))"
+                    ></div>
+                    <div class="text-xs opacity-70">
+                      {{ getSuggestionSubtitle(s) }}
+                    </div>
+                  </div>
+                </div>
+              </li>
+            </ul>
           </div>
 
           <!-- Embedded Google Maps -->
@@ -1582,6 +2195,13 @@
                 title="Zoom out"
               >
                 <font-awesome-icon icon="fa-solid fa-minus" />
+              </button>
+              <button
+                @click="reloadCountrysideMarkers"
+                class="btn btn-xs bg-red-500 text-white hover:bg-red-600 border border-red-600 shadow-md"
+                title="Reload Countryside markers"
+              >
+                <font-awesome-icon icon="fa-solid fa-map-marker-alt" />
               </button>
             </div>
           </div>
@@ -1627,6 +2247,60 @@
           ></textarea>
         </div>
 
+        <!-- Latitude and Longitude Input Fields -->
+        <div class="mb-4 grid grid-cols-2 gap-3">
+          <div>
+            <label class="label pb-2">
+              <span
+                :class="[
+                  'label-text font-medium',
+                  themeStore.themeClasses.textSecondary,
+                ]"
+                >Latitude</span
+              >
+            </label>
+            <input
+              v-model.number="manualLat"
+              type="number"
+              step="any"
+              :class="[
+                'input input-bordered w-full transition-colors duration-300',
+                themeStore.themeClasses.input,
+              ]"
+              placeholder="e.g. 14.3297"
+              @input="updateCoordinatesFromManual"
+            />
+            <p class="text-xs text-gray-500 mt-1">
+              Auto-fills when you click the map
+            </p>
+          </div>
+          <div>
+            <label class="label pb-2">
+              <span
+                :class="[
+                  'label-text font-medium',
+                  themeStore.themeClasses.textSecondary,
+                ]"
+                >Longitude</span
+              >
+            </label>
+            <input
+              v-model.number="manualLng"
+              type="number"
+              step="any"
+              :class="[
+                'input input-bordered w-full transition-colors duration-300',
+                themeStore.themeClasses.input,
+              ]"
+              placeholder="e.g. 120.9369"
+              @input="updateCoordinatesFromManual"
+            />
+            <p class="text-xs text-gray-500 mt-1">
+              Auto-fills when you click the map
+            </p>
+          </div>
+        </div>
+
         <div class="modal-action">
           <button
             class="btn btn-outline font-thin btn-sm text-black/50 border-none hover:bg-gray-100"
@@ -1635,7 +2309,7 @@
             Cancel
           </button>
           <button
-            class="btn btn-sm bg-primaryColor text-white hover:bg-primaryColor/80 border-none font-thin"
+            class="btn btn-sm bg-primaryColor text-white hover:bg-primaryColor/80 border-none !font-thin"
             @click="applySelectedAddress"
             :disabled="!selectedAddress.trim()"
           >

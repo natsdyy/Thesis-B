@@ -154,6 +154,15 @@ class ProductionInventory {
           "mi.is_featured",
           "mi.tags",
           "mi.image_url",
+          // Promo discount fields
+          "mi.has_promo_discount",
+          "mi.promo_minimum_quantity",
+          "mi.promo_discount_percentage",
+          "mi.promo_discount_amount",
+          "mi.promo_discount_type",
+          "mi.promo_description",
+          "mi.promo_start_date",
+          "mi.promo_end_date",
           "r.recipe_name",
           "r.batch_size",
           "r.batch_unit",
@@ -196,7 +205,7 @@ class ProductionInventory {
 
       const results = await query.orderBy("mi.menu_item_name", "asc");
 
-      // Calculate production capacity for each item
+      // Calculate production capacity and promo_info for each item
       for (let item of results) {
         try {
           // Get recipe ingredients for production capacity calculation
@@ -222,6 +231,10 @@ class ProductionInventory {
             ingredients,
             item.batch_size
           );
+
+          // Calculate promo_info using MenuItem's method
+          const MenuItem = require("./MenuItem");
+          item.promo_info = MenuItem.calculatePromoInfo(item);
         } catch (error) {
           console.error(
             `Error calculating production capacity for item ${item.id}:`,
@@ -233,6 +246,7 @@ class ProductionInventory {
             limiting_factor: "Calculation error",
             can_produce: false,
           };
+          item.promo_info = null;
         }
       }
 
@@ -607,9 +621,9 @@ class ProductionInventory {
   }
 
   // Get recent activity for production inventory
-  static async getRecentActivity(limit = 10) {
+  static async getRecentActivity(limit = null) {
     try {
-      // Get inventory update activities
+      // Get all audit log activities (not just INVENTORY_UPDATED)
       const inventoryActivities = await db.raw(
         `
         SELECT 
@@ -627,11 +641,9 @@ class ProductionInventory {
         LEFT JOIN menu_items mi ON mal.menu_item_id = mi.id AND mi.deleted_at IS NULL
         LEFT JOIN production_inventory pi ON mal.menu_item_id = pi.menu_item_id
         LEFT JOIN employees e ON mal.employee_id = e.id
-        WHERE mal.action_type = ?
+        WHERE mal.action_type IN ('CREATED', 'UPDATED', 'INVENTORY_UPDATED', 'SAMPLE_PLANNED', 'SAMPLE_STARTED', 'SAMPLE_COMPLETED', 'QUALITY_INSPECTION', 'QUALITY_PASSED', 'QUALITY_FAILED', 'APPROVED_FOR_PRODUCTION', 'ADDED_TO_INVENTORY', 'DELETED')
         ORDER BY mal.created_at DESC
-        LIMIT ?
-      `,
-        ["INVENTORY_UPDATED", limit]
+      `
       );
 
       // Get production batch activities
@@ -656,18 +668,14 @@ class ProductionInventory {
         LEFT JOIN employees e ON pb.assigned_to = e.id
         WHERE pb.status IN ('In Progress', 'Completed', 'Quality Check', 'Failed')
         ORDER BY pb.updated_at DESC
-        LIMIT ?
-      `,
-        [limit]
+      `
       );
 
       // Combine and sort activities
       const allActivities = [
         ...inventoryActivities.rows,
         ...productionActivities.rows,
-      ]
-        .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-        .slice(0, limit);
+      ].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
       // Parse and format activities
       return allActivities.map((activity) => {
@@ -734,87 +742,79 @@ class ProductionInventory {
 
       const offset = (page - 1) * limit;
 
-      // Build WHERE conditions dynamically
-      const whereConditions = [];
-      const queryParams = [];
+      // Build base query using Knex query builder
+      let query = db("menu_item_audit_log as mal")
+        .select(
+          "mal.id",
+          "mal.action_type",
+          "mal.action_details",
+          "mal.notes",
+          "mal.created_at",
+          "mal.employee_id as user_id",
+          "mal.menu_item_id",
+          db.raw("COALESCE(mi.menu_item_name, 'Unknown Item') as item_name"),
+          db.raw("COALESCE(pi.available_quantity, 0) as available_quantity"),
+          db.raw(
+            "COALESCE(COALESCE(e.first_name,'') || ' ' || COALESCE(e.last_name,''), 'Unknown Employee') as performed_by"
+          )
+        )
+        .leftJoin("menu_items as mi", function () {
+          this.on("mal.menu_item_id", "=", "mi.id").andOnNull("mi.deleted_at");
+        })
+        .leftJoin(
+          "production_inventory as pi",
+          "mal.menu_item_id",
+          "pi.menu_item_id"
+        )
+        .leftJoin("employees as e", "mal.employee_id", "e.id");
 
-      // Base condition
-      whereConditions.push("1=1");
-
-      // Search filter
+      // Apply filters
       if (search) {
-        whereConditions.push(`(
-          mi.menu_item_name ILIKE $${queryParams.length + 1} OR
-          e.name ILIKE $${queryParams.length + 1} OR
-          mal.notes ILIKE $${queryParams.length + 1}
-        )`);
-        queryParams.push(`%${search}%`);
+        query = query.where(function () {
+          this.whereILike("mi.menu_item_name", `%${search}%`)
+            .orWhereILike(
+              db.raw(
+                "COALESCE(e.first_name,'') || ' ' || COALESCE(e.last_name,'')"
+              ),
+              `%${search}%`
+            )
+            .orWhereILike("mal.notes", `%${search}%`);
+        });
       }
 
-      // Action type filter
       if (action_type) {
-        whereConditions.push(`mal.action_type = $${queryParams.length + 1}`);
-        queryParams.push(action_type);
+        query = query.where("mal.action_type", action_type);
       }
 
-      // Date filters
       if (date_from) {
-        whereConditions.push(`mal.created_at >= $${queryParams.length + 1}`);
-        queryParams.push(date_from);
+        query = query.where("mal.created_at", ">=", date_from);
       }
 
       if (date_to) {
-        whereConditions.push(`mal.created_at <= $${queryParams.length + 1}`);
-        queryParams.push(date_to);
+        query = query.where("mal.created_at", "<=", date_to);
       }
 
-      // Menu item filter
       if (menu_item_id) {
-        whereConditions.push(`mal.menu_item_id = $${queryParams.length + 1}`);
-        queryParams.push(menu_item_id);
+        query = query.where("mal.menu_item_id", menu_item_id);
       }
 
-      const whereClause = whereConditions.join(" AND ");
+      // Get total count
+      const countQuery = query
+        .clone()
+        .clearSelect()
+        .clearOrder()
+        .count("* as count");
+      const countResult = await countQuery.first();
+      const total = parseInt(countResult.count);
 
-      // Get total count with optimized query
-      const countQuery = `
-        SELECT COUNT(*) as count
-        FROM menu_item_audit_log mal
-        LEFT JOIN menu_items mi ON mal.menu_item_id = mi.id AND mi.deleted_at IS NULL
-        LEFT JOIN employees e ON mal.employee_id = e.id
-        WHERE ${whereClause}
-      `;
-
-      const countResult = await db.raw(countQuery, queryParams);
-      const total = parseInt(countResult.rows[0].count);
-
-      // Get paginated results with optimized query
-      const dataQuery = `
-        SELECT 
-          mal.id,
-          mal.action_type,
-          mal.action_details,
-          mal.notes,
-          mal.created_at,
-          mal.employee_id as user_id,
-          mal.menu_item_id,
-          COALESCE(mi.menu_item_name, 'Unknown Item') as item_name,
-          COALESCE(pi.available_quantity, 0) as available_quantity,
-          COALESCE(COALESCE(e.first_name,'') || ' ' || COALESCE(e.last_name,''), 'Unknown Employee') as performed_by
-        FROM menu_item_audit_log mal
-        LEFT JOIN menu_items mi ON mal.menu_item_id = mi.id AND mi.deleted_at IS NULL
-        LEFT JOIN production_inventory pi ON mal.menu_item_id = pi.menu_item_id
-        LEFT JOIN employees e ON mal.employee_id = e.id
-        WHERE ${whereClause}
-        ORDER BY mal.created_at DESC
-        LIMIT ? OFFSET ?
-      `;
-
-      const dataParams = [...queryParams, limit, offset];
-      const activitiesResult = await db.raw(dataQuery, dataParams);
+      // Get paginated results
+      const activities = await query
+        .orderBy("mal.created_at", "desc")
+        .limit(limit)
+        .offset(offset);
 
       // Parse action_details and add quantity information
-      const processedActivities = activitiesResult.rows.map((activity) => {
+      const processedActivities = activities.map((activity) => {
         const details = activity.action_details
           ? JSON.parse(activity.action_details)
           : {};
@@ -1707,11 +1707,103 @@ class ProductionInventory {
 
       await trx.commit();
 
-      return await this.getById(inventoryId);
+      // Ensure inventoryId is a primitive integer, not an object
+      const idValue =
+        typeof inventoryId === "object"
+          ? inventoryId.id || inventoryId[0]
+          : inventoryId;
+      return await this.getById(idValue);
     } catch (error) {
       await trx.rollback();
       console.error(
         "Error creating production inventory from quality approval:",
+        error
+      );
+      throw new Error("Failed to create production inventory entry");
+    }
+  }
+
+  // Create production inventory entry (called when menu item is approved directly)
+  static async createFromMenuApproval(menuItemId, createdBy) {
+    const trx = await db.transaction();
+
+    try {
+      // Check if production inventory already exists
+      const existing = await trx("production_inventory")
+        .where("menu_item_id", menuItemId)
+        .first();
+
+      if (existing) {
+        return existing;
+      }
+
+      // Get menu item and recipe details
+      const menuItem = await trx("menu_items as mi")
+        .select("mi.*", "r.batch_unit", "r.cost_per_batch")
+        .leftJoin("recipes as r", "mi.recipe_id", "r.id")
+        .where("mi.id", menuItemId)
+        .first();
+
+      if (!menuItem) {
+        throw new Error("Menu item not found");
+      }
+
+      // Create production inventory entry
+      const [inventoryId] = await trx("production_inventory")
+        .insert({
+          menu_item_id: menuItemId,
+          recipe_id: menuItem.recipe_id,
+          available_quantity: 0, // Default quantity 0 - ready for production
+          unit_of_measure: menuItem.batch_unit || "servings",
+          unit_cost: menuItem.cost_price || 0,
+          selling_price: menuItem.selling_price || 0,
+          production_cost_per_unit: menuItem.cost_price || 0,
+          profit_margin_percent: menuItem.profit_margin || 0,
+          is_active: true,
+          quality_status: "Approved",
+          total_produced: 0,
+          total_sold: 0,
+          reorder_point: 0,
+          maximum_stock: 0,
+          created_by: createdBy,
+          created_at: new Date(),
+          updated_at: new Date(),
+        })
+        .returning("id");
+
+      await trx.commit();
+
+      // Log the direct approval action
+      try {
+        const AuditLogger = require("./AuditLogger");
+        await AuditLogger.log({
+          menu_item_id: menuItemId,
+          employee_id: createdBy,
+          action_type: "APPROVED_FOR_PRODUCTION",
+          action_details: {
+            menu_item_name: menuItem.menu_item_name,
+            selling_price: menuItem.selling_price,
+            cost_price: menuItem.cost_price,
+            profit_margin: menuItem.profit_margin,
+            approval_type: "Direct Approval",
+          },
+          notes: `Menu item "${menuItem.menu_item_name}" approved for production directly`,
+        });
+      } catch (auditError) {
+        console.warn("Failed to create audit log:", auditError.message);
+        // Don't fail the entire operation if audit logging fails
+      }
+
+      // Ensure inventoryId is a primitive integer, not an object
+      const idValue =
+        typeof inventoryId === "object"
+          ? inventoryId.id || inventoryId[0]
+          : inventoryId;
+      return await this.getById(idValue);
+    } catch (error) {
+      await trx.rollback();
+      console.error(
+        "Error creating production inventory from menu approval:",
         error
       );
       throw new Error("Failed to create production inventory entry");

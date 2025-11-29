@@ -11,6 +11,9 @@
   // Mobile menu state
   const isMobileMenuOpen = ref(false);
 
+  // Desktop sidebar toggle state
+  const isDesktopSidebarVisible = ref(true);
+
   // Handle sidebar toggle for mobile
   const toggleMobileMenu = () => {
     isMobileMenuOpen.value = !isMobileMenuOpen.value;
@@ -18,6 +21,11 @@
 
   const closeMobileMenu = () => {
     isMobileMenuOpen.value = false;
+  };
+
+  // Handle desktop sidebar toggle
+  const toggleDesktopSidebar = () => {
+    isDesktopSidebarVisible.value = !isDesktopSidebarVisible.value;
   };
 </script>
 
@@ -31,15 +39,23 @@
     <!-- Sidebar -->
     <Sidebar
       :is-mobile-menu-open="isMobileMenuOpen"
+      :is-desktop-sidebar-visible="isDesktopSidebarVisible"
       @close-mobile-menu="closeMobileMenu"
     />
 
     <!-- Main Content Area with proper margins -->
-    <div class="lg:pl-64">
+    <div
+      :class="[
+        'bg-accentColor transition-all duration-300',
+        isDesktopSidebarVisible ? 'lg:pl-64' : 'lg:pl-0',
+      ]"
+    >
       <!-- Header -->
       <DashboardHeader
         :is-mobile-menu-open="isMobileMenuOpen"
+        :is-desktop-sidebar-visible="isDesktopSidebarVisible"
         @toggle-sidebar="toggleMobileMenu"
+        @toggle-desktop-sidebar="toggleDesktopSidebar"
       />
 
       <!-- Page Content -->

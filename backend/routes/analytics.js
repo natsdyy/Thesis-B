@@ -6,7 +6,7 @@ const router = express.Router();
 router.get("/overview", async (req, res) => {
   try {
     const { date_from, date_to, branch_id } = req.query;
-    
+
     let dateFilter = "";
     let branchFilter = "";
     let params = [];
@@ -22,9 +22,20 @@ router.get("/overview", async (req, res) => {
     }
 
     // Get customer statistics
-    let customerStats = [[{ total_customers: 0, active_customers: 0, overall_average_rating: 0, total_revenue: 0, average_customer_value: 0 }]];
+    let customerStats = [
+      [
+        {
+          total_customers: 0,
+          active_customers: 0,
+          overall_average_rating: 0,
+          total_revenue: 0,
+          average_customer_value: 0,
+        },
+      ],
+    ];
     try {
-      customerStats = await db.raw(`
+      customerStats = await db.raw(
+        `
         SELECT 
           COUNT(*) as total_customers,
           COUNT(CASE WHEN last_visit >= NOW() - INTERVAL '30 days' THEN 1 END) as active_customers,
@@ -33,16 +44,39 @@ router.get("/overview", async (req, res) => {
           COALESCE(AVG(total_spent), 0) as average_customer_value
         FROM customers
         WHERE 1=1 ${dateFilter}
-      `, params);
-      console.log('Customer stats:', customerStats[0][0]);
+      `,
+        params
+      );
+      console.log("Customer stats:", customerStats[0]?.[0] || "No data");
     } catch (error) {
-      console.log('Customers table error:', error.message);
+      console.log("Customers table error:", error.message);
+      customerStats = [
+        [
+          {
+            total_customers: 0,
+            active_customers: 0,
+            overall_average_rating: 0,
+            total_revenue: 0,
+            average_customer_value: 0,
+          },
+        ],
+      ];
     }
 
     // Get feedback statistics
-    let feedbackStats = [[{ total_feedback: 0, average_feedback_rating: 0, positive_feedback: 0, negative_feedback: 0 }]];
+    let feedbackStats = [
+      [
+        {
+          total_feedback: 0,
+          average_feedback_rating: 0,
+          positive_feedback: 0,
+          negative_feedback: 0,
+        },
+      ],
+    ];
     try {
-      feedbackStats = await db.raw(`
+      feedbackStats = await db.raw(
+        `
         SELECT 
           COUNT(*) as total_feedback,
           COALESCE(AVG(rating), 0) as average_feedback_rating,
@@ -50,16 +84,38 @@ router.get("/overview", async (req, res) => {
           COUNT(CASE WHEN rating <= 2 THEN 1 END) as negative_feedback
         FROM feedback
         WHERE 1=1 ${dateFilter}
-      `, params);
-      console.log('Feedback stats:', feedbackStats[0][0]);
+      `,
+        params
+      );
+      console.log("Feedback stats:", feedbackStats[0]?.[0] || "No data");
     } catch (error) {
-      console.log('Feedback table error:', error.message);
+      console.log("Feedback table error:", error.message);
+      feedbackStats = [
+        [
+          {
+            total_feedback: 0,
+            average_feedback_rating: 0,
+            positive_feedback: 0,
+            negative_feedback: 0,
+          },
+        ],
+      ];
     }
 
     // Get order rating statistics
-    let ratingStats = [[{ total_ratings: 0, average_order_rating: 0, positive_ratings: 0, negative_ratings: 0 }]];
+    let ratingStats = [
+      [
+        {
+          total_ratings: 0,
+          average_order_rating: 0,
+          positive_ratings: 0,
+          negative_ratings: 0,
+        },
+      ],
+    ];
     try {
-      ratingStats = await db.raw(`
+      ratingStats = await db.raw(
+        `
         SELECT 
           COUNT(*) as total_ratings,
           COALESCE(AVG(overall_rating), 0) as average_order_rating,
@@ -67,26 +123,46 @@ router.get("/overview", async (req, res) => {
           COUNT(CASE WHEN overall_rating <= 2 THEN 1 END) as negative_ratings
         FROM order_ratings
         WHERE 1=1 ${dateFilter}
-      `, params);
-      console.log('Rating stats:', ratingStats[0][0]);
+      `,
+        params
+      );
+      console.log("Rating stats:", ratingStats[0]?.[0] || "No data");
     } catch (error) {
-      console.log('Order ratings table error:', error.message);
+      console.log("Order ratings table error:", error.message);
+      ratingStats = [
+        [
+          {
+            total_ratings: 0,
+            average_order_rating: 0,
+            positive_ratings: 0,
+            negative_ratings: 0,
+          },
+        ],
+      ];
     }
 
     // Get sales statistics
-    let salesStats = [[{ total_orders: 0, total_sales: 0, average_order_value: 0 }]];
+    let salesStats = [
+      [{ total_orders: 0, total_sales: 0, average_order_value: 0 }],
+    ];
     try {
-      salesStats = await db.raw(`
+      salesStats = await db.raw(
+        `
         SELECT 
           COUNT(*) as total_orders,
           COALESCE(SUM(order_total), 0) as total_sales,
           COALESCE(AVG(order_total), 0) as average_order_value
         FROM order_ratings
         WHERE order_total IS NOT NULL ${dateFilter}
-      `, params);
-      console.log('Sales stats:', salesStats[0][0]);
+      `,
+        params
+      );
+      console.log("Sales stats:", salesStats[0]?.[0] || "No data");
     } catch (error) {
-      console.log('Sales data error:', error.message);
+      console.log("Sales data error:", error.message);
+      salesStats = [
+        [{ total_orders: 0, total_sales: 0, average_order_value: 0 }],
+      ];
     }
 
     res.json({
@@ -97,32 +173,32 @@ router.get("/overview", async (req, res) => {
           active_customers: 0,
           overall_average_rating: 0,
           total_revenue: 0,
-          average_customer_value: 0
+          average_customer_value: 0,
         },
         feedback: feedbackStats[0]?.[0] || {
           total_feedback: 0,
           average_feedback_rating: 0,
           positive_feedback: 0,
-          negative_feedback: 0
+          negative_feedback: 0,
         },
         ratings: ratingStats[0]?.[0] || {
           total_ratings: 0,
           average_order_rating: 0,
           positive_ratings: 0,
-          negative_ratings: 0
+          negative_ratings: 0,
         },
         sales: salesStats[0]?.[0] || {
           total_orders: 0,
           total_sales: 0,
-          average_order_value: 0
-        }
-      }
+          average_order_value: 0,
+        },
+      },
     });
   } catch (error) {
     console.error("Error fetching overview analytics:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to fetch overview analytics"
+      message: "Failed to fetch overview analytics",
     });
   }
 });
@@ -131,7 +207,7 @@ router.get("/overview", async (req, res) => {
 router.get("/top-foods", async (req, res) => {
   try {
     const { limit = 10, date_from, date_to, branch_id } = req.query;
-    
+
     let dateFilter = "";
     let branchFilter = "";
     let params = [limit];
@@ -142,11 +218,13 @@ router.get("/top-foods", async (req, res) => {
     }
 
     if (branch_id) {
-      branchFilter = "AND or.branch_name = (SELECT name FROM branches WHERE id = ?)";
+      branchFilter =
+        "AND or.branch_name = (SELECT name FROM branches WHERE id = ?)";
       params.push(branch_id);
     }
 
-    const topFoods = await db.raw(`
+    const topFoods = await db.raw(
+      `
       SELECT 
         JSON_EXTRACT(item_ratings, '$[*].itemName') as item_names,
         JSON_EXTRACT(item_ratings, '$[*].rating') as item_ratings,
@@ -155,17 +233,19 @@ router.get("/top-foods", async (req, res) => {
       WHERE item_ratings IS NOT NULL ${dateFilter} ${branchFilter}
       ORDER BY or.created_at DESC
       LIMIT ?
-    `, params);
+    `,
+      params
+    );
 
     // Process the data to aggregate ratings by item
     const itemRatings = {};
-    
-    topFoods[0].forEach(row => {
+
+    topFoods[0].forEach((row) => {
       if (row.item_names && row.item_ratings) {
         const names = JSON.parse(row.item_names);
         const ratings = JSON.parse(row.item_ratings);
         const comments = row.item_comments ? JSON.parse(row.item_comments) : [];
-        
+
         names.forEach((name, index) => {
           if (name && ratings[index]) {
             if (!itemRatings[name]) {
@@ -174,7 +254,7 @@ router.get("/top-foods", async (req, res) => {
                 ratings: [],
                 total_ratings: 0,
                 average_rating: 0,
-                comments: []
+                comments: [],
               };
             }
             itemRatings[name].ratings.push(ratings[index]);
@@ -188,21 +268,24 @@ router.get("/top-foods", async (req, res) => {
     });
 
     // Calculate averages and sort
-    const processedFoods = Object.values(itemRatings).map(item => {
-      const sum = item.ratings.reduce((a, b) => a + b, 0);
-      item.average_rating = sum / item.total_ratings;
-      return item;
-    }).sort((a, b) => b.average_rating - a.average_rating).slice(0, limit);
+    const processedFoods = Object.values(itemRatings)
+      .map((item) => {
+        const sum = item.ratings.reduce((a, b) => a + b, 0);
+        item.average_rating = sum / item.total_ratings;
+        return item;
+      })
+      .sort((a, b) => b.average_rating - a.average_rating)
+      .slice(0, limit);
 
     res.json({
       success: true,
-      data: processedFoods
+      data: processedFoods,
     });
   } catch (error) {
     console.error("Error fetching top foods:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to fetch top foods"
+      message: "Failed to fetch top foods",
     });
   }
 });
@@ -211,7 +294,7 @@ router.get("/top-foods", async (req, res) => {
 router.get("/branch-performance", async (req, res) => {
   try {
     const { date_from, date_to } = req.query;
-    
+
     let dateFilter = "";
     let params = [];
 
@@ -221,7 +304,8 @@ router.get("/branch-performance", async (req, res) => {
     }
 
     // Get branch feedback statistics
-    const branchFeedback = await db.raw(`
+    const branchFeedback = await db.raw(
+      `
       SELECT 
         branch_name,
         COUNT(*) as total_feedback,
@@ -232,10 +316,13 @@ router.get("/branch-performance", async (req, res) => {
       WHERE branch_name IS NOT NULL ${dateFilter}
       GROUP BY branch_name
       ORDER BY average_rating DESC
-    `, params);
+    `,
+      params
+    );
 
     // Get branch sales statistics
-    const branchSales = await db.raw(`
+    const branchSales = await db.raw(
+      `
       SELECT 
         branch_name,
         COUNT(*) as total_orders,
@@ -246,13 +333,15 @@ router.get("/branch-performance", async (req, res) => {
       WHERE branch_name IS NOT NULL AND order_total IS NOT NULL ${dateFilter}
       GROUP BY branch_name
       ORDER BY total_sales DESC
-    `, params);
+    `,
+      params
+    );
 
     // Combine the data
     const branchPerformance = {};
-    
+
     // Add feedback data
-    branchFeedback[0].forEach(branch => {
+    branchFeedback[0].forEach((branch) => {
       if (!branchPerformance[branch.branch_name]) {
         branchPerformance[branch.branch_name] = {
           branch_name: branch.branch_name,
@@ -263,14 +352,14 @@ router.get("/branch-performance", async (req, res) => {
           total_orders: 0,
           total_sales: 0,
           average_order_value: 0,
-          average_order_rating: 0
+          average_order_rating: 0,
         };
       }
       Object.assign(branchPerformance[branch.branch_name], branch);
     });
 
     // Add sales data
-    branchSales[0].forEach(branch => {
+    branchSales[0].forEach((branch) => {
       if (!branchPerformance[branch.branch_name]) {
         branchPerformance[branch.branch_name] = {
           branch_name: branch.branch_name,
@@ -281,7 +370,7 @@ router.get("/branch-performance", async (req, res) => {
           total_orders: 0,
           total_sales: 0,
           average_order_value: 0,
-          average_order_rating: 0
+          average_order_rating: 0,
         };
       }
       Object.assign(branchPerformance[branch.branch_name], branch);
@@ -291,13 +380,13 @@ router.get("/branch-performance", async (req, res) => {
 
     res.json({
       success: true,
-      data: result
+      data: result,
     });
   } catch (error) {
     console.error("Error fetching branch performance:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to fetch branch performance"
+      message: "Failed to fetch branch performance",
     });
   }
 });
@@ -305,8 +394,8 @@ router.get("/branch-performance", async (req, res) => {
 // GET /api/analytics/trends - Get trends over time
 router.get("/trends", async (req, res) => {
   try {
-    const { period = 'month', date_from, date_to } = req.query;
-    
+    const { period = "month", date_from, date_to } = req.query;
+
     let dateFilter = "";
     let params = [];
 
@@ -317,16 +406,16 @@ router.get("/trends", async (req, res) => {
 
     let groupBy = "";
     switch (period) {
-      case 'day':
+      case "day":
         groupBy = "DATE(created_at)";
         break;
-      case 'week':
+      case "week":
         groupBy = "YEARWEEK(created_at)";
         break;
-      case 'month':
+      case "month":
         groupBy = "DATE_FORMAT(created_at, '%Y-%m')";
         break;
-      case 'year':
+      case "year":
         groupBy = "YEAR(created_at)";
         break;
       default:
@@ -334,7 +423,8 @@ router.get("/trends", async (req, res) => {
     }
 
     // Get customer trends
-    const customerTrends = await db.raw(`
+    const customerTrends = await db.raw(
+      `
       SELECT 
         ${groupBy} as period,
         COUNT(*) as new_customers,
@@ -343,10 +433,13 @@ router.get("/trends", async (req, res) => {
       WHERE 1=1 ${dateFilter}
       GROUP BY ${groupBy}
       ORDER BY period
-    `, params);
+    `,
+      params
+    );
 
     // Get feedback trends
-    const feedbackTrends = await db.raw(`
+    const feedbackTrends = await db.raw(
+      `
       SELECT 
         ${groupBy} as period,
         COUNT(*) as total_feedback,
@@ -355,10 +448,13 @@ router.get("/trends", async (req, res) => {
       WHERE 1=1 ${dateFilter}
       GROUP BY ${groupBy}
       ORDER BY period
-    `, params);
+    `,
+      params
+    );
 
     // Get sales trends
-    const salesTrends = await db.raw(`
+    const salesTrends = await db.raw(
+      `
       SELECT 
         ${groupBy} as period,
         COUNT(*) as total_orders,
@@ -368,21 +464,23 @@ router.get("/trends", async (req, res) => {
       WHERE order_total IS NOT NULL ${dateFilter}
       GROUP BY ${groupBy}
       ORDER BY period
-    `, params);
+    `,
+      params
+    );
 
     res.json({
       success: true,
       data: {
         customers: customerTrends[0],
         feedback: feedbackTrends[0],
-        sales: salesTrends[0]
-      }
+        sales: salesTrends[0],
+      },
     });
   } catch (error) {
     console.error("Error fetching trends:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to fetch trends"
+      message: "Failed to fetch trends",
     });
   }
 });
@@ -391,7 +489,7 @@ router.get("/trends", async (req, res) => {
 router.get("/rating-distribution", async (req, res) => {
   try {
     const { date_from, date_to, branch_id } = req.query;
-    
+
     let dateFilter = "";
     let branchFilter = "";
     let params = [];
@@ -402,12 +500,14 @@ router.get("/rating-distribution", async (req, res) => {
     }
 
     if (branch_id) {
-      branchFilter = "AND branch_name = (SELECT name FROM branches WHERE id = ?)";
+      branchFilter =
+        "AND branch_name = (SELECT name FROM branches WHERE id = ?)";
       params.push(branch_id);
     }
 
     // Get feedback rating distribution
-    const feedbackDistribution = await db.raw(`
+    const feedbackDistribution = await db.raw(
+      `
       SELECT 
         rating,
         COUNT(*) as count
@@ -415,10 +515,13 @@ router.get("/rating-distribution", async (req, res) => {
       WHERE rating IS NOT NULL ${dateFilter} ${branchFilter}
       GROUP BY rating
       ORDER BY rating
-    `, params);
+    `,
+      params
+    );
 
     // Get order rating distribution
-    const orderRatingDistribution = await db.raw(`
+    const orderRatingDistribution = await db.raw(
+      `
       SELECT 
         overall_rating as rating,
         COUNT(*) as count
@@ -426,20 +529,22 @@ router.get("/rating-distribution", async (req, res) => {
       WHERE overall_rating IS NOT NULL ${dateFilter} ${branchFilter}
       GROUP BY overall_rating
       ORDER BY overall_rating
-    `, params);
+    `,
+      params
+    );
 
     res.json({
       success: true,
       data: {
         feedback: feedbackDistribution[0],
-        order_ratings: orderRatingDistribution[0]
-      }
+        order_ratings: orderRatingDistribution[0],
+      },
     });
   } catch (error) {
     console.error("Error fetching rating distribution:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to fetch rating distribution"
+      message: "Failed to fetch rating distribution",
     });
   }
 });

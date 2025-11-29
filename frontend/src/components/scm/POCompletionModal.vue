@@ -81,7 +81,14 @@
                   step="0.01"
                   class="input input-sm input-bordered w-24 text-center"
                   @input="updateItemTotals(index)"
+                  :readonly="!isManualRequest"
                 />
+                <div
+                  v-if="isManualRequest"
+                  class="text-[10px] text-gray-500 mt-1"
+                >
+                  Editable for manual requests
+                </div>
               </td>
               <td class="py-4 px-4 text-center">
                 <span class="font-medium text-gray-900">
@@ -115,15 +122,14 @@
       </div>
 
       <!-- Summary -->
-      <div
-        class="mt-6 p-6 bg-gradient-to-r from-primaryColor/10 to-primaryColor/10 rounded-xl border border-primaryColor/30"
-      >
-        <h4 class="text-lg font-semibold text-gray-800 mb-4">Order Summary</h4>
+      <div class="mt-6 p-6 border border-gray-200 rounded-lg">
+        <h4 class="text-sm font-semibold text-gray-800 mb-4">Order Summary</h4>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div class="text-center">
-            <div class="text-sm text-gray-600 mb-1">Ordered Value</div>
-            <div class="text-2xl font-bold text-gray-800">
-              ₱{{
+            <div class="text-xs text-gray-600 mb-1">Ordered Value</div>
+            <div class="text-lg font-bold text-gray-800">
+              <font-awesome-icon icon="fa-solid fa-peso-sign" />
+              {{
                 totalOrderedValue.toLocaleString('en-PH', {
                   minimumFractionDigits: 2,
                   maximumFractionDigits: 2,
@@ -132,9 +138,10 @@
             </div>
           </div>
           <div class="text-center">
-            <div class="text-sm text-gray-600 mb-1">Received Value</div>
-            <div class="text-2xl font-bold text-primaryColor">
-              ₱{{
+            <div class="text-xs text-gray-600 mb-1">Received Value</div>
+            <div class="text-lg font-bold text-primaryColor">
+              <font-awesome-icon icon="fa-solid fa-peso-sign" />
+              {{
                 totalReceivedValue.toLocaleString('en-PH', {
                   minimumFractionDigits: 2,
                   maximumFractionDigits: 2,
@@ -143,22 +150,23 @@
             </div>
           </div>
           <div class="text-center">
-            <div class="text-sm text-gray-600 mb-1">Difference</div>
+            <div class="text-xs text-gray-600 mb-1">Difference</div>
             <div
-              class="text-2xl font-bold"
+              class="text-lg font-bold"
               :class="{
                 'text-primaryColor': differenceValue > 0,
                 'text-red-600': differenceValue < 0,
                 'text-gray-600': differenceValue === 0,
               }"
             >
-              ₱{{
+              <font-awesome-icon icon="fa-solid fa-peso-sign" />
+              {{
                 Math.abs(differenceValue).toLocaleString('en-PH', {
                   minimumFractionDigits: 2,
                   maximumFractionDigits: 2,
                 })
               }}
-              <div class="text-sm font-normal mt-1">
+              <div class="text-xs font-normal mt-1">
                 <span v-if="differenceValue > 0" class="text-primaryColor"
                   >(Over-delivered)</span
                 >
@@ -167,29 +175,46 @@
                 >
                 <span v-else class="text-gray-500">(Exact match)</span>
               </div>
+              <!-- Budget Return Information -->
+              <div
+                v-if="differenceValue < 0"
+                class="text-xs mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-center"
+              >
+                <div
+                  class="flex justify-center items-center gap-1 text-blue-700"
+                >
+                  <font-awesome-icon icon="fa-solid fa-circle-exclamation" />
+                  <span class="font-medium">Budget Return Notice</span>
+                </div>
+                <p class="text-blue-600 mt-1 font-thin">
+                  <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                  {{
+                    Math.abs(differenceValue).toLocaleString('en-PH', {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })
+                  }}
+                  will be returned to capital due to under-delivery.
+                </p>
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- Notes -->
+      <!-- Notes (Rich Text) -->
       <div class="mt-4">
         <label class="label">
           <span class="label-text font-medium">Completion Notes</span>
         </label>
-        <textarea
-          v-model="completionNotes"
-          class="textarea textarea-bordered w-full"
-          rows="3"
-          placeholder="Add any notes about the completion..."
-        ></textarea>
+        <Editor v-model="completionNotes" :init="tinyMCEConfig" />
       </div>
 
       <!-- Action Buttons -->
       <div class="modal-action">
         <button
           type="button"
-          class="btn btn-ghost font-thin"
+          class="btn btn-ghost font-thin btn-sm"
           :disabled="loading"
           @click="closeModal"
         >
@@ -197,7 +222,7 @@
         </button>
         <button
           type="button"
-          class="btn bg-primaryColor text-white font-thin"
+          class="btn bg-primaryColor text-white font-thin btn-sm"
           :class="{ loading: loading }"
           :disabled="loading || !canComplete"
           @click="completeOrder"
@@ -216,6 +241,19 @@
 
 <script setup>
   import { ref, computed, watch } from 'vue';
+  import Editor from '@tinymce/tinymce-vue';
+  // Self-hosted TinyMCE (avoid cloud API key requirement)
+  import tinymce from 'tinymce/tinymce';
+  import 'tinymce/icons/default';
+  import 'tinymce/themes/silver';
+  import 'tinymce/models/dom/model';
+  import 'tinymce/plugins/link';
+  import 'tinymce/plugins/lists';
+  import 'tinymce/plugins/image';
+  import 'tinymce/plugins/table';
+  import 'tinymce/plugins/code';
+  import 'tinymce/skins/ui/oxide/skin.min.css';
+  import { formatImageUrl, getApiUrl } from '../../config/api.js';
 
   const props = defineProps({
     show: {
@@ -236,6 +274,94 @@
 
   const completionItems = ref([]);
   const completionNotes = ref('');
+
+  // Determine if the PO comes from a manual request (no supplier linked)
+  const isManualRequest = computed(() => {
+    return !props.purchaseOrder || !props.purchaseOrder.supplier_id;
+  });
+
+  try {
+    tinymce?.EditorManager?.overrideDefaults?.({ license_key: 'gpl' });
+  } catch (_) {}
+
+  // TinyMCE config (mirror BranchInventory behavior – image proofs supported)
+  const tinyMCEConfig = {
+    menubar: false,
+    height: 220,
+    branding: false,
+    statusbar: false,
+    plugins: 'link lists image table code paste',
+    toolbar:
+      'undo redo | bold italic underline | bullist numlist | link image table | uploadimage | removeformat',
+    toolbar_mode: 'wrap',
+    automatic_uploads: false,
+    paste_data_images: true,
+    file_picker_types: 'image',
+    content_style:
+      'html,body{max-width:100%;} img{max-width:100%;height:auto;display:block;margin:6px 0;}',
+    images_upload_handler: async (blobInfo) => {
+      return new Promise((resolve, reject) => {
+        try {
+          const token = localStorage.getItem('token');
+          const formData = new FormData();
+          formData.append('file', blobInfo.blob(), blobInfo.filename());
+          fetch(getApiUrl('/uploads/proofs'), {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+            body: formData,
+          })
+            .then((r) => r.json())
+            .then((data) => {
+              if (data?.location) {
+                resolve(formatImageUrl(data.location));
+              } else {
+                reject(data?.message || 'Upload failed');
+              }
+            })
+            .catch((e) => reject(e?.message || 'Upload failed'));
+        } catch (e) {
+          reject(e?.message || 'Upload failed');
+        }
+      });
+    },
+    setup: (ed) => {
+      ed.ui.registry.addButton('uploadimage', {
+        text: 'Upload Image',
+        tooltip: 'Upload image',
+        onAction: () => {
+          const input = document.createElement('input');
+          input.type = 'file';
+          input.accept = 'image/png,image/jpeg';
+          input.onchange = async () => {
+            const file = input.files && input.files[0];
+            if (!file) return;
+            try {
+              const token = localStorage.getItem('token');
+              const fd = new FormData();
+              fd.append('file', file);
+              const res = await fetch(getApiUrl('/uploads/proofs'), {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}` },
+                body: fd,
+              });
+              const json = await res.json();
+              if (res.ok && json.location) {
+                ed.insertContent(
+                  `<img src="${formatImageUrl(json.location)}" />`
+                );
+              } else {
+                alert(json.message || 'Upload failed');
+              }
+            } catch (_) {
+              alert('Upload failed');
+            }
+          };
+          input.click();
+        },
+      });
+    },
+    license_key: 'gpl',
+  };
 
   // Initialize completion items when modal opens
   watch(
@@ -352,3 +478,14 @@
     emit('close');
   };
 </script>
+
+<style>
+  /* Raise TinyMCE dialogs above DaisyUI modal */
+  .tox,
+  .tox-tinymce-aux,
+  .tox-silver-sink,
+  .tox-dialog-wrap,
+  .tox-dialog {
+    z-index: 99999 !important;
+  }
+</style>

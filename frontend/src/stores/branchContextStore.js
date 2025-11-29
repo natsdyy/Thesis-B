@@ -43,13 +43,27 @@ export const useBranchContextStore = defineStore('branchContext', {
     // Get available operations for current user
     availableOperations: (state) => {
       const rolePermissions = {
-        Manager: ['dashboard', 'sales', 'inventory', 'employees', 'profile', 'attendance'],
+        Manager: [
+          'dashboard',
+          'sales',
+          'utilities',
+          'inventory',
+          'employees',
+          'profile',
+          'attendance',
+        ],
         Cashier: ['dashboard', 'profile', 'attendance'],
         Cook: ['dashboard', 'inventory', 'profile', 'attendance'],
         Waiter: ['dashboard', 'profile', 'attendance'],
       };
 
-      return rolePermissions[state.userRole] || ['dashboard', 'profile', 'attendance'];
+      return (
+        rolePermissions[state.userRole] || [
+          'dashboard',
+          'profile',
+          'attendance',
+        ]
+      );
     },
 
     // Check if user can switch branches (only Super Admin)

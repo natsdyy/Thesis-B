@@ -330,14 +330,51 @@ export const useAttendanceStore = defineStore('attendance', () => {
         end_date: endDate,
       };
 
-      if (userId) {
-        params.user_id = userId;
+      // Backend expects user_id parameter; only include if numeric
+      if (userId !== null && userId !== undefined) {
+        const numericId = Number(userId);
+        if (!Number.isNaN(numericId) && Number.isFinite(numericId)) {
+          params.user_id = numericId;
+        }
       }
 
       const response = await axios.get(getApiUrl('/attendance/report'), {
         ...getAuthHeaders(),
         params,
       });
+
+      if (response.data.success) {
+        return response.data.data;
+      } else {
+        throw new Error(response.data.message);
+      }
+    } catch (err) {
+      error.value = err.response?.data?.message || err.message;
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const getEmployeeComprehensiveAttendance = async (
+    employeeId,
+    startDate,
+    endDate
+  ) => {
+    try {
+      loading.value = true;
+      error.value = null;
+
+      const response = await axios.get(
+        getApiUrl(`/attendance/employee/${employeeId}/comprehensive`),
+        {
+          ...getAuthHeaders(),
+          params: {
+            start_date: startDate,
+            end_date: endDate,
+          },
+        }
+      );
 
       if (response.data.success) {
         return response.data.data;
@@ -431,6 +468,7 @@ export const useAttendanceStore = defineStore('attendance', () => {
     validateQRCode,
     scanQRCode,
     getAttendanceReport,
+    getEmployeeComprehensiveAttendance,
     fetchMySchedule,
     validateSchedule,
     clearError,

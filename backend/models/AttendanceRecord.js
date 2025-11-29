@@ -1,4 +1,9 @@
 const { db: knex } = require("../config/database");
+const {
+  getCurrentPhilippineTime,
+  getCurrentPhilippineDate,
+  convertUTCToPhilippine,
+} = require("../utils/timezoneUtils");
 
 class AttendanceRecord {
   // Valid attendance statuses
@@ -67,7 +72,14 @@ class AttendanceRecord {
       const endOfDay = new Date(date);
       endOfDay.setHours(23, 59, 59, 999);
 
-      query = query.whereBetween("created_at", [startOfDay, endOfDay]);
+      // Convert to Philippine timezone
+      const philippineStartOfDay = convertUTCToPhilippine(startOfDay);
+      const philippineEndOfDay = convertUTCToPhilippine(endOfDay);
+
+      query = query.whereBetween("created_at", [
+        philippineStartOfDay,
+        philippineEndOfDay,
+      ]);
     }
 
     return await query;
@@ -84,22 +96,48 @@ class AttendanceRecord {
       const endOfDay = new Date(date);
       endOfDay.setHours(23, 59, 59, 999);
 
-      query = query.whereBetween("created_at", [startOfDay, endOfDay]);
+      // Convert to Philippine timezone
+      const philippineStartOfDay = convertUTCToPhilippine(startOfDay);
+      const philippineEndOfDay = convertUTCToPhilippine(endOfDay);
+
+      query = query.whereBetween("created_at", [
+        philippineStartOfDay,
+        philippineEndOfDay,
+      ]);
     }
 
     return await query;
   }
 
   static async getTodayAttendance(employeeId) {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const endOfDay = new Date();
-    endOfDay.setHours(23, 59, 59, 999);
+    const today = getCurrentPhilippineDate(); // Get today's date in Philippine timezone
+    const startOfDay = new Date(`${today}T00:00:00+08:00`); // Philippine timezone
+    const endOfDay = new Date(`${today}T23:59:59.999+08:00`); // Philippine timezone
 
-    return await knex("attendance_records")
+    // First, try to find attendance record created today
+    let record = await knex("attendance_records")
       .where("employee_id", employeeId)
-      .whereBetween("created_at", [today, endOfDay])
+      .whereBetween("created_at", [startOfDay, endOfDay])
       .first();
+
+    // If no record found today, check for Night Shift records from yesterday
+    // that might still be active (time_in exists but no time_out)
+    if (!record) {
+      const yesterday = new Date(today);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayStr = yesterday.toISOString().split("T")[0];
+      const yesterdayStartOfDay = new Date(`${yesterdayStr}T00:00:00+08:00`);
+      const yesterdayEndOfDay = new Date(`${yesterdayStr}T23:59:59.999+08:00`);
+
+      record = await knex("attendance_records")
+        .where("employee_id", employeeId)
+        .whereBetween("created_at", [yesterdayStartOfDay, yesterdayEndOfDay])
+        .whereNotNull("time_in")
+        .whereNull("time_out") // Only get records that haven't been timed out yet
+        .first();
+    }
+
+    return record;
   }
 
   static async timeIn(
@@ -129,30 +167,41 @@ class AttendanceRecord {
       await EmployeeScheduleService.validateTimeInSchedule(employeeId);
 
     if (!scheduleValidation.isValid) {
-      // Create a more descriptive error message based on the validation result
-      let errorMessage = scheduleValidation.message;
+      // Allow early time-in within a grace window before shift start
+      const EARLY_TIMEIN_MINUTES_ALLOWED = 60; // configurable early window
+      if (
+        scheduleValidation.reason === "OUTSIDE_SCHEDULE" &&
+        scheduleValidation.direction === "before" &&
+        typeof scheduleValidation.timeDifference === "number" &&
+        scheduleValidation.timeDifference <= EARLY_TIMEIN_MINUTES_ALLOWED
+      ) {
+        // proceed without throwing; paid hours will be clamped to start at schedule start
+      } else {
+        // Create a more descriptive error message based on the validation result
+        let errorMessage = scheduleValidation.message;
 
-      if (scheduleValidation.reason === "NO_SCHEDULE") {
-        errorMessage =
-          "No work schedule assigned for today. Please contact your supervisor to set up your schedule.";
-      } else if (scheduleValidation.reason === "DAY_OFF") {
-        errorMessage =
-          "You are scheduled for Day Off today. You cannot time in on your scheduled day off.";
-      } else if (scheduleValidation.reason === "OUTSIDE_SCHEDULE") {
-        const { schedule, currentTime, timeDifference, direction } =
-          scheduleValidation;
-        if (timeDifference && direction) {
-          const timeDiffText =
-            timeDifference < 60
-              ? `${timeDifference} minutes`
-              : `${Math.round(timeDifference / 60)} hours`;
-          errorMessage = `You are ${timeDiffText} ${direction} your scheduled time. Your schedule today is ${schedule.start_time} - ${schedule.end_time} (${schedule.shift_name}).`;
-        } else {
-          errorMessage = `Time-in is outside your scheduled hours. Your schedule today is ${schedule.start_time} - ${schedule.end_time} (${schedule.shift_name}).`;
+        if (scheduleValidation.reason === "NO_SCHEDULE") {
+          errorMessage =
+            "No work schedule assigned for today. Please contact your supervisor to set up your schedule.";
+        } else if (scheduleValidation.reason === "DAY_OFF") {
+          errorMessage =
+            "You are scheduled for Day Off today. You cannot time in on your scheduled day off.";
+        } else if (scheduleValidation.reason === "OUTSIDE_SCHEDULE") {
+          const { schedule, currentTime, timeDifference, direction } =
+            scheduleValidation;
+          if (timeDifference && direction) {
+            const timeDiffText =
+              timeDifference < 60
+                ? `${timeDifference} minutes`
+                : `${Math.round(timeDifference / 60)} hours`;
+            errorMessage = `You are ${timeDiffText} ${direction} your scheduled time. Your schedule today is ${schedule.start_time} - ${schedule.end_time} (${schedule.shift_name}).`;
+          } else {
+            errorMessage = `Time-in is outside your scheduled hours. Your schedule today is ${schedule.start_time} - ${schedule.end_time} (${schedule.shift_name}).`;
+          }
         }
-      }
 
-      throw new Error(errorMessage);
+        throw new Error(errorMessage);
+      }
     }
 
     // Get QR code details for location validation
@@ -219,15 +268,15 @@ class AttendanceRecord {
     try {
       const { schedule } = scheduleValidation || {};
       if (schedule && schedule.start_time) {
-        // Build today's local date string to avoid timezone skew from DATE columns
-        const localDateStr = new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD in local time
+        // Build today's Philippine date string to avoid timezone skew
+        const philippineDateStr = getCurrentPhilippineDate(); // YYYY-MM-DD in Philippine timezone
         const scheduleStart = new Date(
-          `${localDateStr}T${schedule.start_time}`
+          `${philippineDateStr}T${schedule.start_time}+08:00` // Philippine timezone
         );
         const graceLimit = new Date(
           scheduleStart.getTime() + GRACE_PERIOD_MINUTES * 60 * 1000
         );
-        const now = new Date();
+        const now = getCurrentPhilippineTime(); // Current time in Philippine timezone
         if (now > graceLimit) {
           attendanceStatus = "late";
           const diffMs = now - scheduleStart;
@@ -281,38 +330,102 @@ class AttendanceRecord {
       throw new Error("You must time in before timing out");
     }
 
-    const timeOut = new Date();
+    const timeOut = getCurrentPhilippineTime(); // Use Philippine timezone
     const timeIn = new Date(todayRecord.time_in);
 
     // Default calculations without schedule
     let hoursWorked = (timeOut - timeIn) / (1000 * 60 * 60);
 
     try {
-      // Use today's local date to avoid timezone skew
-      const localDateStr = new Date().toLocaleDateString("en-CA");
+      // Use today's Philippine date to avoid timezone skew
+      const philippineDateStr = getCurrentPhilippineDate();
       const EmployeeScheduleService = require("../services/EmployeeScheduleService");
       const schedule = await EmployeeScheduleService.getEmployeeScheduleForDate(
         employeeId,
-        localDateStr
+        philippineDateStr
       );
 
       if (schedule && schedule.start_time && schedule.end_time) {
         const scheduleStart = new Date(
-          `${localDateStr}T${schedule.start_time}`
+          `${philippineDateStr}T${schedule.start_time}+08:00` // Philippine timezone
         );
-        let scheduleEnd = new Date(`${localDateStr}T${schedule.end_time}`);
+        let scheduleEnd = new Date(
+          `${philippineDateStr}T${schedule.end_time}+08:00`
+        ); // Philippine timezone
         if (scheduleEnd <= scheduleStart) {
           scheduleEnd.setDate(scheduleEnd.getDate() + 1);
         }
 
         const endForWorkCalc = timeOut < scheduleEnd ? timeOut : scheduleEnd;
-        const workingMs = Math.max(0, endForWorkCalc - timeIn);
+        // Clamp paid start time at scheduled start to avoid paying early time-in
+        const effectiveStart = timeIn < scheduleStart ? scheduleStart : timeIn;
+        let workingMs = Math.max(0, endForWorkCalc - effectiveStart);
+
+        // Deduct unpaid break if applicable.
+        // Priority: explicit schedule.unpaid_break_minutes → known 08:00-17:00 day shift → overlap with 12:00-13:00 window
+        let breakMinutes = 0;
+
+        if (
+          schedule &&
+          Object.prototype.hasOwnProperty.call(
+            schedule,
+            "unpaid_break_minutes"
+          ) &&
+          typeof schedule.unpaid_break_minutes === "number" &&
+          schedule.unpaid_break_minutes > 0
+        ) {
+          breakMinutes = schedule.unpaid_break_minutes;
+        } else if (
+          schedule &&
+          typeof schedule.start_time === "string" &&
+          typeof schedule.end_time === "string" &&
+          schedule.start_time.slice(0, 5) === "08:00" &&
+          schedule.end_time.slice(0, 5) === "17:00"
+        ) {
+          // Standard day shift 8am-5pm defaults to 60-minute unpaid break
+          breakMinutes = 60;
+        } else {
+          // As a safe fallback, deduct actual overlap with a standard lunch window 12:00-13:00
+          const lunchStart = new Date(`${philippineDateStr}T12:00:00+08:00`);
+          const lunchEnd = new Date(`${philippineDateStr}T13:00:00+08:00`);
+          const overlapStart = new Date(
+            Math.max(timeIn.getTime(), lunchStart.getTime())
+          );
+          const overlapEnd = new Date(
+            Math.min(endForWorkCalc.getTime(), lunchEnd.getTime())
+          );
+          const overlapMs = Math.max(0, overlapEnd - overlapStart);
+          breakMinutes = Math.floor(overlapMs / (1000 * 60));
+        }
+
+        if (breakMinutes > 0) {
+          const breakMs = breakMinutes * 60 * 1000;
+          workingMs = Math.max(0, workingMs - breakMs);
+        }
+
         hoursWorked = workingMs / (1000 * 60 * 60);
         // Per requirement: do not auto-calculate OT; approval flow handles OT separately
       }
     } catch (_) {
       // Fallback to simple diff if schedule fetch fails
-      hoursWorked = (timeOut - timeIn) / (1000 * 60 * 60);
+      // Also attempt to deduct overlap with standard lunch 12:00-13:00
+      const diffMs = Math.max(0, timeOut - timeIn);
+      try {
+        const philippineDateStr = getCurrentPhilippineDate();
+        const lunchStart = new Date(`${philippineDateStr}T12:00:00+08:00`);
+        const lunchEnd = new Date(`${philippineDateStr}T13:00:00+08:00`);
+        const overlapStart = new Date(
+          Math.max(timeIn.getTime(), lunchStart.getTime())
+        );
+        const overlapEnd = new Date(
+          Math.min(timeOut.getTime(), lunchEnd.getTime())
+        );
+        const overlapMs = Math.max(0, overlapEnd - overlapStart);
+        const adjustedMs = Math.max(0, diffMs - overlapMs);
+        hoursWorked = adjustedMs / (1000 * 60 * 60);
+      } catch (__) {
+        hoursWorked = diffMs / (1000 * 60 * 60);
+      }
     }
 
     const [updated] = await knex("attendance_records")
@@ -467,21 +580,97 @@ class AttendanceRecord {
     return `${diffHours}h ${diffMinutes}m`;
   }
 
+  // Get comprehensive attendance data including OT and leave
+  static async getComprehensiveAttendanceData(employeeId, startDate, endDate) {
+    const start = new Date(startDate).toISOString();
+    const end = new Date(endDate + "T23:59:59.999Z").toISOString();
+
+    // Get attendance records
+    const attendanceRecords = await knex("attendance_records")
+      .where("employee_id", employeeId)
+      .whereBetween("created_at", [start, end])
+      .orderBy("created_at", "desc");
+
+    // Get overtime records - using correct column name 'ot_date'
+    const overtimeRecords = await knex("overtime_requests")
+      .select(
+        "id",
+        "employee_id",
+        knex.raw("to_char(ot_date, 'YYYY-MM-DD') as ot_date"),
+        "start_time",
+        "end_time",
+        "total_hours as hours_worked",
+        "reason",
+        "status",
+        "approved_by",
+        "approved_at",
+        "approver_notes",
+        "created_at",
+        "updated_at"
+      )
+      .where("employee_id", employeeId)
+      .where("status", "approved")
+      .whereBetween("ot_date", [startDate, endDate])
+      .orderBy("ot_date", "desc");
+
+    // Get leave records
+    const leaveRecords = await knex("leave_requests")
+      .where("employee_id", employeeId)
+      .whereIn("status", ["approved_by_manager", "approved_by_hr"])
+      .where(function () {
+        this.whereBetween("from_date", [startDate, endDate])
+          .orWhereBetween("to_date", [startDate, endDate])
+          .orWhere(function () {
+            this.where("from_date", "<=", startDate).where(
+              "to_date",
+              ">=",
+              endDate
+            );
+          });
+      })
+      .orderBy("from_date", "desc");
+
+    // Get employee schedules for the date range
+    const schedules = await knex("employee_schedules")
+      .where("employee_id", employeeId)
+      .whereBetween("schedule_date", [startDate, endDate])
+      .orderBy("schedule_date", "asc");
+
+    return {
+      attendance: attendanceRecords,
+      overtime: overtimeRecords,
+      leave: leaveRecords,
+      schedules: schedules,
+    };
+  }
+
   // Check if employee is on approved leave for a specific date
   static async isEmployeeOnLeave(employeeId, date = null) {
+    // Normalize: accept either numeric primary key or employee_code (e.g., "EMP000015")
+    let normalizedEmployeeId = employeeId;
+    if (
+      typeof normalizedEmployeeId === "string" &&
+      normalizedEmployeeId.trim().length > 0 &&
+      isNaN(Number(normalizedEmployeeId))
+    ) {
+      const empRow = await knex("employees")
+        .select("id")
+        .where("employee_id", normalizedEmployeeId.trim())
+        .first();
+      if (!empRow) return false;
+      normalizedEmployeeId = empRow.id;
+    }
     let targetDate;
     if (date) {
       targetDate = new Date(date);
     } else {
-      // Get current date in Philippines timezone (UTC+8)
-      const now = new Date();
-      const philippinesTime = new Date(now.getTime() + 8 * 60 * 60 * 1000); // UTC+8
-      targetDate = new Date(philippinesTime.toISOString().split("T")[0]);
+      // Get current date in Philippines timezone
+      targetDate = new Date(getCurrentPhilippineDate());
     }
     const dateStr = targetDate.toISOString().split("T")[0];
 
     const leaveRequest = await knex("leave_requests")
-      .where("employee_id", employeeId)
+      .where("employee_id", normalizedEmployeeId)
       .where("from_date", "<=", dateStr)
       .where("to_date", ">=", dateStr)
       .where("status", "approved_by_hr") // Only HR-approved requests count as actual leave
@@ -492,19 +681,31 @@ class AttendanceRecord {
 
   // Check if employee is scheduled for day off on a specific date
   static async isEmployeeOnDayOff(employeeId, date = null) {
+    // Normalize: accept either numeric primary key or employee_code (e.g., "EMP000015")
+    let normalizedEmployeeId = employeeId;
+    if (
+      typeof normalizedEmployeeId === "string" &&
+      normalizedEmployeeId.trim().length > 0 &&
+      isNaN(Number(normalizedEmployeeId))
+    ) {
+      const empRow = await knex("employees")
+        .select("id")
+        .where("employee_id", normalizedEmployeeId.trim())
+        .first();
+      if (!empRow) return false;
+      normalizedEmployeeId = empRow.id;
+    }
     let targetDate;
     if (date) {
       targetDate = new Date(date);
     } else {
-      // Get current date in Philippines timezone (UTC+8)
-      const now = new Date();
-      const philippinesTime = new Date(now.getTime() + 8 * 60 * 60 * 1000); // UTC+8
-      targetDate = new Date(philippinesTime.toISOString().split("T")[0]);
+      // Get current date in Philippines timezone
+      targetDate = new Date(getCurrentPhilippineDate());
     }
     const dateStr = targetDate.toISOString().split("T")[0];
 
     const schedule = await knex("employee_schedules")
-      .where("employee_id", employeeId)
+      .where("employee_id", normalizedEmployeeId)
       .where("schedule_date", dateStr)
       .first();
 
@@ -513,16 +714,12 @@ class AttendanceRecord {
 
   // Enhanced getTodayAttendance that includes leave status and day off detection
   static async getTodayAttendanceWithLeaveStatus(employeeId) {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const endOfDay = new Date();
-    endOfDay.setHours(23, 59, 59, 999);
+    const today = getCurrentPhilippineDate(); // Get today's date in Philippine timezone
+    const startOfDay = new Date(`${today}T00:00:00+08:00`); // Philippine timezone
+    const endOfDay = new Date(`${today}T23:59:59.999+08:00`); // Philippine timezone
 
-    // Get attendance record
-    const attendanceRecord = await knex("attendance_records")
-      .where("employee_id", employeeId)
-      .whereBetween("created_at", [today, endOfDay])
-      .first();
+    // Get attendance record (this will now check both today and yesterday for Night Shifts)
+    const attendanceRecord = await this.getTodayAttendance(employeeId);
 
     // Check if employee is on leave or day off
     const isOnLeave = await this.isEmployeeOnLeave(employeeId);

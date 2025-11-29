@@ -6,6 +6,7 @@ const Feedback = require("../models/Feedback");
 const OrderRating = require("../models/OrderRating");
 const Customer = require("../models/Customer");
 const EmailService = require("../services/emailService");
+const SendGridService = require("../services/sendGridService");
 const { db } = require("../config/database");
 const router = express.Router();
 
@@ -407,8 +408,8 @@ router.get("/ratings/top-items", async (req, res) => {
 // POST /api/feedback/:id/reply - Send reply email to customer
 router.post("/:id/reply", async (req, res) => {
   try {
-    console.log('Reply request received:', req.params.id, req.body);
-    
+    console.log("Reply request received:", req.params.id, req.body);
+
     const feedbackId = req.params.id;
     const { message, internal_note } = req.body;
 
@@ -421,29 +422,24 @@ router.post("/:id/reply", async (req, res) => {
     }
 
     // Get feedback details
-    console.log('Fetching feedback with ID:', feedbackId);
+    console.log("Fetching feedback with ID:", feedbackId);
     const feedback = await Feedback.getById(feedbackId);
     if (!feedback) {
-      console.log('Feedback not found for ID:', feedbackId);
+      console.log("Feedback not found for ID:", feedbackId);
       return res.status(404).json({
         success: false,
         message: "Feedback not found",
       });
     }
 
-    console.log('Feedback found:', feedback.email, feedback.name);
+    console.log("Feedback found:", feedback.email, feedback.name);
 
     // Update feedback status to 'replied' and store reply details FIRST
-    console.log('Updating feedback status to replied');
-    await db('feedback')
-      .where('id', feedbackId)
-      .update({
-        status: 'replied',
-        reply_message: message.trim(),
-        reply_internal_note: internal_note ? internal_note.trim() : null,
-        reply_sent_at: new Date(),
-        updated_at: new Date()
-      });
+    console.log("Updating feedback status to replied");
+    await Feedback.addReply(feedbackId, {
+      reply_message: message.trim(),
+      reply_internal_note: internal_note ? internal_note.trim() : null,
+    });
 
     // Send response immediately to prevent timeout
     res.json({
@@ -454,13 +450,13 @@ router.post("/:id/reply", async (req, res) => {
         customerEmail: feedback.email,
         replyMessage: message.trim(),
         sentAt: new Date().toISOString(),
-        emailMessageId: 'pending' // Will be updated when email completes
-      }
+        emailMessageId: "pending", // Will be updated when email completes
+      },
     });
 
     // Send email asynchronously (don't wait for completion)
-    console.log('Sending email to:', feedback.email);
-    
+    console.log("Sending email to:", feedback.email);
+
     // Use setImmediate to ensure this runs after the response is sent
     setImmediate(async () => {
       try {
@@ -469,52 +465,152 @@ router.post("/:id/reply", async (req, res) => {
           feedback.name,
           feedback.message,
           message.trim(),
-          feedback.rating
+          feedback.rating,
+          feedback.order_number
         );
-        
-        console.log('Email sent successfully:', emailResult);
-        
+
+        console.log("Email sent successfully:", emailResult);
+
         // Update the feedback record with the actual email message ID
         if (emailResult.success) {
-          await db('feedback')
-            .where('id', feedbackId)
-            .update({
-              reply_sent_at: new Date(),
-              updated_at: new Date()
-            });
-          console.log('Email status updated successfully');
+          await db("feedback").where("id", feedbackId).update({
+            reply_sent_at: new Date(),
+            updated_at: new Date(),
+          });
+          console.log("Email status updated successfully");
         } else {
-          console.error('Failed to send reply email:', emailResult.error);
+          console.error("Failed to send reply email:", emailResult.error);
           // Update status to indicate email failure
-          await db('feedback')
-            .where('id', feedbackId)
-            .update({
-              status: 'replied',
-              updated_at: new Date()
-            });
+          await Feedback.updateStatus(feedbackId, "replied");
         }
       } catch (error) {
-        console.error('Email sending failed:', error);
+        console.error("Email sending failed:", error);
         // Update status to indicate email failure
         try {
-          await db('feedback')
-            .where('id', feedbackId)
-            .update({
-              status: 'replied',
-              updated_at: new Date()
-            });
+          await Feedback.updateStatus(feedbackId, "replied");
         } catch (dbError) {
-          console.error('Error updating email failure status:', dbError);
+          console.error("Error updating email failure status:", dbError);
         }
       }
     });
-
   } catch (error) {
     console.error("Error sending feedback reply:", error);
     res.status(500).json({
       success: false,
       message: "Failed to send reply",
-      error: process.env.NODE_ENV === "development" ? error.message : "Internal server error",
+      error:
+        process.env.NODE_ENV === "development"
+          ? error.message
+          : "Internal server error",
+    });
+  }
+});
+
+// POST /api/feedback/ratings/:id/reply - Send reply email to customer for order rating
+router.post("/ratings/:id/reply", async (req, res) => {
+  try {
+    console.log(
+      "Order rating reply request received:",
+      req.params.id,
+      req.body
+    );
+
+    const ratingId = req.params.id;
+    const { message, internal_note } = req.body;
+
+    // Validate input
+    if (!message || !message.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Reply message is required",
+      });
+    }
+
+    // Get order rating details
+    console.log("Fetching order rating with ID:", ratingId);
+    const orderRating = await OrderRating.getById(ratingId);
+    if (!orderRating) {
+      console.log("Order rating not found for ID:", ratingId);
+      return res.status(404).json({
+        success: false,
+        message: "Order rating not found",
+      });
+    }
+
+    console.log(
+      "Order rating found:",
+      orderRating.customer_email,
+      orderRating.customer_name
+    );
+
+    // Update order rating status to 'replied' and store reply details FIRST
+    console.log("Updating order rating status to replied");
+    await OrderRating.addReply(ratingId, {
+      reply_message: message.trim(),
+      reply_internal_note: internal_note ? internal_note.trim() : null,
+    });
+
+    // Send response immediately to prevent timeout
+    res.json({
+      success: true,
+      message: "Reply sent successfully to customer",
+      data: {
+        ratingId: ratingId,
+        customerEmail: orderRating.customer_email,
+        replyMessage: message.trim(),
+        sentAt: new Date().toISOString(),
+        emailMessageId: "pending", // Will be updated when email completes
+      },
+    });
+
+    // Send email asynchronously (don't wait for completion)
+    console.log("Sending email to:", orderRating.customer_email);
+
+    // Use setImmediate to ensure this runs after the response is sent
+    setImmediate(async () => {
+      try {
+        const emailResult = await EmailService.sendFeedbackReplyEmail(
+          orderRating.customer_email,
+          orderRating.customer_name,
+          orderRating.comments || "No comments provided",
+          message.trim(),
+          orderRating.overall_rating,
+          orderRating.order_number
+        );
+
+        console.log("Email sent successfully:", emailResult);
+
+        // Update the order rating record with the actual email message ID
+        if (emailResult.success) {
+          await db("order_ratings").where("id", ratingId).update({
+            reply_sent_at: new Date(),
+            updated_at: new Date(),
+          });
+          console.log("Email status updated successfully");
+        } else {
+          console.error("Failed to send reply email:", emailResult.error);
+          // Update status to indicate email failure
+          await OrderRating.updateStatus(ratingId, "replied");
+        }
+      } catch (error) {
+        console.error("Email sending failed:", error);
+        // Update status to indicate email failure
+        try {
+          await OrderRating.updateStatus(ratingId, "replied");
+        } catch (dbError) {
+          console.error("Error updating email failure status:", dbError);
+        }
+      }
+    });
+  } catch (error) {
+    console.error("Error sending order rating reply:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to send reply",
+      error:
+        process.env.NODE_ENV === "development"
+          ? error.message
+          : "Internal server error",
     });
   }
 });
@@ -534,28 +630,25 @@ router.patch("/:id/mark-read", async (req, res) => {
     }
 
     // Update status to 'read'
-    await db('feedback')
-      .where('id', feedbackId)
-      .update({
-        status: 'read',
-        updated_at: new Date()
-      });
+    await Feedback.updateStatus(feedbackId, "read");
 
     res.json({
       success: true,
       message: "Feedback marked as read",
       data: {
         feedbackId: feedbackId,
-        status: 'read'
-      }
+        status: "read",
+      },
     });
-
   } catch (error) {
     console.error("Error marking feedback as read:", error);
     res.status(500).json({
       success: false,
       message: "Failed to mark feedback as read",
-      error: process.env.NODE_ENV === "development" ? error.message : "Internal server error",
+      error:
+        process.env.NODE_ENV === "development"
+          ? error.message
+          : "Internal server error",
     });
   }
 });
@@ -575,28 +668,25 @@ router.patch("/:id/archive", async (req, res) => {
     }
 
     // Update status to 'archived'
-    await db('feedback')
-      .where('id', feedbackId)
-      .update({
-        status: 'archived',
-        updated_at: new Date()
-      });
+    await Feedback.updateStatus(feedbackId, "archived");
 
     res.json({
       success: true,
       message: "Feedback archived successfully",
       data: {
         feedbackId: feedbackId,
-        status: 'archived'
-      }
+        status: "archived",
+      },
     });
-
   } catch (error) {
     console.error("Error archiving feedback:", error);
     res.status(500).json({
       success: false,
       message: "Failed to archive feedback",
-      error: process.env.NODE_ENV === "development" ? error.message : "Internal server error",
+      error:
+        process.env.NODE_ENV === "development"
+          ? error.message
+          : "Internal server error",
     });
   }
 });
@@ -617,47 +707,54 @@ router.get("/export", async (req, res) => {
 
     // Generate CSV content
     const csvHeaders = [
-      'ID',
-      'Name',
-      'Email',
-      'Phone',
-      'Message',
-      'Rating',
-      'Source',
-      'Status',
-      'Created At',
-      'Reply Message',
-      'Reply Sent At',
-      'Internal Note'
-    ].join(',');
+      "ID",
+      "Name",
+      "Email",
+      "Phone",
+      "Message",
+      "Rating",
+      "Source",
+      "Status",
+      "Created At",
+      "Reply Message",
+      "Reply Sent At",
+      "Internal Note",
+    ].join(",");
 
-    const csvRows = feedback.map(item => [
-      item.id,
-      `"${(item.name || '').replace(/"/g, '""')}"`,
-      item.email || '',
-      item.phone || '',
-      `"${(item.message || '').replace(/"/g, '""')}"`,
-      item.rating || '',
-      item.source || '',
-      item.status || 'new',
-      item.created_at || '',
-      `"${(item.reply_message || '').replace(/"/g, '""')}"`,
-      item.reply_sent_at || '',
-      `"${(item.reply_internal_note || '').replace(/"/g, '""')}"`
-    ].join(','));
+    const csvRows = feedback.map((item) =>
+      [
+        item.id,
+        `"${(item.name || "").replace(/"/g, '""')}"`,
+        item.email || "",
+        item.phone || "",
+        `"${(item.message || "").replace(/"/g, '""')}"`,
+        item.rating || "",
+        item.source || "",
+        item.status || "new",
+        item.created_at || "",
+        `"${(item.reply_message || "").replace(/"/g, '""')}"`,
+        item.reply_sent_at || "",
+        `"${(item.reply_internal_note || "").replace(/"/g, '""')}"`,
+      ].join(",")
+    );
 
-    const csvContent = [csvHeaders, ...csvRows].join('\n');
+    const csvContent = [csvHeaders, ...csvRows].join("\n");
 
-    res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', `attachment; filename=feedback-export-${new Date().toISOString().split('T')[0]}.csv`);
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename=feedback-export-${new Date().toISOString().split("T")[0]}.csv`
+    );
     res.send(csvContent);
-
   } catch (error) {
     console.error("Error exporting feedback:", error);
     res.status(500).json({
       success: false,
       message: "Failed to export feedback",
-      error: process.env.NODE_ENV === "development" ? error.message : "Internal server error",
+      error:
+        process.env.NODE_ENV === "development"
+          ? error.message
+          : "Internal server error",
     });
   }
 });
@@ -675,6 +772,55 @@ router.get("/health", async (req, res) => {
       success: false,
       message: "Feedback service health check failed",
       error: error.message,
+    });
+  }
+});
+
+// GET /api/feedback/email-status - Check email service status
+router.get("/email-status", async (req, res) => {
+  try {
+    const environment = process.env.NODE_ENV || "development";
+    const timestamp = new Date().toISOString();
+
+    // Check SendGrid configuration
+    const sendGridConfigured = SendGridService.isConfigured();
+
+    // Check Gmail SMTP configuration
+    const gmailConfigured = !!(
+      process.env.GMAIL_USER && process.env.GMAIL_PASS
+    );
+
+    const emailStatus = {
+      environment,
+      timestamp,
+      services: {
+        sendgrid: {
+          configured: sendGridConfigured,
+          apiKey: sendGridConfigured ? "Configured" : "Not configured",
+        },
+        gmail_smtp: {
+          configured: gmailConfigured,
+          user: gmailConfigured ? process.env.GMAIL_USER : "Not configured",
+        },
+      },
+      primary_service: sendGridConfigured ? "SendGrid" : "Gmail SMTP",
+      fallback_available: sendGridConfigured && gmailConfigured,
+    };
+
+    res.json({
+      success: true,
+      message: "Email service status retrieved successfully",
+      data: emailStatus,
+    });
+  } catch (error) {
+    console.error("Error checking email service status:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to check email service status",
+      error:
+        process.env.NODE_ENV === "development"
+          ? error.message
+          : "Internal server error",
     });
   }
 });

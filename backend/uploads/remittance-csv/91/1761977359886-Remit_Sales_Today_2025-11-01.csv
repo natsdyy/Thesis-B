@@ -1,0 +1,16 @@
+"Order Number","Date","Type","Items","Total Amount","Cashier","Status","Remitted"
+"#92379047","Nov 1, 2025, 02:02 PM","Dine In","1x Beef and mushroom, 4x Pork Sisig","P1370.00","Nathaniel Vasquez","completed","No"
+"#44710053","Nov 1, 2025, 01:54 PM","Dine In","3x Longsilog, 3x Pork Sisig","P1485.00","Nathaniel Vasquez","completed","No"
+"#68503187","Nov 1, 2025, 02:18 AM","Dine In","6x Beef and mushroom","P2228.57","Nathaniel Vasquez","completed","No"
+
+"SUMMARY"
+"Total Orders in Period","3"
+"Already Remitted","0"
+"To be Remitted","3"
+
+"FINANCIAL SUMMARY (UNREMITTER ORDERS ONLY)"
+"Gross Sales","P5083.57"
+"Refunds","P0.00"
+"Voided Amount","P0.00"
+"Net Sales","P5083.57"
+"Amount to Remit","P5083.57"

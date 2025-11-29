@@ -1,5 +1,5 @@
 <script setup>
-  import { ref, computed, onMounted } from 'vue';
+  import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
   import {
     Users,
     Search,
@@ -19,31 +19,45 @@
     X,
     FileText,
     UserCheck2,
+    ArrowRightLeft,
   } from 'lucide-vue-next';
   import { useBranchContextStore } from '../../stores/branchContextStore';
   import { useEmployeeStore } from '../../stores/employeeStore.js';
+  import { useBranchStore } from '../../stores/branchStore';
   import { useAttendanceStore } from '../../stores/attendanceStore';
   import { apiConfig } from '../../config/api';
   import { useOvertimeStore } from '../../stores/overtimeStore';
   import { useLeaveStore } from '../../stores/leaveStore';
   import { useCustomToast } from '../../composables/useCustomToast';
+  import { useAuthStore } from '../../stores/authStore';
   import EmployeeScheduleComponent from '../../components/branch/EmployeeScheduleComponent.vue';
+  import EmployeeTransferRequestsComponent from '../../components/branch/EmployeeTransferRequestsComponent.vue';
 
   const branchContextStore = useBranchContextStore();
   const employeeStore = useEmployeeStore();
+  const branchStore = useBranchStore();
   const attendanceStore = useAttendanceStore();
   const overtimeStore = useOvertimeStore();
   const leaveStore = useLeaveStore();
+  const authStore = useAuthStore();
   const { showSuccess, showError } = useCustomToast();
 
   // Local state following EmployeeManager pattern
   const searchQuery = ref('');
   const departmentFilter = ref('');
   const statusFilter = ref('');
+  const otStatusFilter = ref('');
+  const leaveStatusFilter = ref('pending');
+  const leaveMonthFilter = ref('');
   const currentPage = ref(1);
   const itemsPerPage = ref(10);
   const loading = ref(false);
-  const activeTab = ref('overview');
+  // Persistent tab state to prevent reset on re-render
+  const activeTab = ref(
+    localStorage.getItem('branchEmployeesActiveTab') || 'overview'
+  );
+  const isInitializing = ref(false);
+  const hasInitialized = ref(false);
 
   const branchEmployees = ref([]);
   const employeeStats = ref({
@@ -97,6 +111,34 @@
     () => branchContextStore.canAccessEmployees
   );
 
+  // Computed properties for props to reduce reactive dependencies
+  const otherEmployees = computed(() =>
+    employeeStore.employees.filter(
+      (emp) => emp.branch_id !== currentBranch.value?.id
+    )
+  );
+  const availableBranches = computed(() =>
+    branchStore.branches.filter(
+      (branch) => branch.id !== currentBranch.value?.id
+    )
+  );
+
+  // Available months - generate list for current year
+  const availableMonths = computed(() => {
+    const currentYear = new Date().getFullYear();
+    const months = [];
+    for (let month = 0; month < 12; month++) {
+      const date = new Date(currentYear, month, 1);
+      const monthStr = date.toLocaleString('default', {
+        month: 'long',
+        year: 'numeric',
+      });
+      months.push(monthStr);
+    }
+    // Reverse to show most recent first (December to January)
+    return months.slice().reverse();
+  });
+
   const filteredEmployees = computed(() => {
     let employees = branchEmployees.value;
 
@@ -135,8 +177,8 @@
     let requests = otRequests.value;
 
     // Filter by status if needed
-    if (statusFilter.value && statusFilter.value !== '') {
-      requests = requests.filter((req) => req.status === statusFilter.value);
+    if (otStatusFilter.value && otStatusFilter.value !== '') {
+      requests = requests.filter((req) => req.status === otStatusFilter.value);
     }
 
     // Filter by search query
@@ -170,8 +212,22 @@
     let requests = leaveRequests.value;
 
     // Filter by status if needed
-    if (statusFilter.value && statusFilter.value !== '') {
-      requests = requests.filter((req) => req.status === statusFilter.value);
+    if (leaveStatusFilter.value && leaveStatusFilter.value !== '') {
+      requests = requests.filter(
+        (req) => req.status === leaveStatusFilter.value
+      );
+    }
+
+    // Filter by month if needed
+    if (leaveMonthFilter.value && leaveMonthFilter.value !== '') {
+      requests = requests.filter((req) => {
+        const fromDate = new Date(req.from_date);
+        const fromDateStr = fromDate.toLocaleString('default', {
+          month: 'long',
+          year: 'numeric',
+        });
+        return fromDateStr === leaveMonthFilter.value;
+      });
     }
 
     // Filter by search query
@@ -230,12 +286,16 @@
   };
 
   const loadBranchEmployees = async () => {
+    if (loading.value) return; // Prevent multiple simultaneous calls
     loading.value = true;
 
     try {
       // Fetch real employees from API via Pinia store
       // Grab a large page to cover typical branch sizes; pagination UI can be added later
-      await employeeStore.fetchEmployees(false, 1, 500, false);
+      // Only fetch if employees array is empty to prevent continuous refetching
+      if (employeeStore.employees.length === 0) {
+        await employeeStore.fetchEmployees(false, 1, 500, false);
+      }
 
       const branchId = branchContextStore.currentBranch?.id || null;
       const all = Array.isArray(employeeStore.employees)
@@ -348,10 +408,6 @@
     }
   };
 
-  const refreshEmployees = () => {
-    loadBranchEmployees();
-  };
-
   const viewEmployee = (employee) => {
     // TODO: Implement view employee details
     console.log('View employee:', employee);
@@ -376,14 +432,30 @@
     };
   };
 
-  const loadOtRequests = async () => {
-    await overtimeStore.fetchRequests({
-      branch_id: currentBranch?.value?.id,
-      page: 1,
-      limit: 100,
-    });
-    otRequests.value = overtimeStore.requests;
-    updateOtStats();
+  const loadOtRequests = async (forceRefresh = false) => {
+    try {
+      // Only fetch if OT requests array is empty to prevent continuous refetching
+      // OR if forceRefresh is true (after approve/reject actions)
+      if (overtimeStore.requests.length === 0 || forceRefresh) {
+        // Branch Managers should not see their own overtime requests in the approval interface
+        // These should go directly to HR for approval
+        const excludeEmployeeId =
+          userRole.value === 'Manager' ? authStore.user?.id : undefined;
+
+        await overtimeStore.fetchRequests({
+          branch_id: currentBranch.value?.id,
+          exclude_employee_id: excludeEmployeeId,
+          page: 1,
+          limit: 100,
+        });
+      }
+      otRequests.value = overtimeStore.requests;
+      updateOtStats();
+    } catch (error) {
+      console.error('Error loading OT requests:', error);
+      otRequests.value = [];
+      updateOtStats();
+    }
   };
 
   const openApprovalModal = (requestId) => {
@@ -410,7 +482,7 @@
         selectedRequest.value.id,
         selectedRequest.value.notes || ''
       );
-      await loadOtRequests();
+      await loadOtRequests(true);
 
       showSuccess(
         `Overtime request for ${selectedRequest.value.employee_name} has been approved.`,
@@ -439,7 +511,7 @@
         selectedRequest.value.id,
         rejectionNotes.value || ''
       );
-      await loadOtRequests();
+      await loadOtRequests(true);
 
       showSuccess(
         `Overtime request for ${selectedRequest.value.employee_name} has been rejected.`,
@@ -506,10 +578,24 @@
     };
   };
 
-  const loadLeaveRequests = async () => {
-    await leaveStore.fetchPendingManagerApprovals(currentBranch?.value?.id);
-    leaveRequests.value = leaveStore.pendingManagerApprovals;
-    updateLeaveStats();
+  const loadLeaveRequests = async (forceRefresh = false) => {
+    try {
+      // Only fetch if leave requests array is empty to prevent continuous refetching
+      // OR if forceRefresh is true (after approve/reject actions)
+      if (leaveStore.allLeaveRequests.length === 0 || forceRefresh) {
+        await leaveStore.fetchAllLeaveRequests({
+          branch_id: currentBranch.value?.id,
+          page: 1,
+          limit: 500,
+        });
+      }
+      leaveRequests.value = leaveStore.allLeaveRequests;
+      updateLeaveStats();
+    } catch (error) {
+      console.error('Error loading leave requests:', error);
+      leaveRequests.value = [];
+      updateLeaveStats();
+    }
   };
 
   const openLeaveApprovalModal = (requestId) => {
@@ -537,7 +623,7 @@
         selectedLeaveRequest.value.id,
         leaveApprovalNotes.value || ''
       );
-      await loadLeaveRequests();
+      await loadLeaveRequests(true);
 
       showSuccess(
         `Leave request for ${selectedLeaveRequest.value.first_name} ${selectedLeaveRequest.value.last_name} has been approved by manager.`,
@@ -567,7 +653,7 @@
         selectedLeaveRequest.value.id,
         leaveRejectionNotes.value || ''
       );
-      await loadLeaveRequests();
+      await loadLeaveRequests(true);
 
       showSuccess(
         `Leave request for ${selectedLeaveRequest.value.first_name} ${selectedLeaveRequest.value.last_name} has been rejected.`,
@@ -622,15 +708,51 @@
   };
 
   // Initialize
-  onMounted(() => {
-    loadBranchEmployees();
-    loadOtRequests();
-    loadLeaveRequests();
+  onMounted(async () => {
+    if (isInitializing.value) {
+      return;
+    }
+
+    isInitializing.value = true;
+
+    try {
+      // Load data sequentially to avoid race conditions
+      // Only load if not already loaded to prevent continuous refreshing
+      if (!hasInitialized.value) {
+        await loadBranchEmployees();
+        await loadOtRequests();
+        await loadLeaveRequests();
+        // Only fetch branches if not already loaded to prevent continuous refetching
+        if (branchStore.branches.length === 0) {
+          await branchStore.fetchActiveBranches();
+        }
+        hasInitialized.value = true;
+      }
+    } catch (error) {
+      console.error('Error initializing branch employees data:', error);
+      showError(
+        'Failed to load employee data. Please refresh the page.',
+        'Loading Error'
+      );
+    } finally {
+      isInitializing.value = false;
+    }
+  });
+
+  // Cleanup on unmount
+  onUnmounted(() => {
+    // Reset initialization state to allow proper re-initialization on remount
+    // Note: Removing hasInitialized reset to prevent continuous auto-refreshing
+  });
+
+  // Track activeTab changes and persist state
+  watch(activeTab, (newTab) => {
+    localStorage.setItem('branchEmployeesActiveTab', newTab);
   });
 </script>
 
 <template>
-  <div class="space-y-6">
+  <div class="space-y-6 p-4">
     <!-- Header -->
     <div class="flex items-center justify-between">
       <div>
@@ -640,16 +762,6 @@
         <p class="text-gray-600 mt-1">
           {{ currentBranch?.name }} - Staff Management
         </p>
-      </div>
-      <div class="flex items-center space-x-2">
-        <button
-          @click="refreshEmployees"
-          :disabled="loading"
-          class="btn btn-outline text-primaryColor border-primaryColor hover:bg-primaryColor hover:text-white"
-        >
-          <RefreshCcw :class="['w-4 h-4 mr-2', { 'animate-spin': loading }]" />
-          Refresh
-        </button>
       </div>
     </div>
 
@@ -703,12 +815,21 @@
           <span class="hidden xs:inline">Leave Approvals</span>
           <span class="xs:hidden">Leave</span>
         </button>
+        <button
+          @click="activeTab = 'transfers'"
+          class="tab flex-1 sm:flex-none"
+          :class="{ 'tab-active': activeTab === 'transfers' }"
+        >
+          <ArrowRightLeft class="w-4 h-4 mr-1 sm:mr-2" />
+          <span class="hidden xs:inline">Transfer Requests</span>
+          <span class="xs:hidden">Transfers</span>
+        </button>
       </div>
 
       <!-- Overview Tab -->
       <template v-if="activeTab === 'overview'">
         <!-- Stats Cards -->
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div class="card bg-white shadow-lg">
             <div class="card-body">
               <div class="flex items-center justify-between">
@@ -720,22 +841,6 @@
                 </div>
                 <div class="p-3 bg-primaryColor/10 rounded-full">
                   <Users class="w-6 h-6 text-primaryColor" />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="card bg-white shadow-lg">
-            <div class="card-body">
-              <div class="flex items-center justify-between">
-                <div>
-                  <p class="text-sm text-gray-600">Active</p>
-                  <p class="text-2xl font-bold text-primaryColor">
-                    {{ employeeStats.activeEmployees }}
-                  </p>
-                </div>
-                <div class="p-3 bg-primaryColor/10 rounded-full">
-                  <UserCheck class="w-6 h-6 text-primaryColor" />
                 </div>
               </div>
             </div>
@@ -822,7 +927,7 @@
             <!-- Employee Table -->
             <div v-else-if="paginatedEmployees.length > 0" class="space-y-4">
               <div class="overflow-x-auto">
-                <table class="table table-zebra w-full">
+                <table class="table table-zebra w-full !bg-accentColor">
                   <thead>
                     <tr>
                       <th>Employee</th>
@@ -830,7 +935,6 @@
                       <th>Contact</th>
 
                       <th>Attendance</th>
-                      <th>Status</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -899,16 +1003,6 @@
                           }}</span>
                         </div>
                       </td>
-                      <td>
-                        <div
-                          :class="[
-                            'badge badge-sm border-none font-medium',
-                            getStatusBadge(employee.status).class,
-                          ]"
-                        >
-                          {{ getStatusBadge(employee.status).text }}
-                        </div>
-                      </td>
                     </tr>
                   </tbody>
                 </table>
@@ -955,30 +1049,14 @@
         <EmployeeScheduleComponent
           :employees="branchEmployees"
           :branch-id="currentBranch?.id"
-          @schedule-updated="refreshEmployees"
+          @schedule-updated="loadBranchEmployees"
         />
       </template>
 
       <!-- Overtime Approvals Tab -->
       <template v-else-if="activeTab === 'overtime'">
         <!-- OT Stats Cards -->
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
-          <div class="card bg-white shadow-lg">
-            <div class="card-body">
-              <div class="flex items-center justify-between">
-                <div>
-                  <p class="text-sm text-gray-600">Total Requests</p>
-                  <p class="text-2xl font-bold text-primaryColor">
-                    {{ otStats.totalRequests }}
-                  </p>
-                </div>
-                <div class="p-3 bg-primaryColor/10 rounded-full">
-                  <BadgeCheck class="w-6 h-6 text-primaryColor" />
-                </div>
-              </div>
-            </div>
-          </div>
-
+        <div class="grid grid-cols-1 md:grid-cols-1 gap-6">
           <div class="card bg-white shadow-lg">
             <div class="card-body">
               <div class="flex items-center justify-between">
@@ -990,38 +1068,6 @@
                 </div>
                 <div class="p-3 bg-warning/10 rounded-full">
                   <Clock class="w-6 h-6 text-warning" />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="card bg-white shadow-lg">
-            <div class="card-body">
-              <div class="flex items-center justify-between">
-                <div>
-                  <p class="text-sm text-gray-600">Approved</p>
-                  <p class="text-2xl font-bold text-success">
-                    {{ otStats.approvedRequests }}
-                  </p>
-                </div>
-                <div class="p-3 bg-success/10 rounded-full">
-                  <UserCheck class="w-6 h-6 text-success" />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="card bg-white shadow-lg">
-            <div class="card-body">
-              <div class="flex items-center justify-between">
-                <div>
-                  <p class="text-sm text-gray-600">Total OT Hours</p>
-                  <p class="text-2xl font-bold text-gray-600">
-                    {{ otStats.totalOvertimeHours }}h
-                  </p>
-                </div>
-                <div class="p-3 bg-gray-600/10 rounded-full">
-                  <Calendar class="w-6 h-6 text-gray-600" />
                 </div>
               </div>
             </div>
@@ -1048,7 +1094,7 @@
               </div>
 
               <!-- Status Filter -->
-              <select v-model="statusFilter" class="select select-bordered">
+              <select v-model="otStatusFilter" class="select select-bordered">
                 <option value="">All Status</option>
                 <option value="pending">Pending</option>
                 <option value="approved">Approved</option>
@@ -1182,23 +1228,7 @@
       <!-- Leave Approvals Tab -->
       <template v-else-if="activeTab === 'leave'">
         <!-- Leave Stats Cards -->
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
-          <div class="card bg-white shadow-lg">
-            <div class="card-body">
-              <div class="flex items-center justify-between">
-                <div>
-                  <p class="text-sm text-gray-600">Total Requests</p>
-                  <p class="text-2xl font-bold text-primaryColor">
-                    {{ leaveStats.totalRequests }}
-                  </p>
-                </div>
-                <div class="p-3 bg-primaryColor/10 rounded-full">
-                  <FileText class="w-6 h-6 text-primaryColor" />
-                </div>
-              </div>
-            </div>
-          </div>
-
+        <div class="grid grid-cols-1 md:grid-cols-1 gap-6">
           <div class="card bg-white shadow-lg">
             <div class="card-body">
               <div class="flex items-center justify-between">
@@ -1210,38 +1240,6 @@
                 </div>
                 <div class="p-3 bg-warning/10 rounded-full">
                   <Clock class="w-6 h-6 text-warning" />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="card bg-white shadow-lg">
-            <div class="card-body">
-              <div class="flex items-center justify-between">
-                <div>
-                  <p class="text-sm text-gray-600">Manager Approved</p>
-                  <p class="text-2xl font-bold text-info">
-                    {{ leaveStats.managerApprovedRequests }}
-                  </p>
-                </div>
-                <div class="p-3 bg-info/10 rounded-full">
-                  <UserCheck2 class="w-6 h-6 text-info" />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="card bg-white shadow-lg">
-            <div class="card-body">
-              <div class="flex items-center justify-between">
-                <div>
-                  <p class="text-sm text-gray-600">HR Approved</p>
-                  <p class="text-2xl font-bold text-success">
-                    {{ leaveStats.hrApprovedRequests }}
-                  </p>
-                </div>
-                <div class="p-3 bg-success/10 rounded-full">
-                  <UserCheck class="w-6 h-6 text-success" />
                 </div>
               </div>
             </div>
@@ -1268,12 +1266,27 @@
               </div>
 
               <!-- Status Filter -->
-              <select v-model="statusFilter" class="select select-bordered">
+              <select
+                v-model="leaveStatusFilter"
+                class="select select-bordered"
+              >
                 <option value="">All Status</option>
                 <option value="pending">Pending</option>
                 <option value="approved_by_manager">Manager Approved</option>
                 <option value="approved_by_hr">HR Approved</option>
                 <option value="rejected">Rejected</option>
+              </select>
+
+              <!-- Month Filter -->
+              <select v-model="leaveMonthFilter" class="select select-bordered">
+                <option value="">All Months</option>
+                <option
+                  v-for="month in availableMonths"
+                  :key="month"
+                  :value="month"
+                >
+                  {{ month }}
+                </option>
               </select>
             </div>
           </div>
@@ -1393,6 +1406,16 @@
           </div>
         </div>
       </template>
+
+      <!-- Transfer Requests Tab -->
+      <div v-if="activeTab === 'transfers'">
+        <EmployeeTransferRequestsComponent
+          :current-branch="currentBranch"
+          :branch-employees="branchEmployees"
+          :other-employees="otherEmployees"
+          :available-branches="availableBranches"
+        />
+      </div>
     </div>
 
     <!-- Approval Confirmation Modal -->

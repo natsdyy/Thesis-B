@@ -32,15 +32,137 @@
   import { useProductionStore } from '../../stores/productionStore.js';
   import { useAuthStore } from '../../stores/authStore.js';
   import { useUserStore } from '../../stores/userStore.js';
-  import { useInventoryStore } from '../../stores/inventoryStore.js';
-  import { useRouter } from 'vue-router';
+  import { useRouter, useRoute } from 'vue-router';
   import ProductionTransactionModal from '../../components/production/ProductionTransactionModal.vue';
+  // TinyMCE (self-hosted) for completion notes with proof capture
+  import Editor from '@tinymce/tinymce-vue';
+  const TinyMCEEditor = Editor;
+  import { sanitizeHtml } from '../../utils/sanitizeHtml.js';
+  import { formatImageUrl, getApiUrl } from '../../config/api.js';
+  import tinymce from 'tinymce/tinymce';
+  import 'tinymce/tinymce';
+  import 'tinymce/icons/default';
+  import 'tinymce/themes/silver';
+  import 'tinymce/models/dom/model';
+  import 'tinymce/plugins/link';
+  import 'tinymce/plugins/lists';
+  import 'tinymce/plugins/image';
+  import 'tinymce/skins/ui/oxide/skin.min.css';
+  try {
+    tinymce?.EditorManager?.overrideDefaults?.({ license_key: 'gpl' });
+  } catch (_) {}
 
   const productionStore = useProductionStore();
   const authStore = useAuthStore();
   const userStore = useUserStore();
-  const inventoryStore = useInventoryStore();
   const router = useRouter();
+  const route = useRoute();
+
+  // TinyMCE configuration for batch completion notes
+  const tinyMCEConfig = computed(() => ({
+    menubar: false,
+    height: 220,
+    plugins: 'link lists',
+    toolbar: 'uploadimage | bold italic underline | bullist numlist | link',
+    toolbar_mode: 'wrap',
+    automatic_uploads: false,
+    images_upload_handler: async (blobInfo, progress) => {
+      return new Promise((resolve, reject) => {
+        const token = localStorage.getItem('token');
+        const formData = new FormData();
+        formData.append('file', blobInfo.blob(), blobInfo.filename());
+
+        fetch(getApiUrl('/uploads/proofs'), {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+          body: formData,
+        })
+          .then((response) => response.json())
+          .then((data) => {
+            if (data.location) {
+              resolve(formatImageUrl(data.location));
+            } else {
+              reject(data.message || 'Upload failed');
+            }
+          })
+          .catch((error) => {
+            reject(error.message || 'Upload failed');
+          });
+      });
+    },
+    file_picker_types: 'image',
+    content_style:
+      'html,body{max-width:100%;} img{max-width:100%;height:auto;display:block;margin:6px 0;}',
+    valid_elements:
+      'p,b,i,u,strong,em,ul,ol,li,br,a[href|target|rel],img[src|alt|title|class|style],span[class|style],div[class|style]',
+    setup: (ed) => {
+      ed.ui.registry.addButton('uploadimage', {
+        text: 'Upload Image',
+        tooltip: 'Upload image proof',
+        onAction: () => {
+          pickAndUploadImage(
+            (url) => ed.insertContent(`<img src="${formatImageUrl(url)}" />`),
+            'batch_modal'
+          );
+        },
+      });
+    },
+    branding: false,
+    skin: false,
+    content_css: false,
+    license_key: 'gpl',
+    ui_container: 'body',
+  }));
+
+  // Image upload handler for TinyMCE
+  const pickAndUploadImage = (callback, modalId = 'batch_modal') => {
+    try {
+      const modal = document.getElementById(modalId);
+      const wasOpen = !!modal?.open;
+      // Close modal to avoid z-index issues with native pickers
+      if (wasOpen)
+        try {
+          modal.close();
+        } catch (_) {}
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/png,image/jpeg';
+      input.onchange = async () => {
+        const file = input.files && input.files[0];
+        if (!file) return;
+        const fd = new FormData();
+        fd.append('file', file);
+        try {
+          const token = localStorage.getItem('token');
+          const res = await fetch(getApiUrl('/uploads/proofs'), {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+            body: fd,
+          });
+          const json = await res.json();
+          if (res.ok && json.location) {
+            callback(json.location);
+          } else {
+            alert(json.message || 'Upload failed');
+          }
+        } catch (e) {
+          alert('Upload failed: ' + e.message);
+        }
+        // Reopen modal after upload attempt
+        if (wasOpen)
+          try {
+            modal.showModal();
+          } catch (_) {}
+      };
+      input.click();
+    } catch (err) {
+      console.error('Image picker error:', err);
+    }
+  };
 
   // Reactive state
   const activeTab = ref('ready');
@@ -64,6 +186,10 @@
   const productionStaff = ref([]);
   const loading = ref(false);
   const error = ref(null);
+
+  // Pagination for production history
+  const historyCurrentPage = ref(1);
+  const historyItemsPerPage = ref(10);
 
   // Production execution form
   const executionForm = ref({
@@ -147,6 +273,21 @@
     return selectedItem.value.batch_size || 10;
   });
 
+  // Pagination computed properties for production history
+  const paginatedProductionHistory = computed(() => {
+    const start = (historyCurrentPage.value - 1) * historyItemsPerPage.value;
+    return productionHistory.value.slice(
+      start,
+      start + historyItemsPerPage.value
+    );
+  });
+
+  const historyTotalPages = computed(() => {
+    return Math.ceil(
+      productionHistory.value.length / historyItemsPerPage.value
+    );
+  });
+
   const canExecuteProduction = computed(() => {
     return (
       executionForm.value.batch_size > 0 &&
@@ -168,6 +309,50 @@
     });
     return Array.from(categories).sort();
   });
+
+  // Filter production staff to show only department managers
+  const productionManagers = computed(() => {
+    return productionStaff.value.filter((staff) => {
+      // Check if the staff member is a manager based on their role
+      const role = staff.role?.toLowerCase() || '';
+      const roleName = staff.role_name?.toLowerCase() || '';
+      const position = staff.position?.toLowerCase() || '';
+
+      return (
+        role === 'manager' ||
+        role.includes('supervisor') ||
+        roleName === 'manager' ||
+        roleName.includes('supervisor') ||
+        position.includes('manager') ||
+        position.includes('supervisor')
+      );
+    });
+  });
+
+  // Check if an item is already in production
+  const isItemInProduction = (item) => {
+    return activeBatches.value.some(
+      (batch) =>
+        batch.menu_item_id === item.menu_item_id ||
+        batch.recipe_id === item.recipe_id
+    );
+  };
+
+  // Get production status for an item
+  const getItemProductionStatus = (item) => {
+    const activeBatch = activeBatches.value.find(
+      (batch) =>
+        batch.menu_item_id === item.menu_item_id ||
+        batch.recipe_id === item.recipe_id
+    );
+    return activeBatch
+      ? {
+          status: activeBatch.status,
+          batchNumber: activeBatch.batch_number,
+          progress: activeBatch.progress,
+        }
+      : null;
+  };
 
   // Pagination methods (consistent with TransactionModal pattern)
   const goToPage = (page) => {
@@ -241,6 +426,28 @@
 
   // Production methods
   const startProduction = async (item) => {
+    // Check if item is already in production
+    if (isItemInProduction(item)) {
+      const productionStatus = getItemProductionStatus(item);
+      if (productionStatus) {
+        showToast(
+          'warning',
+          `This item is already in production (Batch #${productionStatus.batchNumber})`
+        );
+
+        // Find and show the active batch details
+        const activeBatch = activeBatches.value.find(
+          (batch) =>
+            batch.menu_item_id === item.menu_item_id ||
+            batch.recipe_id === item.recipe_id
+        );
+        if (activeBatch) {
+          viewDetails(activeBatch, 'batch');
+        }
+      }
+      return;
+    }
+
     selectedItem.value = item;
     executionForm.value.batch_size = item.batch_size || 1;
     showExecutionModal.value = true;
@@ -260,10 +467,15 @@
         executionForm.value.batch_size
       );
       ingredientRequirements.value = response;
+      console.log('Ingredient requirements loaded successfully:', response);
     } catch (err) {
       error.value = 'Failed to load ingredient requirements';
       console.error('Error loading ingredients:', err);
-      showToast('error', 'Failed to load ingredient requirements');
+
+      // Only show error toast if it's not a timeout (timeout might be expected)
+      if (!err.message?.includes('timeout')) {
+        showToast('error', 'Failed to load ingredient requirements');
+      }
     } finally {
       ingredientLoading.value = false;
     }
@@ -436,12 +648,13 @@
         const currentStock = item.available_quantity || 0;
         const reorderPoint = item.reorder_point || 0;
 
-        // Show if: zero stock OR below reorder point OR no reorder point set (default to show all)
-        return (
-          currentStock === 0 ||
-          currentStock <= reorderPoint ||
-          reorderPoint === 0
-        );
+        // If no reorder point is set (0), only show when stock is 0
+        if (reorderPoint === 0) {
+          return currentStock === 0;
+        }
+
+        // If reorder point is set, show when stock is at or below reorder point
+        return currentStock <= reorderPoint;
       });
     } catch (err) {
       error.value = 'Failed to load production inventory';
@@ -465,7 +678,7 @@
   const loadProductionHistory = async () => {
     try {
       const response = await productionStore.getProductionHistory();
-      productionHistory.value = response.slice(0, 10); // Latest 10 records
+      productionHistory.value = response; // Load all records, pagination handled in computed
     } catch (err) {
       console.error('Error loading production history:', err);
       showToast('error', 'Failed to load production history');
@@ -566,11 +779,37 @@
     await loadActiveBatches();
     await loadProductionHistory();
     await loadProductionStaff();
+
+    // Handle navigation from Production Inventory with specific menu item
+    const menuItemId = route.query.menuItemId;
+    const itemName = route.query.itemName;
+
+    if (menuItemId && readyForProduction.value.length > 0) {
+      // Find the item in the ready for production list
+      const targetItem = readyForProduction.value.find(
+        (item) => item.menu_item_id == menuItemId
+      );
+
+      if (targetItem) {
+        // Automatically open the production execution modal
+        setTimeout(() => {
+          startProduction(targetItem);
+        }, 500); // Small delay to ensure UI is ready
+
+        // Clear the query parameters after handling
+        router.replace({ path: route.path });
+      } else {
+        showToast(
+          'warning',
+          `Menu item "${itemName}" not found in ready for production list`
+        );
+      }
+    }
   });
 </script>
 
 <template>
-  <div class="container mx-auto p-2 sm:p-4 lg:p-6 max-w-6xl">
+  <div class="mx-auto p-2 sm:p-4 lg:p-6">
     <!-- Header -->
     <div class="text-center mb-4 sm:mb-6 lg:mb-8">
       <h1
@@ -626,76 +865,41 @@
           Active production batches
         </div>
       </div>
-
-      <div
-        class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
-      >
-        <div class="stat-figure">
-          <CheckCircle
-            class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-success"
-          />
-        </div>
-        <div class="stat-title text-black/50 text-xs sm:text-sm">
-          Completed Today
-        </div>
-        <div
-          class="stat-value text-success text-lg sm:text-xl lg:text-2xl xl:text-3xl"
-        >
-          {{ productionHistory.length }}
-        </div>
-        <div class="stat-desc text-black/50 !text-xs sm:text-sm">
-          Finished productions
-        </div>
-      </div>
-    </div>
-
-    <!-- Action Buttons -->
-    <div
-      class="flex flex-wrap gap-2 mb-4 sm:mb-6 justify-center sm:justify-start"
-    >
-      <button
-        @click="refreshData"
-        class="btn btn-sm bg-primaryColor text-white font-thin hover:bg-primaryColor/80 hover:border-none hover:shadow-none"
-        :disabled="loading"
-      >
-        <RefreshCcw class="w-4 h-4 mr-1" />
-        Refresh
-      </button>
-      <button
-        @click="openTransactionModal"
-        class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10 font-thin hover:border-none hover:shadow-none"
-      >
-        <BarChart3 class="w-4 h-4 mr-1" />
-        View Transactions
-      </button>
     </div>
 
     <!-- Tab Navigation -->
-    <div class="tabs tabs-boxed mb-4 sm:mb-6 justify-center sm:justify-start">
-      <button
-        @click="activeTab = 'ready'"
-        class="tab"
-        :class="{ 'tab-active': activeTab === 'ready' }"
-      >
-        <Package class="w-4 h-4 mr-1" />
-        Ready for Production
-      </button>
-      <button
-        @click="activeTab = 'batches'"
-        class="tab"
-        :class="{ 'tab-active': activeTab === 'batches' }"
-      >
-        <Activity class="w-4 h-4 mr-1" />
-        Active Batches
-      </button>
-      <button
-        @click="activeTab = 'history'"
-        class="tab"
-        :class="{ 'tab-active': activeTab === 'history' }"
-      >
-        <Clock class="w-4 h-4 mr-1" />
-        Production History
-      </button>
+    <div
+      class="tabs tabs-boxed mb-4 sm:mb-6 justify-center sm:justify-start overflow-x-auto"
+    >
+      <div class="flex flex-nowrap gap-1 min-w-max">
+        <button
+          @click="activeTab = 'ready'"
+          class="tab tab-sm sm:tab-md whitespace-nowrap"
+          :class="{ 'tab-active': activeTab === 'ready' }"
+        >
+          <Package class="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+          <span class="hidden sm:inline">Ready for Production</span>
+          <span class="sm:hidden">Ready</span>
+        </button>
+        <button
+          @click="activeTab = 'batches'"
+          class="tab tab-sm sm:tab-md whitespace-nowrap"
+          :class="{ 'tab-active': activeTab === 'batches' }"
+        >
+          <Activity class="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+          <span class="hidden sm:inline">Active Batches</span>
+          <span class="sm:hidden">Batches</span>
+        </button>
+        <button
+          @click="activeTab = 'history'"
+          class="tab tab-sm sm:tab-md whitespace-nowrap"
+          :class="{ 'tab-active': activeTab === 'history' }"
+        >
+          <Clock class="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+          <span class="hidden sm:inline">Production History</span>
+          <span class="sm:hidden">History</span>
+        </button>
+      </div>
     </div>
 
     <!-- Tab Content -->
@@ -732,8 +936,9 @@
           </div>
 
           <!-- Search and Filters -->
-          <div class="flex flex-col sm:flex-row gap-4 mb-6">
-            <div class="flex-1">
+          <div class="space-y-4 mb-6">
+            <!-- Search Bar -->
+            <div class="w-full">
               <div class="relative">
                 <Search
                   class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4"
@@ -742,12 +947,17 @@
                   v-model="searchQuery"
                   type="text"
                   placeholder="Search menu items, recipes..."
-                  class="input input-bordered w-full pl-10"
+                  class="input input-sm sm:input-md input-bordered w-full pl-10 bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
                 />
               </div>
             </div>
-            <div class="flex gap-2">
-              <select v-model="categoryFilter" class="select select-bordered">
+
+            <!-- Filter Controls -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <select
+                v-model="categoryFilter"
+                class="select select-sm sm:select-md select-bordered bg-white border-primaryColor/30 text-black/70"
+              >
                 <option value="">All Categories</option>
                 <option
                   v-for="category in availableCategories"
@@ -757,25 +967,33 @@
                   {{ category }}
                 </option>
               </select>
-              <select v-model="statusFilter" class="select select-bordered">
+
+              <select
+                v-model="statusFilter"
+                class="select select-sm sm:select-md select-bordered bg-white border-primaryColor/30 text-black/70"
+              >
                 <option value="">All Status</option>
                 <option value="Approved">Approved</option>
                 <option value="Under Review">Under Review</option>
               </select>
+
               <button
-                class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10"
+                class="btn btn-outline btn-sm sm:btn-md text-primaryColor hover:bg-primaryColor/10 font-thin hover:border-none hover:shadow-none"
                 @click="clearFilters"
                 :disabled="loading"
               >
                 <X class="w-4 h-4 mr-1" />
-                Clear
+                <span class="hidden sm:inline">Clear</span>
+                <span class="sm:hidden">Clear</span>
               </button>
+
               <button
-                class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10"
+                class="btn btn-outline btn-sm sm:btn-md text-primaryColor hover:bg-primaryColor/10 font-thin hover:border-none hover:shadow-none"
                 @click="openTransactionModal"
               >
                 <BarChart3 class="w-4 h-4 mr-1" />
-                View Transactions
+                <span class="hidden sm:inline">View Transactions</span>
+                <span class="sm:hidden">Transactions</span>
               </button>
             </div>
           </div>
@@ -804,7 +1022,7 @@
           <!-- Items Grid -->
           <div
             v-else
-            class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+            class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6"
           >
             <div
               v-for="item in paginatedReadyItems"
@@ -812,54 +1030,92 @@
               class="card bg-white border border-gray-200 hover:shadow-xl duration-300 cursor-pointer"
               @click="viewDetails(item, 'ready')"
             >
-              <div class="card-body p-6">
-                <div class="flex items-start justify-between mb-4">
-                  <div class="flex-1">
+              <div class="card-body p-4 sm:p-6">
+                <div
+                  class="flex flex-col sm:flex-row items-start justify-between mb-4 gap-3"
+                >
+                  <div class="flex-1 min-w-0">
                     <h3
-                      class="card-title text-lg font-bold text-primaryColor mb-2"
+                      class="card-title text-base sm:text-lg font-bold text-primaryColor mb-2 truncate"
                     >
                       {{ item.menu_item_name }}
                     </h3>
-                    <p class="text-sm text-gray-600 mb-2">
-                      {{ item.recipe_name }}
-                    </p>
-                    <p class="text-xs text-gray-500 mb-3">
-                      {{ item.item_code }}
-                    </p>
-                    <div class="flex items-center gap-2 mb-3">
-                      <span :class="getStatusColor(item.quality_status)">
+
+                    <div
+                      class="flex flex-col sm:flex-row items-start sm:items-center gap-2 text-xs sm:text-sm text-gray-600"
+                    >
+                      <span
+                        :class="getStatusColor(item.quality_status)"
+                        class="text-xs"
+                      >
                         {{ item.quality_status }}
                       </span>
-                      <span class="badge badge-sm bg-gray-100 text-gray-600">
+                      <span
+                        class="badge badge-xs sm:badge-sm bg-gray-100 text-gray-600"
+                      >
                         Stock: {{ item.available_quantity }}
+                      </span>
+                      <!-- Production Status Indicator -->
+                      <span
+                        v-if="isItemInProduction(item)"
+                        class="badge badge-xs sm:badge-sm bg-warning/20 text-warning border-warning/30"
+                      >
+                        <Activity class="w-3 h-3 mr-1" />
+                        In Production
                       </span>
                     </div>
                   </div>
-                  <div class="text-right">
-                    <div class="text-lg font-bold text-primaryColor">
+                  <div class="text-right self-end sm:self-start">
+                    <div
+                      class="text-base sm:text-lg font-bold text-primaryColor"
+                    >
                       ₱{{ item.selling_price || 0 }}
-                    </div>
-                    <div class="text-xs text-gray-500">
-                      {{ item.recipe_batch_size || 'N/A' }}
-                      {{ item.recipe_batch_unit || 'servings' }}
                     </div>
                   </div>
                 </div>
 
-                <div class="flex gap-2">
+                <div class="flex flex-col sm:flex-row gap-2">
                   <button
                     @click.stop="startProduction(item)"
-                    class="btn btn-sm bg-primaryColor text-white font-thin hover:bg-primaryColor/80 hover:border-none hover:shadow-none flex-1"
-                    :disabled="!isUserAuthenticated || loading"
+                    class="btn btn-sm sm:btn-md text-white font-thin hover:border-none hover:shadow-none flex-1 min-h-[44px]"
+                    :class="
+                      isItemInProduction(item)
+                        ? 'bg-gray-400 cursor-not-allowed'
+                        : 'bg-primaryColor hover:bg-primaryColor/80'
+                    "
+                    :disabled="
+                      !isUserAuthenticated ||
+                      loading ||
+                      isItemInProduction(item)
+                    "
+                    :title="
+                      isItemInProduction(item)
+                        ? 'Item is already in production'
+                        : 'Start production for this item'
+                    "
                   >
-                    <Play class="w-4 h-4 mr-1" />
-                    Start Production
+                    <Play
+                      v-if="!isItemInProduction(item)"
+                      class="w-4 h-4 mr-1 sm:mr-2"
+                    />
+                    <Activity v-else class="w-4 h-4 mr-1 sm:mr-2" />
+                    <span class="hidden sm:inline">
+                      {{
+                        isItemInProduction(item)
+                          ? 'In Production'
+                          : 'Start Production'
+                      }}
+                    </span>
+                    <span class="sm:hidden">
+                      {{ isItemInProduction(item) ? 'Active' : 'Start' }}
+                    </span>
                   </button>
                   <button
-                    class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin border border-none shadow-none"
+                    class="btn btn-sm sm:btn-md btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin border border-none shadow-none min-h-[44px] px-3 sm:px-4"
                     @click.stop="viewDetails(item, 'ready')"
                   >
                     <Eye class="w-4 h-4" />
+                    <span class="hidden sm:inline ml-1">View</span>
                   </button>
                 </div>
               </div>
@@ -961,30 +1217,34 @@
             </p>
           </div>
 
-          <div v-else class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div v-else class="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
             <div
               v-for="batch in activeBatches"
               :key="batch.id"
               class="card bg-white border border-gray-200 hover:shadow-xl duration-300"
             >
-              <div class="card-body p-6">
-                <div class="flex justify-between items-start mb-4">
-                  <div>
-                    <h3 class="font-semibold text-lg text-primaryColor">
+              <div class="card-body p-4 sm:p-6">
+                <div
+                  class="flex flex-col sm:flex-row justify-between items-start mb-4 gap-3"
+                >
+                  <div class="flex-1 min-w-0">
+                    <h3
+                      class="font-semibold text-base sm:text-lg text-primaryColor truncate"
+                    >
                       {{ batch.menu_item_name }}
                     </h3>
-                    <p class="text-sm text-gray-600">
-                      Batch #{{ batch.batch_number }}
-                    </p>
-                    <p class="text-xs text-gray-500">{{ batch.recipe_name }}</p>
                   </div>
-                  <span :class="getStatusColor(batch.status)">{{
-                    batch.status
-                  }}</span>
+                  <span
+                    :class="getStatusColor(batch.status)"
+                    class="text-xs sm:text-sm"
+                    >{{ batch.status }}</span
+                  >
                 </div>
 
                 <div class="mb-4">
-                  <div class="flex justify-between text-sm text-gray-600 mb-2">
+                  <div
+                    class="flex justify-between text-xs sm:text-sm text-gray-600 mb-2"
+                  >
                     <span>Progress</span>
                     <span>{{ batch.progress }}%</span>
                   </div>
@@ -996,34 +1256,38 @@
                   </div>
                 </div>
 
-                <div class="grid grid-cols-2 gap-4 text-sm text-gray-600 mb-4">
+                <div
+                  class="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 text-xs sm:text-sm text-gray-600 mb-4"
+                >
                   <div>
-                    <span class="block">Batch Size:</span>
+                    <span class="block text-gray-500">Batch Size:</span>
                     <span class="font-medium text-gray-800">{{
                       batch.batch_size
                     }}</span>
                   </div>
                   <div>
-                    <span class="block">Assigned To:</span>
-                    <span class="font-medium text-gray-800">{{
+                    <span class="block text-gray-500">Assigned To:</span>
+                    <span class="font-medium text-gray-800 truncate">{{
                       batch.assigned_to_name
                     }}</span>
                   </div>
                 </div>
 
-                <div class="flex gap-2">
+                <div class="flex flex-col sm:flex-row gap-2">
                   <button
                     @click="updateBatchStatus(batch)"
-                    class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 flex-1 font-thin border border-none shadow-none"
+                    class="btn btn-sm sm:btn-md btn-outline text-primaryColor hover:bg-primaryColor/10 flex-1 font-thin border border-none shadow-none min-h-[44px]"
                   >
-                    <Settings class="w-4 h-4 mr-1" />
-                    Update Status
+                    <Settings class="w-4 h-4 mr-1 sm:mr-2" />
+                    <span class="hidden sm:inline">Update Status</span>
+                    <span class="sm:hidden">Update</span>
                   </button>
                   <button
-                    class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin border border-none shadow-none"
+                    class="btn btn-sm sm:btn-md btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin border border-none shadow-none min-h-[44px] px-3 sm:px-4"
                     @click="viewDetails(batch, 'batch')"
                   >
                     <Eye class="w-4 h-4" />
+                    <span class="hidden sm:inline ml-1">View</span>
                   </button>
                 </div>
               </div>
@@ -1069,7 +1333,59 @@
           </div>
 
           <div v-else class="overflow-x-auto">
-            <table class="table table-zebra w-full">
+            <!-- Mobile Card Layout -->
+            <div class="block sm:hidden space-y-4">
+              <div
+                v-for="history in paginatedProductionHistory"
+                :key="history.id"
+                class="card bg-white border border-gray-200 p-4"
+              >
+                <div class="flex justify-between items-start mb-3">
+                  <div class="flex-1 min-w-0">
+                    <div class="font-medium text-sm text-gray-800 truncate">
+                      {{ history.menu_item_name }}
+                    </div>
+                    <div class="text-xs text-gray-600">
+                      {{ history.item_code }}
+                    </div>
+                  </div>
+                  <span
+                    :class="getStatusColor(history.status)"
+                    class="text-xs"
+                    >{{ history.status }}</span
+                  >
+                </div>
+
+                <div class="grid grid-cols-2 gap-3 text-xs text-gray-600 mb-3">
+                  <div>
+                    <span class="block text-gray-500">Batch #</span>
+                    <span class="font-medium">{{ history.batch_number }}</span>
+                  </div>
+                  <div>
+                    <span class="block text-gray-500">Quantity</span>
+                    <span class="font-medium"
+                      >{{ history.quantity_produced }} {{ history.unit }}</span
+                    >
+                  </div>
+                </div>
+
+                <div class="flex justify-between items-center">
+                  <span class="text-xs text-gray-500">{{
+                    formatDate(history.production_date)
+                  }}</span>
+                  <button
+                    class="btn btn-xs btn-outline text-primaryColor hover:bg-primaryColor/10 border border-none shadow-none min-h-[36px]"
+                    @click="viewDetails(history, 'history')"
+                  >
+                    <Eye class="w-3 h-3 mr-1" />
+                    View
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Desktop Table Layout -->
+            <table class="table table-zebra w-full hidden sm:table">
               <thead>
                 <tr class="text-gray-700">
                   <th>Item</th>
@@ -1081,7 +1397,10 @@
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="history in productionHistory" :key="history.id">
+                <tr
+                  v-for="history in paginatedProductionHistory"
+                  :key="history.id"
+                >
                   <td>
                     <div>
                       <div class="font-medium">
@@ -1102,7 +1421,7 @@
                   </td>
                   <td>
                     <button
-                      class="btn btn-xs btn-outline text-primaryColor hover:bg-primaryColor/10"
+                      class="cursor-pointer font-thin btn btn-sm btn-outline text-black/80 hover:bg-primaryColor/10 border border-none shadow-none"
                       @click="viewDetails(history, 'history')"
                     >
                       <Eye class="w-3 h-3" />
@@ -1112,13 +1431,39 @@
               </tbody>
             </table>
           </div>
+
+          <!-- Pagination -->
+          <div
+            v-if="historyTotalPages > 1"
+            class="flex justify-center mt-6 sm:mt-8"
+          >
+            <div class="btn-group">
+              <button
+                @click="historyCurrentPage--"
+                :disabled="historyCurrentPage === 1"
+                class="btn btn-sm"
+              >
+                Previous
+              </button>
+              <button class="btn btn-sm">
+                Page {{ historyCurrentPage }} of {{ historyTotalPages }}
+              </button>
+              <button
+                @click="historyCurrentPage++"
+                :disabled="historyCurrentPage === historyTotalPages"
+                class="btn btn-sm"
+              >
+                Next
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
       <!-- Production Execution Modal -->
       <dialog id="execution_modal" class="modal">
         <div
-          class="modal-box max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl border border-black/10 bg-white/95 shadow-lg"
+          class="modal-box max-w-4xl w-full mx-4 sm:mx-0 max-h-[90vh] overflow-y-auto rounded-2xl border border-black/10 bg-white/95 shadow-lg"
         >
           <h3
             class="font-bold text-xl text-primaryColor mb-4 border-b border-black/10 pb-3"
@@ -1129,7 +1474,7 @@
           <form @submit.prevent="executeProduction" class="space-y-6">
             <!-- Production Details Form -->
             <div
-              class="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 bg-white border border-black/10 p-4 rounded-xl"
+              class="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 bg-white border border-black/10 p-4 rounded-xl"
             >
               <div class="form-control">
                 <label class="label mb-1">
@@ -1182,13 +1527,18 @@
                   v-model="executionForm.assigned_to"
                   class="select select-sm sm:select-md select-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
                 >
-                  <option value="">Select Staff</option>
+                  <option value="">Select Manager</option>
                   <option
-                    v-for="staff in productionStaff"
-                    :key="staff.id"
-                    :value="staff.id"
+                    v-for="manager in productionManagers"
+                    :key="manager.id"
+                    :value="manager.id"
                   >
-                    {{ staff.first_name }} {{ staff.last_name }}
+                    {{ manager.first_name }} {{ manager.last_name }}
+                    {{
+                      manager.role || manager.position || manager.role_name
+                        ? `(${manager.department || ''} ${manager.role || manager.position || manager.role_name})`
+                        : ''
+                    }}
                   </option>
                 </select>
               </div>
@@ -1289,21 +1639,23 @@
 
             <!-- Modal Actions -->
             <div class="modal-action border-t border-black/10 pt-4 mt-6">
-              <button
-                type="submit"
-                class="btn btn-sm font-thin border border-none shadow-none text-white bg-primaryColor hover:bg-primaryColor/90"
-                :disabled="!canExecuteProduction || loading"
-              >
-                <Play class="w-4 h-4 mr-2" />
-                {{ loading ? 'Starting...' : 'Execute Production' }}
-              </button>
-              <button
-                type="button"
-                @click="closeExecutionModal"
-                class="btn btn-sm font-thin border border-none shadow-none text-black/70"
-              >
-                Cancel
-              </button>
+              <div class="flex flex-col sm:flex-row gap-3 w-full">
+                <button
+                  type="submit"
+                  class="btn btn-sm sm:btn-md font-thin border border-none shadow-none text-white bg-primaryColor hover:bg-primaryColor/90 flex-1 min-h-[44px]"
+                  :disabled="!canExecuteProduction || loading"
+                >
+                  <Play class="w-4 h-4 mr-2" />
+                  {{ loading ? 'Starting...' : 'Execute Production' }}
+                </button>
+                <button
+                  type="button"
+                  @click="closeExecutionModal"
+                  class="btn btn-sm sm:btn-md font-thin border border-none shadow-none text-black/70 min-h-[44px]"
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           </form>
         </div>
@@ -1315,7 +1667,7 @@
       <!-- Batch Status Update Modal -->
       <dialog id="batch_modal" class="modal">
         <div
-          class="modal-box max-w-md rounded-2xl border border-black/10 bg-white/95 shadow-lg"
+          class="modal-box max-w-md w-full mx-4 sm:mx-0 rounded-2xl border border-black/10 bg-white/95 shadow-lg"
         >
           <h3
             class="font-bold text-xl text-primaryColor mb-4 border-b border-black/10 pb-3"
@@ -1337,9 +1689,8 @@
                   class="select select-sm sm:select-md select-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
                 >
                   <option value="In Progress">In Progress</option>
-                  <option value="Quality Check">Quality Check</option>
+
                   <option value="Completed">Completed</option>
-                  <option value="Failed">Failed</option>
                 </select>
               </div>
 
@@ -1354,6 +1705,7 @@
                   >
                 </label>
                 <input
+                  disabled
                   v-model="batchStatusForm.quantity_produced"
                   type="number"
                   :min="0"
@@ -1365,10 +1717,23 @@
                 <label class="label mb-1">
                   <span
                     class="label-text text-black/70 font-medium text-sm sm:text-base"
-                    >Notes (Optional)</span
                   >
+                    {{
+                      batchStatusForm.status === 'Completed'
+                        ? 'Completion Notes & Proof'
+                        : 'Notes (Optional)'
+                    }}
+                  </span>
                 </label>
+                <!-- Use TinyMCE editor for Completed status to allow proof uploads -->
+                <TinyMCEEditor
+                  v-if="batchStatusForm.status === 'Completed'"
+                  v-model="batchStatusForm.notes"
+                  :init="tinyMCEConfig"
+                />
+                <!-- Use simple textarea for other statuses -->
                 <textarea
+                  v-else
                   v-model="batchStatusForm.notes"
                   class="textarea textarea-sm sm:textarea-md textarea-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
                   placeholder="Status update notes..."
@@ -1379,20 +1744,22 @@
 
             <!-- Modal Actions -->
             <div class="modal-action border-t border-black/10 pt-4 mt-6">
-              <button
-                type="submit"
-                class="btn btn-sm font-thin border border-none shadow-none text-white bg-primaryColor hover:bg-primaryColor/90"
-                :disabled="!batchStatusForm.status || loading"
-              >
-                {{ loading ? 'Updating...' : 'Update Status' }}
-              </button>
-              <button
-                type="button"
-                @click="closeBatchModal"
-                class="btn btn-sm font-thin border border-none shadow-none text-black/70"
-              >
-                Cancel
-              </button>
+              <div class="flex flex-col sm:flex-row gap-3 w-full">
+                <button
+                  type="button"
+                  @click="closeBatchModal"
+                  class="btn btn-sm sm:btn-md font-thin border border-none shadow-none text-black/70 min-h-[44px]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  class="btn btn-sm sm:btn-md font-thin border border-none shadow-none text-white bg-primaryColor hover:bg-primaryColor/90 flex-1 min-h-[44px]"
+                  :disabled="!batchStatusForm.status || loading"
+                >
+                  {{ loading ? 'Updating...' : 'Update Status' }}
+                </button>
+              </div>
             </div>
           </form>
         </div>
@@ -1404,7 +1771,7 @@
       <!-- Batch Details Modal -->
       <dialog id="details_modal" class="modal">
         <div
-          class="modal-box max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border border-black/10 bg-white/95 shadow-lg"
+          class="modal-box max-w-2xl w-full mx-4 sm:mx-0 max-h-[90vh] overflow-y-auto rounded-2xl border border-black/10 bg-white/95 shadow-lg"
         >
           <h3
             class="font-bold text-xl text-primaryColor mb-4 border-b border-black/10 pb-3"
@@ -1418,7 +1785,7 @@
               <h4 class="font-semibold text-lg text-black/80 mb-3">
                 Basic Information
               </h4>
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label class="text-sm text-black/60">Product Name</label>
                   <p class="font-medium text-black/80">
@@ -1451,7 +1818,7 @@
               <h4 class="font-semibold text-lg text-black/80 mb-3">
                 Production Details
               </h4>
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label class="text-sm text-black/60">Batch Size</label>
                   <p class="font-medium text-black/80">
@@ -1504,7 +1871,7 @@
                     ></div>
                   </div>
                 </div>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div v-if="selectedBatchForDetails.start_time">
                     <label class="text-sm text-black/60">Start Time</label>
                     <p class="font-medium text-black/80">
@@ -1532,8 +1899,26 @@
               v-if="selectedBatchForDetails.notes"
               class="bg-white border border-black/10 p-4 rounded-xl"
             >
-              <h4 class="font-semibold text-lg text-black/80 mb-3">Notes</h4>
-              <p class="text-black/70">{{ selectedBatchForDetails.notes }}</p>
+              <h4 class="font-semibold text-lg text-black/80 mb-3">
+                {{
+                  selectedBatchForDetails.status === 'Completed'
+                    ? 'Completion Notes & Proof'
+                    : 'Notes'
+                }}
+              </h4>
+              <!-- Render HTML content for completed batches (may contain images/proofs) -->
+              <div
+                v-if="
+                  selectedBatchForDetails.status === 'Completed' &&
+                  selectedBatchForDetails.notes.includes('<')
+                "
+                class="text-black/70 prose prose-sm max-w-none"
+                v-html="sanitizeHtml(selectedBatchForDetails.notes)"
+              ></div>
+              <!-- Plain text for other statuses -->
+              <p v-else class="text-black/70">
+                {{ selectedBatchForDetails.notes }}
+              </p>
             </div>
           </div>
 
@@ -1542,7 +1927,7 @@
             <button
               type="button"
               @click="closeDetailsModal"
-              class="btn btn-sm font-thin border border-none shadow-none text-white bg-primaryColor hover:bg-primaryColor/90"
+              class="btn btn-sm sm:btn-md font-thin border border-none shadow-none text-white bg-primaryColor hover:bg-primaryColor/90 w-full min-h-[44px]"
             >
               Close
             </button>
@@ -1602,5 +1987,16 @@
 <style scoped>
   .text-shadow-xs {
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  }
+</style>
+
+<style>
+  /* Ensure TinyMCE dialogs (image dialog, link dialog, etc.) appear above DaisyUI modals */
+  .tox,
+  .tox-tinymce-aux,
+  .tox-silver-sink,
+  .tox-dialog-wrap,
+  .tox-dialog {
+    z-index: 99999 !important;
   }
 </style>

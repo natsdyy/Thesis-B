@@ -22,6 +22,8 @@ class ItemReturn {
           "poi.item_name",
           "poi.quantity as original_quantity",
           "poi.unit_price",
+          "poi.received_unit_price",
+          "poi.received_by",
           "sri.item_unit",
           "sri.item_type"
         );
@@ -45,10 +47,13 @@ class ItemReturn {
 
       const itemReturns = await query.orderBy("ir.created_at", "desc");
 
-      // Calculate return value for each return
+      // Calculate return value for each return using received_unit_price if available
       for (let returnItem of itemReturns) {
+        const unit = Number(
+          returnItem.received_unit_price ?? returnItem.unit_price ?? 0
+        );
         returnItem.return_value =
-          returnItem.return_quantity * (returnItem.unit_price || 0);
+          Number(returnItem.return_quantity || 0) * unit;
       }
 
       return itemReturns;
@@ -78,6 +83,7 @@ class ItemReturn {
           "poi.item_name",
           "poi.quantity as original_quantity",
           "poi.unit_price",
+          "poi.received_unit_price",
           "sri.item_unit",
           "sri.item_type"
         )
@@ -85,8 +91,11 @@ class ItemReturn {
         .first();
 
       if (itemReturn) {
+        const unit = Number(
+          itemReturn.received_unit_price ?? itemReturn.unit_price ?? 0
+        );
         itemReturn.return_value =
-          itemReturn.return_quantity * (itemReturn.unit_price || 0);
+          Number(itemReturn.return_quantity || 0) * unit;
       }
 
       return itemReturn;
@@ -188,12 +197,16 @@ class ItemReturn {
   // Update item return
   static async update(id, updateData) {
     try {
-      const [itemReturn] = await db("item_returns")
+      const result = await db("item_returns")
         .where("id", id)
         .update(updateData)
         .returning("*");
 
-      return itemReturn;
+      if (result && result.length > 0) {
+        return result[0];
+      }
+
+      return null;
     } catch (error) {
       throw error;
     }

@@ -12,10 +12,28 @@ export default [
     meta: { title: 'Feedback Management' },
   },
   {
+    path: 'customers-feedback',
+    name: 'CustomersFeedback',
+    component: () => import('../../views/crm/CustomersFeedback.vue'),
+    meta: { title: 'Customers Feedback' },
+  },
+  {
     path: 'analytics',
     name: 'CRMAnalytics',
     component: () => import('../../views/crm/Analytics.vue'),
     meta: { title: 'Analytics Dashboard' },
+  },
+  {
+    path: 'announcements',
+    name: 'CRMAnnouncements',
+    component: () => import('../../views/crm/AnnouncementManager.vue'),
+    meta: { title: 'Announcement Management' },
+  },
+  {
+    path: 'faqs',
+    name: 'CRMFAQManager',
+    component: () => import('../../views/crm/FAQManager.vue'),
+    meta: { title: 'FAQ Management' },
   },
   {
     path: 'attendance',

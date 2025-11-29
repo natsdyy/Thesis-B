@@ -1,5 +1,5 @@
 <template>
-  <div class="space-y-6">
+  <div class="space-y-6 p-4">
     <!-- Header -->
     <div
       class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4"
@@ -21,26 +21,12 @@
     </div>
 
     <!-- Summary Stats (match Branch overtime tab) -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-      <div class="card bg-white shadow-lg">
-        <div class="card-body py-4">
-          <div class="text-sm opacity-60">Total Requests</div>
-          <div class="text-2xl font-semibold">{{ otStats.totalRequests }}</div>
-        </div>
-      </div>
+    <div class="grid grid-cols-1 sm:grid-cols-1 lg:grid-cols-1 gap-4">
       <div class="card bg-white shadow-lg">
         <div class="card-body py-4">
           <div class="text-sm opacity-60">Pending</div>
           <div class="text-2xl font-semibold">
             {{ otStats.pendingRequests }}
-          </div>
-        </div>
-      </div>
-      <div class="card bg-white shadow-lg">
-        <div class="card-body py-4">
-          <div class="text-sm opacity-60">Approved</div>
-          <div class="text-2xl font-semibold">
-            {{ otStats.approvedRequests }}
           </div>
         </div>
       </div>
@@ -89,8 +75,37 @@
       </div>
     </div>
 
+    <!-- Tabs: Requests | History (match LeaveApprovals style) -->
+    <div class="tabs tabs-boxed bg-base-200">
+      <button
+        @click="activeTab = 'requests'"
+        :class="['tab tab-lg', activeTab === 'requests' ? 'tab-active' : '']"
+      >
+        Overtime Requests
+        <span
+          v-if="isLoading"
+          class="loading loading-spinner loading-sm ml-2"
+        ></span>
+        <span
+          v-if="!isLoading && pendingRequests.length > 0"
+          class="badge badge-ghost ml-2"
+        >
+          {{ pendingRequests.length }}
+        </span>
+      </button>
+      <button
+        @click="activeTab = 'history'"
+        :class="['tab tab-lg', activeTab === 'history' ? 'tab-active' : '']"
+      >
+        Overtime History
+        <span v-if="historyRows.length > 0" class="badge badge-ghost ml-2">
+          {{ historyRows.length }}
+        </span>
+      </button>
+    </div>
+
     <!-- Overtime Requests Table -->
-    <div class="card bg-base-100 shadow-xl">
+    <div v-if="activeTab === 'requests'" class="card bg-base-100 shadow-xl">
       <div class="card-body">
         <div
           class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4"
@@ -111,7 +126,7 @@
           </h3>
           <button
             @click="refreshData"
-            class="btn btn-sm btn-outline"
+            class="btn bg-gray-100 text-gray-700 hover:bg-gray-200 btn-sm gap-2"
             :disabled="isLoading"
           >
             <svg
@@ -192,16 +207,13 @@
                       getStatusBadgeClass(request.status),
                     ]"
                   >
-                    {{
-                      request.status.charAt(0).toUpperCase() +
-                      request.status.slice(1)
-                    }}
+                    {{ getStatusDisplayText(request.status, request) }}
                   </div>
                 </td>
                 <td>
                   <div class="flex space-x-2">
                     <button
-                      v-if="request.status === 'pending'"
+                      v-if="canApprove(request)"
                       title="Approve"
                       @click="openApprovalModal(request)"
                       class="btn btn-xs bg-success/10 rounded-full font-thin shadow-none border border-none hover:bg-success/30 text-success"
@@ -210,7 +222,7 @@
                       <Check class="w-4 h-4" />
                     </button>
                     <button
-                      v-if="request.status === 'pending'"
+                      v-if="canReject(request)"
                       title="Reject"
                       @click="openRejectionModal(request)"
                       class="btn btn-xs bg-error/10 rounded-full font-thin shadow-none border border-none hover:bg-error/30 text-error"
@@ -279,7 +291,7 @@
     </div>
 
     <!-- Overtime History -->
-    <div class="card bg-base-100 shadow-xl">
+    <div v-if="activeTab === 'history'" class="card bg-base-100 shadow-xl">
       <div class="card-body">
         <div class="flex justify-between items-center mb-4">
           <h3 class="card-title text-primaryColor">
@@ -288,9 +300,6 @@
           </h3>
           <div class="flex gap-3 items-end">
             <div class="form-control">
-              <label class="label"
-                ><span class="label-text">Status</span></label
-              >
               <select
                 v-model="historyStatus"
                 class="select select-bordered select-sm"
@@ -300,9 +309,6 @@
               </select>
             </div>
             <div class="form-control">
-              <label class="label"
-                ><span class="label-text">Date Range</span></label
-              >
               <select
                 v-model="historyPreset"
                 @change="setPreset(historyPreset)"
@@ -311,7 +317,25 @@
                 <option value="today">Today</option>
                 <option value="week">This Week</option>
                 <option value="month">This Month</option>
+                <option value="custom_month">Custom Month</option>
               </select>
+            </div>
+            <!-- Custom Month Picker -->
+            <div class="form-control" v-if="historyPreset === 'custom_month'">
+              <input
+                type="month"
+                v-model="historyCustomMonth"
+                class="input input-bordered input-sm"
+              />
+            </div>
+            <div class="form-control">
+              <button
+                class="btn bg-gray-100 text-gray-700 hover:bg-gray-200 btn-sm"
+                @click="exportHistoryToCSV"
+                :disabled="historyRows.length === 0"
+              >
+                Export CSV
+              </button>
             </div>
           </div>
         </div>
@@ -350,9 +374,7 @@
                       getStatusBadgeClass(row.status),
                     ]"
                   >
-                    {{
-                      row.status.charAt(0).toUpperCase() + row.status.slice(1)
-                    }}
+                    {{ getStatusDisplayText(row.status, row) }}
                   </div>
                 </td>
               </tr>
@@ -386,7 +408,7 @@
               <label class="label">
                 <span class="label-text font-semibold">Department</span>
               </label>
-              <p>Department Employee</p>
+              <p>{{ selectedRequest.department || 'Department Employee' }}</p>
             </div>
             <div>
               <label class="label">
@@ -417,7 +439,9 @@
                 class="badge"
                 :class="getStatusBadgeClass(selectedRequest.status)"
               >
-                {{ selectedRequest.status }}
+                {{
+                  getStatusDisplayText(selectedRequest.status, selectedRequest)
+                }}
               </span>
             </div>
           </div>
@@ -654,10 +678,19 @@
   const { showSuccess, showError } = useCustomToast();
   const overtimeStore = useOvertimeStore();
 
+  // Current user
+  const currentUser = computed(() => authStore.user);
+  const isBoardMember = computed(
+    () =>
+      authStore.userRole === 'Board of Directors' ||
+      authStore.userRole === 'Chairman of the Board'
+  );
+
   // Reactive data
   const isLoading = ref(false);
   const isProcessing = ref(false);
   const lastUpdated = ref(new Date());
+  const activeTab = ref('requests'); // 'requests' | 'history'
   const overtimeRequests = ref([]);
   const departments = ref([]);
   const showDetailsModal = ref(false);
@@ -675,9 +708,17 @@
   // History filters
   const historyStatus = ref('approved'); // 'approved' (Completed) or 'rejected'
   const historyPreset = ref('today'); // today | week | month
+  const historyCustomMonth = ref(''); // YYYY-MM
 
   const setPreset = (preset) => {
     historyPreset.value = preset;
+    // If switching to custom month and not set, default to current YYYY-MM
+    if (preset === 'custom_month' && !historyCustomMonth.value) {
+      const d = new Date();
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      historyCustomMonth.value = `${y}-${m}`;
+    }
   };
 
   // Pagination
@@ -685,9 +726,31 @@
   const itemsPerPage = ref(10);
 
   // Computed
-  const pendingRequests = computed(() =>
-    (overtimeRequests.value || []).filter((r) => r.status === 'pending')
-  );
+  const pendingRequests = computed(() => {
+    let list = (overtimeRequests.value || []).filter(
+      (r) => r.status === 'pending'
+    );
+
+    // For Board Members: show only HR department requests, prefer HR Manager when role metadata exists
+    if (isBoardMember.value) {
+      list = list.filter((r) => {
+        const isHR = (r.department || '').toLowerCase() === 'human resource';
+        const roleFields = [
+          r.role,
+          r.requestor_role,
+          r.employee_role,
+          r.job_title,
+        ]
+          .filter(Boolean)
+          .map((v) => String(v).toLowerCase());
+        const hasRoleMetadata = roleFields.length > 0;
+        const isManager = roleFields.some((v) => v.includes('manager'));
+        return isHR && (!hasRoleMetadata || isManager);
+      });
+    }
+
+    return list;
+  });
 
   const totalPages = computed(() =>
     Math.max(1, Math.ceil(pendingRequests.value.length / itemsPerPage.value))
@@ -719,6 +782,23 @@
       start.setHours(0, 0, 0, 0);
       end.setMonth(start.getMonth() + 1, 0); // last day of month
       end.setHours(23, 59, 59, 999);
+    } else if (preset === 'custom_month') {
+      // Expect historyCustomMonth as 'YYYY-MM'
+      const [y, m] = (historyCustomMonth.value || '')
+        .split('-')
+        .map((n) => parseInt(n));
+      if (!isNaN(y) && !isNaN(m)) {
+        start.setFullYear(y, m - 1, 1);
+        start.setHours(0, 0, 0, 0);
+        end.setFullYear(y, m, 0);
+        end.setHours(23, 59, 59, 999);
+      } else {
+        // fallback to current month if invalid
+        start.setDate(1);
+        start.setHours(0, 0, 0, 0);
+        end.setMonth(start.getMonth() + 1, 0);
+        end.setHours(23, 59, 59, 999);
+      }
     }
     return { start, end };
   };
@@ -726,9 +806,26 @@
   const historyRows = computed(() => {
     const desiredStatus = historyStatus.value;
     const { start, end } = startEndForPreset(historyPreset.value);
-    const rows = (overtimeRequests.value || []).filter(
+    let rows = (overtimeRequests.value || []).filter(
       (r) => r.status === desiredStatus
     );
+    // For Board Members: limit history to HR department (prefer manager when available)
+    if (isBoardMember.value) {
+      rows = rows.filter((r) => {
+        const isHR = (r.department || '').toLowerCase() === 'human resource';
+        const roleFields = [
+          r.role,
+          r.requestor_role,
+          r.employee_role,
+          r.job_title,
+        ]
+          .filter(Boolean)
+          .map((v) => String(v).toLowerCase());
+        const hasRoleMetadata = roleFields.length > 0;
+        const isManager = roleFields.some((v) => v.includes('manager'));
+        return isHR && (!hasRoleMetadata || isManager);
+      });
+    }
     return rows.filter((r) => {
       // r.date is YYYY-MM-DD
       const d = new Date(`${r.date}T12:00:00`); // noon to avoid TZ shift
@@ -764,7 +861,8 @@
       isLoading.value = true;
       await overtimeStore.fetchRequests({
         status: filters.value.status || undefined,
-        department_only: true,
+        // Use hr_only filter: shows department employees + branch managers only
+        hr_only: true,
         department_id: filters.value.department || undefined,
         page: 1,
         limit: 200,
@@ -792,10 +890,11 @@
           CRM: 'Customer Relationship',
         };
 
-        // Convert object keyed by department names to [{ name }], excluding Branch and Admin for HR view
+        // Convert object keyed by department names to [{ name }], excluding only Admin for HR view
+        // Include Branch so HR can filter Branch Manager overtime requests
         const departmentSet = new Set();
         Object.keys(raw).forEach((name) => {
-          if (name !== 'Branch' && name !== 'Admin') {
+          if (name !== 'Admin') {
             const normalizedName = departmentMapping[name] || name;
             departmentSet.add(normalizedName);
           }
@@ -841,6 +940,19 @@
     showRejectionModal.value = true;
   };
 
+  // Check if current user can approve/reject request (prevent self-approval/rejection)
+  const canApprove = (request) => {
+    if (!request || !currentUser.value) return false;
+    if (request.employee_id === currentUser.value.id) return false;
+    return request.status === 'pending';
+  };
+
+  const canReject = (request) => {
+    if (!request || !currentUser.value) return false;
+    if (request.employee_id === currentUser.value.id) return false;
+    return request.status === 'pending';
+  };
+
   const confirmApprove = async () => {
     if (!selectedRequest.value) return;
     try {
@@ -851,7 +963,22 @@
       closeModals();
     } catch (error) {
       console.error('Error approving request:', error);
-      showError('Failed to approve overtime request');
+
+      // Handle self-approval error specifically
+      const errorMessage = error.response?.data?.message || error.message || '';
+      const errorCode = error.response?.data?.code || '';
+
+      if (
+        errorCode === 'SELF_APPROVAL_NOT_ALLOWED' ||
+        errorMessage.includes('cannot approve your own overtime request')
+      ) {
+        showError(
+          'You cannot approve your own overtime request. Please have another manager or HR staff member handle this approval.',
+          'Self-Approval Not Allowed'
+        );
+      } else {
+        showError('Failed to approve overtime request');
+      }
     } finally {
       isProcessing.value = false;
     }
@@ -870,7 +997,22 @@
       closeModals();
     } catch (error) {
       console.error('Error rejecting request:', error);
-      showError('Failed to reject overtime request');
+
+      // Handle self-rejection error specifically
+      const errorMessage = error.response?.data?.message || error.message || '';
+      const errorCode = error.response?.data?.code || '';
+
+      if (
+        errorCode === 'SELF_REJECTION_NOT_ALLOWED' ||
+        errorMessage.includes('cannot reject your own overtime request')
+      ) {
+        showError(
+          'You cannot reject your own overtime request. Please have a manager or HR staff member handle this.',
+          'Self-Rejection Not Allowed'
+        );
+      } else {
+        showError('Failed to reject overtime request');
+      }
     } finally {
       isProcessing.value = false;
     }
@@ -901,6 +1043,28 @@
       rejected: 'bg-error/20 text-error',
     };
     return badges[status] || 'bg-gray-500/20 text-gray-500';
+  };
+
+  // Get status display text (handle HR staff special case)
+  const getStatusDisplayText = (status, request = null) => {
+    switch ((status || '').toLowerCase()) {
+      case 'approved':
+        return 'Approved';
+      case 'rejected':
+        return 'Rejected';
+      case 'pending':
+        // Check if this is an HR staff member's request
+        if (request && request.department === 'Human Resource') {
+          return 'Pending Board Approval';
+        }
+        return 'Pending';
+      default:
+        // Check if this is an HR staff member's request
+        if (request && request.department === 'Human Resource') {
+          return 'Pending Board Approval';
+        }
+        return 'Pending';
+    }
   };
 
   const formatDate = (dateString) => {
@@ -951,6 +1115,51 @@
       hour12: true,
       timeZone: 'Asia/Manila',
     });
+  };
+
+  // Export History CSV (filtered rows)
+  const exportHistoryToCSV = () => {
+    try {
+      const rows = historyRows.value || [];
+      const csv = generateHistoryCSV(rows);
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      link.setAttribute('href', url);
+      const today = new Date().toISOString().split('T')[0];
+      link.setAttribute('download', `overtime_history_${today}.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (e) {
+      console.error('Failed to export overtime history:', e);
+    }
+  };
+
+  const generateHistoryCSV = (data) => {
+    const safe = (v) => String(v ?? '').replace(/"/g, '""');
+    const headers = [
+      'Employee Name',
+      'Department',
+      'Date',
+      'Start Time',
+      'End Time',
+      'Hours',
+      'Status',
+      'Reason',
+    ];
+    const lines = data.map((r) => [
+      `"${safe(`${r.first_name} ${r.last_name}`)}"`,
+      `"${safe(r.department || 'Department Employee')}"`,
+      `"${safe(formatDate(r.date))}"`,
+      `"${safe(formatTime(r.start_time))}"`,
+      `"${safe(formatTime(r.end_time))}"`,
+      `"${safe(formatHours(r.total_hours))}"`,
+      `"${safe(r.status)}"`,
+      `"${safe(r.reason || '')}"`,
+    ]);
+    return [headers.join(','), ...lines.map((l) => l.join(','))].join('\n');
   };
 
   // Initialize

@@ -3,6 +3,7 @@ const express = require("express");
 const router = express.Router();
 const BudgetRelease = require("../models/BudgetRelease");
 const SupplyRequest = require("../models/SupplyRequest");
+const { db } = require("../config/database");
 
 /**
  * @swagger
@@ -423,6 +424,165 @@ router.patch("/:id/confirm-receipt", async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to confirm receipt",
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * @swagger
+ * /api/budget-releases/payroll/check-balance:
+ *   post:
+ *     summary: Check if sufficient balance exists for payroll
+ *     tags: [Budget Releases]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - amount
+ *             properties:
+ *               amount:
+ *                 type: number
+ *     responses:
+ *       200:
+ *         description: Balance check result
+ *       500:
+ *         description: Server error
+ */
+router.post("/payroll/check-balance", async (req, res) => {
+  try {
+    const { amount } = req.body;
+
+    if (!amount || amount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid amount is required",
+      });
+    }
+
+    const balanceCheck = await BudgetRelease.checkBalanceForPayroll(amount);
+
+    res.json({
+      success: true,
+      data: balanceCheck,
+    });
+  } catch (error) {
+    console.error("Error checking balance for payroll:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to check balance",
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * @swagger
+ * /api/budget-releases/payroll:
+ *   post:
+ *     summary: Create budget release for payroll
+ *     tags: [Budget Releases]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - payroll_period_id
+ *               - amount
+ *               - released_by
+ *             properties:
+ *               payroll_period_id:
+ *                 type: integer
+ *               amount:
+ *                 type: number
+ *               released_by:
+ *                 type: string
+ *               remarks:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: Payroll budget release created successfully
+ *       400:
+ *         description: Invalid input or insufficient balance
+ *       500:
+ *         description: Server error
+ */
+router.post("/payroll", async (req, res) => {
+  try {
+    const { payroll_period_id, amount, released_by, remarks } = req.body;
+
+    // Validation
+    if (!payroll_period_id || !amount || !released_by) {
+      return res.status(400).json({
+        success: false,
+        message: "payroll_period_id, amount, and released_by are required",
+      });
+    }
+
+    if (amount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Amount must be greater than 0",
+      });
+    }
+
+    // Verify chairman approval on the payroll period
+    const payrollPeriod = await db("payroll_periods")
+      .where("id", payroll_period_id)
+      .first();
+
+    if (!payrollPeriod) {
+      return res.status(400).json({
+        success: false,
+        message: "Payroll period not found",
+      });
+    }
+
+    if (
+      !payrollPeriod.chairman_approved_by ||
+      !payrollPeriod.chairman_approved_at
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Chairman approval is required before releasing payroll budget.",
+      });
+    }
+
+    // Check balance first
+    const balanceCheck = await BudgetRelease.checkBalanceForPayroll(amount);
+    if (!balanceCheck.sufficient) {
+      return res.status(400).json({
+        success: false,
+        message: `Insufficient balance. Required: ₱${balanceCheck.required.toLocaleString()}, Available: ₱${balanceCheck.available.toLocaleString()}, Shortage: ₱${balanceCheck.shortage.toLocaleString()}`,
+        data: balanceCheck,
+      });
+    }
+
+    const payrollData = {
+      payroll_period_id,
+      amount,
+      released_by,
+      remarks,
+    };
+
+    const budgetRelease = await BudgetRelease.createForPayroll(payrollData);
+
+    res.status(201).json({
+      success: true,
+      message: "Payroll budget released successfully",
+      data: budgetRelease,
+    });
+  } catch (error) {
+    console.error("Error creating payroll budget release:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to create payroll budget release",
       error: error.message,
     });
   }

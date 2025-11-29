@@ -7,11 +7,26 @@
   import RemitOrderDetailsModal from '../../components/finance/RemitOrderDetailsModal.vue';
   import RemittancesModal from '../../components/finance/RemittancesModal.vue';
   import { usePOSStore } from '../../stores/posStore';
+  import { useBranchStore } from '../../stores/branchStore';
+  import { useAuthStore } from '../../stores/authStore';
+  import { useCustomToast } from '../../composables/useCustomToast.js';
+  import {
+    createPhilippineDate,
+    formatForAPI,
+  } from '../../utils/timezoneUtils.js';
 
   const branchContext = useBranchContextStore();
+  const branchStore = useBranchStore();
   const posStore = usePOSStore();
+  const { showToast } = useCustomToast();
+  const authStore = useAuthStore();
 
   const isSuperAdmin = computed(() => branchContext.isSuperAdmin);
+  const isBoardMember = computed(
+    () =>
+      authStore.userRole === 'Board of Directors' ||
+      authStore.userRole === 'Chairman of the Board'
+  );
   const availableBranches = computed(
     () => branchContext.availableBranches || []
   );
@@ -19,6 +34,13 @@
 
   // Filters
   const period = ref('today');
+  // Exact date range (when period === 'dateRange')
+  const startDate = ref(''); // YYYY-MM-DD
+  const endDate = ref(''); // YYYY-MM-DD
+  // Selected custom month in YYYY-MM when period === 'customMonth'
+  const customMonth = ref(
+    `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`
+  );
   const selectedBranchId = ref(null);
   const activeTab = ref('overview'); // overview | branches | analytics
   // Data source for loading entries: 'remittances' or 'salesTrends'
@@ -40,6 +62,8 @@
   const showRemitModal = ref(false);
   const showFinanceRemittances = ref(false);
   const selectedRemitBranchId = ref(null);
+  const selectedRemittanceId = ref(null);
+  const remittanceDateRange = ref(null);
   const realAnalytics = ref({
     labels: [],
     remitted: [],
@@ -47,11 +71,14 @@
     disposed: [],
     net: [],
   });
+  const pendingCount = ref(0);
 
   // Fallback branches for selector
   const displayBranches = computed(() => {
-    const list = availableBranches.value || [];
-    if (Array.isArray(list) && list.length) return list;
+    const ctxList = availableBranches.value || [];
+    if (Array.isArray(ctxList) && ctxList.length) return ctxList;
+    const activeList = branchStore.activeBranches || [];
+    if (Array.isArray(activeList) && activeList.length) return activeList;
     return currentBranch.value ? [currentBranch.value] : [];
   });
 
@@ -60,7 +87,15 @@
       await branchContext.initializeBranchContext();
     }
     selectedBranchId.value = currentBranch.value?.id ?? null;
+    // Fallback for Super Admin: if no branches loaded, fetch active branches
+    if (
+      (availableBranches.value?.length || 0) === 0 &&
+      branchContext.isSuperAdmin
+    ) {
+      await branchStore.fetchActiveBranches();
+    }
     await loadRealRemits();
+    await loadPendingCount();
   };
 
   const loadRealRemits = async () => {
@@ -91,6 +126,47 @@
           bucket,
         });
 
+        if (period.value === 'dateRange') {
+          // Use exact Philippine dates, inclusive of entire days
+          const today = new Date();
+          const [sy, sm, sd] = String(startDate.value || '')
+            .split('-')
+            .map((v) => Number(v));
+          const [ey, em, ed] = String(endDate.value || '')
+            .split('-')
+            .map((v) => Number(v));
+          const fallbackStart = new Date(
+            today.getFullYear(),
+            today.getMonth(),
+            today.getDate(),
+            0,
+            0,
+            0,
+            0
+          );
+          const fallbackEnd = new Date(
+            today.getFullYear(),
+            today.getMonth(),
+            today.getDate(),
+            23,
+            59,
+            59,
+            999
+          );
+          const start =
+            Number.isFinite(sy) && Number.isFinite(sm) && Number.isFinite(sd)
+              ? createPhilippineDate(sy, sm, sd, 0, 0, 0)
+              : fallbackStart;
+          const end =
+            Number.isFinite(ey) && Number.isFinite(em) && Number.isFinite(ed)
+              ? createPhilippineDate(ey, em, ed, 23, 59, 59)
+              : fallbackEnd;
+          const msDiff = end.getTime() - start.getTime();
+          const oneDayMs = 24 * 60 * 60 * 1000;
+          const bucket = msDiff <= oneDayMs ? 'hour' : 'day';
+          return build(start, end, bucket);
+        }
+
         if (period.value === 'today') {
           const start = new Date(
             now.getFullYear(),
@@ -113,9 +189,34 @@
           return build(start, end, 'hour');
         }
         if (period.value === 'week') {
-          const start = new Date(now);
-          start.setDate(now.getDate() - now.getDay());
-          start.setHours(0, 0, 0, 0);
+          // For "This Week", show from Monday of current week to today
+          // or from the start of the month if we're in the first week
+          const currentDate = new Date(now);
+          const dayOfWeek = currentDate.getDay(); // 0 = Sunday, 1 = Monday, etc.
+          const dayOfMonth = currentDate.getDate();
+
+          // If we're in the first week of the month (days 1-7), start from the 1st
+          // Otherwise, start from Monday of current week
+          let start;
+          if (dayOfMonth <= 7) {
+            // First week of month - start from 1st
+            start = new Date(
+              currentDate.getFullYear(),
+              currentDate.getMonth(),
+              1,
+              0,
+              0,
+              0,
+              0
+            );
+          } else {
+            // Regular week - start from Monday
+            const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Handle Sunday as 6 days from Monday
+            start = new Date(currentDate);
+            start.setDate(currentDate.getDate() - daysFromMonday);
+            start.setHours(0, 0, 0, 0);
+          }
+
           const end = new Date(
             now.getFullYear(),
             now.getMonth(),
@@ -125,6 +226,29 @@
             59,
             999
           );
+          return build(start, end, 'day');
+        }
+        if (period.value === 'customMonth') {
+          const ym = String(customMonth.value || '').trim();
+          const [yStr, mStr] = ym.split('-');
+          const year = Number(yStr);
+          const monthIndex = Number(mStr) - 1;
+          const start =
+            Number.isFinite(year) && Number.isFinite(monthIndex)
+              ? new Date(year, monthIndex, 1, 0, 0, 0, 0)
+              : new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+          const end =
+            Number.isFinite(year) && Number.isFinite(monthIndex)
+              ? new Date(year, monthIndex + 1, 0, 23, 59, 59, 999)
+              : new Date(
+                  now.getFullYear(),
+                  now.getMonth() + 1,
+                  0,
+                  23,
+                  59,
+                  59,
+                  999
+                );
           return build(start, end, 'day');
         }
         if (period.value === 'month') {
@@ -163,8 +287,14 @@
       };
 
       const { from, to, bucket, startMs, endMs } = getDateRange();
-      const periodTypeMap = { today: 'today', week: 'week', month: 'month' };
-      const desiredType = periodTypeMap[period.value] || null;
+      // We filter by actual dates only. Ignore period_type entirely.
+      const desiredType = null;
+      const normalizedPeriod =
+        period.value === 'customMonth'
+          ? 'month'
+          : period.value === 'dateRange'
+            ? 'month'
+            : period.value;
 
       const fetchers = {
         remittances: async (br) => {
@@ -174,23 +304,12 @@
             // Do not pass date range here; we'll filter by approved_at client-side
             limit: 1000,
           });
-          const filtered = (list || [])
-            .filter((r) => (desiredType ? r.period_type === desiredType : true))
-            .filter((r) => {
-              const fromMs = r.date_from
-                ? new Date(r.date_from).getTime()
-                : NaN;
-              const toMs = r.date_to ? new Date(r.date_to).getTime() : fromMs;
-              if (Number.isFinite(fromMs) && Number.isFinite(toMs)) {
-                // include if the remittance window overlaps the selected window
-                return toMs >= startMs && fromMs <= endMs;
-              }
-              // fallback: use approved_at if no window available
-              const t = new Date(
-                r.approved_at || r.created_at || r.date_to || r.date_from
-              ).getTime();
-              return Number.isFinite(t) ? t >= startMs && t <= endMs : true;
-            });
+          const filtered = (list || []).filter((r) => {
+            const t = new Date(
+              r.approved_at || r.created_at || r.date_to || r.date_from
+            ).getTime();
+            return Number.isFinite(t) ? t >= startMs && t <= endMs : true;
+          });
           const entries = filtered
             .map((r) => {
               const df = r.date_from ? new Date(r.date_from) : null;
@@ -209,7 +328,6 @@
                   Number(r.refunded_amount || 0) -
                   Number(r.net_sales || 0) || 0
               );
-              S;
               return {
                 id: String(r.id),
                 branch_id: r.branch_id || br.id,
@@ -224,6 +342,8 @@
                     : derivedVoided,
                 net_sales: Number(r.net_sales || 0),
                 remitted_amount: Number(r.remitted_amount || 0),
+                csv_url: r.csv_url || null,
+                csv_filename: r.csv_filename || null,
                 cashier_count: 0,
                 submitted_by:
                   `${r.submitted_first_name || ''} ${r.submitted_last_name || ''}`.trim(),
@@ -240,12 +360,12 @@
           const data = await posStore.fetchSalesTrends(br.id, {
             dateFrom: from,
             dateTo: to,
-            period: period.value,
+            period: normalizedPeriod,
             bucket: 'auto',
           });
           const labels = Array.isArray(data.labels) ? data.labels : [];
           const grossArr = data.gross_sales || [];
-          const refundsArr = data.refunds || [];
+          const refundsArr = data.refunds || data.refunded_amount || [];
           const disposedArr = data.disposed || [];
           const netArr = data.net_sales || [];
           const remitArr = data.remitted_amount || [];
@@ -267,7 +387,10 @@
         },
       };
 
-      const activeFetcher = fetchers[dataSource.value] || fetchers.remittances;
+      const activeFetcher =
+        period.value === 'customMonth'
+          ? fetchers.salesTrends
+          : fetchers[dataSource.value] || fetchers.remittances;
       let rows = [];
       if (effective.length > 0) {
         rows = await Promise.all(effective.map((br) => activeFetcher(br)));
@@ -279,19 +402,12 @@
         });
         const grouped = {};
         const list = Array.isArray(allList) ? allList : [];
-        const filtered = list
-          .filter((r) => (desiredType ? r.period_type === desiredType : true))
-          .filter((r) => {
-            const fromMsR = r.date_from ? new Date(r.date_from).getTime() : NaN;
-            const toMsR = r.date_to ? new Date(r.date_to).getTime() : fromMsR;
-            if (Number.isFinite(fromMsR) && Number.isFinite(toMsR)) {
-              return toMsR >= startMs && fromMsR <= endMs;
-            }
-            const t = new Date(
-              r.approved_at || r.created_at || r.date_to || r.date_from
-            ).getTime();
-            return Number.isFinite(t) ? t >= startMs && t <= endMs : true;
-          });
+        const filtered = list.filter((r) => {
+          const t = new Date(
+            r.approved_at || r.created_at || r.date_to || r.date_from
+          ).getTime();
+          return Number.isFinite(t) ? t >= startMs && t <= endMs : true;
+        });
         filtered.forEach((r) => {
           const bid = r.branch_id;
           if (!grouped[bid]) grouped[bid] = [];
@@ -340,6 +456,8 @@
                     ),
               net_sales: Number(r.net_sales || 0),
               remitted_amount: Number(r.remitted_amount || 0),
+              csv_url: r.csv_url || null,
+              csv_filename: r.csv_filename || null,
               cashier_count: 0,
               submitted_by:
                 `${r.submitted_first_name || ''} ${r.submitted_last_name || ''}`.trim(),
@@ -365,53 +483,83 @@
         selectedEntry.value = null;
       }
 
-      // Build analytics from real sales trends across selected branches
+      // Build analytics from actual remittance data across selected branches
+      // Since this is the "Remitted Sales" page, ALL data should come from remittances
       try {
         const branchesForAnalytics =
           selectedBranchId.value && selectedBranchId.value !== 0
             ? rows.filter((r) => r.branch_id === selectedBranchId.value)
             : rows;
-        const trends = await Promise.all(
-          branchesForAnalytics.map((r) =>
-            posStore.fetchSalesTrends(r.branch_id, {
-              dateFrom: from,
-              dateTo: to,
-              period: period.value,
-              bucket: 'auto',
-            })
-          )
+
+        // Fetch remittances for all branches in the analytics scope
+        const remittancePromises = branchesForAnalytics.map((r) =>
+          posStore.fetchRemittances({
+            branchId: r.branch_id,
+            status: 'approved',
+            limit: 1000,
+          })
         );
-        // Initialize with first labels
-        let labels = trends[0]?.labels || [];
-        let sum = {
-          remitted: new Array(labels.length).fill(0),
-          refunds: new Array(labels.length).fill(0),
-          disposed: new Array(labels.length).fill(0),
-          net: new Array(labels.length).fill(0),
-        };
-        trends.forEach((t) => {
-          const l = Array.isArray(t?.labels) ? t.labels : [];
-          if (l.length !== labels.length) {
-            // If labels differ, fall back to current labels length and best-effort sum by index
-            labels = l.length > 0 ? l : labels;
-            sum.remitted = new Array(labels.length).fill(0);
-            sum.refunds = new Array(labels.length).fill(0);
-            sum.disposed = new Array(labels.length).fill(0);
-            sum.net = new Array(labels.length).fill(0);
-          }
-          const add = (arr, src) =>
-            arr.map((v, i) => v + Number(src?.[i] || 0));
-          sum.remitted = add(sum.remitted, t?.remitted_amount);
-          sum.refunds = add(sum.refunds, t?.refunds);
-          sum.disposed = add(sum.disposed, t?.disposed);
-          sum.net = add(sum.net, t?.net_sales);
+        const remittanceResults = await Promise.all(remittancePromises);
+
+        // Aggregate remittance data by date across all branches
+        const dailyMap = new Map();
+
+        remittanceResults.forEach((result) => {
+          const remittances = result.data || [];
+          remittances.forEach((r) => {
+            const approvedAt = new Date(
+              r.approved_at || r.created_at || r.date_to || r.date_from
+            );
+            const startDate = new Date(from);
+            const endDate = new Date(to);
+
+            if (approvedAt >= startDate && approvedAt <= endDate) {
+              // Convert to Philippine timezone for date key
+              const phDate = new Date(
+                approvedAt.toLocaleString('en-US', { timeZone: 'Asia/Manila' })
+              );
+              const dateKey = phDate.toISOString().split('T')[0];
+
+              // Get current totals for this date or initialize
+              const current = dailyMap.get(dateKey) || {
+                remitted: 0,
+                refunds: 0,
+                disposed: 0,
+                net: 0,
+              };
+
+              // Add the remittance amounts
+              current.remitted += Number(r.remitted_amount || 0);
+              current.refunds += Number(r.refunded_amount || 0);
+              current.disposed += Number(r.disposed || 0);
+              current.net += Number(r.net_sales || 0);
+
+              dailyMap.set(dateKey, current);
+            }
+          });
         });
+
+        // Sort dates chronologically
+        const sortedDates = Array.from(dailyMap.keys()).sort((a, b) => {
+          // Sort dates chronologically, not alphabetically
+          return new Date(a) - new Date(b);
+        });
+
+        // Build the analytics data arrays
         realAnalytics.value = {
-          labels,
-          remitted: sum.remitted.map((n) => Math.round(n)),
-          refunds: sum.refunds.map((n) => Math.round(n)),
-          disposed: sum.disposed.map((n) => Math.round(n)),
-          net: sum.net.map((n) => Math.round(n)),
+          labels: sortedDates,
+          remitted: sortedDates.map((date) =>
+            Math.round(dailyMap.get(date)?.remitted || 0)
+          ),
+          refunds: sortedDates.map((date) =>
+            Math.round(dailyMap.get(date)?.refunds || 0)
+          ),
+          disposed: sortedDates.map((date) =>
+            Math.round(dailyMap.get(date)?.disposed || 0)
+          ),
+          net: sortedDates.map((date) =>
+            Math.round(dailyMap.get(date)?.net || 0)
+          ),
         };
       } catch (err) {
         console.warn('Analytics trend fetch failed', err);
@@ -423,8 +571,200 @@
           net: [],
         };
       }
+    } catch (error) {
+      console.error('Failed to load remittances:', error);
+      showToast('Failed to load sales data', 'error');
     } finally {
       loading.value = false;
+    }
+  };
+
+  // Load pending remittance count for current filters
+  const loadPendingCount = async () => {
+    try {
+      const branches = (
+        availableBranches.value && availableBranches.value.length
+          ? availableBranches.value
+          : []
+      ).map((b) => ({ id: b.id, name: b.name }));
+
+      const effective = branches.length
+        ? branches
+        : currentBranch.value
+          ? [{ id: currentBranch.value.id, name: currentBranch.value.name }]
+          : [];
+
+      // Reuse date range logic
+      const now = new Date();
+      let start, end;
+      if (period.value === 'today') {
+        start = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+          0,
+          0,
+          0,
+          0
+        );
+        end = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+          23,
+          59,
+          59,
+          999
+        );
+      } else if (period.value === 'week') {
+        const dayOfWeek = now.getDay();
+        const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+        start = new Date(now);
+        start.setDate(now.getDate() - daysFromMonday);
+        start.setHours(0, 0, 0, 0);
+        end = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+          23,
+          59,
+          59,
+          999
+        );
+      } else if (period.value === 'customMonth') {
+        const ym = String(customMonth.value || '').trim();
+        const [yStr, mStr] = ym.split('-');
+        const year = Number(yStr);
+        const monthIndex = Number(mStr) - 1;
+        start =
+          Number.isFinite(year) && Number.isFinite(monthIndex)
+            ? new Date(year, monthIndex, 1, 0, 0, 0, 0)
+            : new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+        end =
+          Number.isFinite(year) && Number.isFinite(monthIndex)
+            ? new Date(year, monthIndex + 1, 0, 23, 59, 59, 999)
+            : new Date(
+                now.getFullYear(),
+                now.getMonth() + 1,
+                0,
+                23,
+                59,
+                59,
+                999
+              );
+      } else if (period.value === 'dateRange') {
+        const [sy, sm, sd] = String(startDate.value || '')
+          .split('-')
+          .map((v) => Number(v));
+        const [ey, em, ed] = String(endDate.value || '')
+          .split('-')
+          .map((v) => Number(v));
+        const today = new Date();
+        start =
+          Number.isFinite(sy) && Number.isFinite(sm) && Number.isFinite(sd)
+            ? createPhilippineDate(sy, sm, sd, 0, 0, 0)
+            : new Date(
+                today.getFullYear(),
+                today.getMonth(),
+                today.getDate(),
+                0,
+                0,
+                0,
+                0
+              );
+        end =
+          Number.isFinite(ey) && Number.isFinite(em) && Number.isFinite(ed)
+            ? createPhilippineDate(ey, em, ed, 23, 59, 59)
+            : new Date(
+                today.getFullYear(),
+                today.getMonth(),
+                today.getDate(),
+                23,
+                59,
+                59,
+                999
+              );
+      } else if (period.value === 'month') {
+        start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+        end = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+          23,
+          59,
+          59,
+          999
+        );
+      } else {
+        start = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
+        end = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+          23,
+          59,
+          59,
+          999
+        );
+      }
+
+      const from = start.getTime();
+      const to = end.getTime();
+
+      let count = 0;
+      if (effective.length > 0) {
+        const results = await Promise.all(
+          effective.map((br) =>
+            posStore.fetchRemittances({
+              branchId: br.id,
+              status: 'pending',
+              limit: 1000,
+            })
+          )
+        );
+        results.forEach((res) => {
+          const list = res?.data || [];
+          list.forEach((r) => {
+            const t = new Date(
+              r.created_at || r.date_to || r.date_from
+            ).getTime();
+            if (Number.isFinite(t) && t >= from && t <= to) count += 1;
+          });
+        });
+      } else {
+        const { data } = await posStore.fetchRemittances({
+          status: 'pending',
+          limit: 1000,
+        });
+        const list = Array.isArray(data) ? data : [];
+        list.forEach((r) => {
+          const t = new Date(
+            r.created_at || r.date_to || r.date_from
+          ).getTime();
+          if (Number.isFinite(t) && t >= from && t <= to) count += 1;
+        });
+      }
+
+      // If a specific branch is chosen, filter to that branch
+      if (selectedBranchId.value && selectedBranchId.value !== 0) {
+        // Recompute count only for that branch
+        const { data } = await posStore.fetchRemittances({
+          branchId: selectedBranchId.value,
+          status: 'pending',
+          limit: 1000,
+        });
+        const list = Array.isArray(data) ? data : [];
+        count = list.filter((r) => {
+          const t = new Date(
+            r.created_at || r.date_to || r.date_from
+          ).getTime();
+          return Number.isFinite(t) && t >= from && t <= to;
+        }).length;
+      }
+
+      pendingCount.value = count;
+    } catch (e) {
+      pendingCount.value = 0;
     }
   };
 
@@ -555,6 +895,19 @@
         59,
         999
       );
+    } else if (period.value === 'customMonth') {
+      const ym = String(customMonth.value || '').trim();
+      const [yStr, mStr] = ym.split('-');
+      const year = Number(yStr);
+      const monthIndex = Number(mStr) - 1;
+      start =
+        Number.isFinite(year) && Number.isFinite(monthIndex)
+          ? new Date(year, monthIndex, 1, 0, 0, 0, 0)
+          : new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+      end =
+        Number.isFinite(year) && Number.isFinite(monthIndex)
+          ? new Date(year, monthIndex + 1, 0, 23, 59, 59, 999)
+          : new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
     } else if (period.value === 'month') {
       start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
       end = new Date(
@@ -589,6 +942,7 @@
       gross: 0,
       net: 0,
       refunds: 0,
+      loss: 0,
       disposed: 0,
       remitted: 0,
       voidedAmount: 0,
@@ -600,6 +954,7 @@
       totals.disposed += Number(e.disposed) || 0;
       totals.remitted += Number(e.remitted_amount) || 0;
       totals.voidedAmount += Number(e.voided_amount) || 0;
+      totals.loss += Number(e.voided_amount) || 0;
     });
     return totals;
   };
@@ -665,6 +1020,85 @@
           999
         );
         bucket = 'day';
+      } else if (period.value === 'customMonth') {
+        const ym = String(customMonth.value || '').trim();
+        const [yStr, mStr] = ym.split('-');
+        const year = Number(yStr);
+        const monthIndex = Number(mStr) - 1;
+        start =
+          Number.isFinite(year) && Number.isFinite(monthIndex)
+            ? new Date(year, monthIndex, 1, 0, 0, 0, 0)
+            : new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+        end =
+          Number.isFinite(year) && Number.isFinite(monthIndex)
+            ? new Date(year, monthIndex + 1, 0, 23, 59, 59, 999)
+            : new Date(
+                now.getFullYear(),
+                now.getMonth() + 1,
+                0,
+                23,
+                59,
+                59,
+                999
+              );
+        bucket = 'day';
+      } else if (period.value === 'customMonth') {
+        const ym = String(customMonth.value || '').trim();
+        const [yStr, mStr] = ym.split('-');
+        const year = Number(yStr);
+        const monthIndex = Number(mStr) - 1;
+        start =
+          Number.isFinite(year) && Number.isFinite(monthIndex)
+            ? new Date(year, monthIndex, 1, 0, 0, 0, 0)
+            : new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+        end =
+          Number.isFinite(year) && Number.isFinite(monthIndex)
+            ? new Date(year, monthIndex + 1, 0, 23, 59, 59, 999)
+            : new Date(
+                now.getFullYear(),
+                now.getMonth() + 1,
+                0,
+                23,
+                59,
+                59,
+                999
+              );
+        bucket = 'day';
+      } else if (period.value === 'dateRange') {
+        const [sy, sm, sd] = String(startDate.value || '')
+          .split('-')
+          .map((v) => Number(v));
+        const [ey, em, ed] = String(endDate.value || '')
+          .split('-')
+          .map((v) => Number(v));
+        const today = new Date();
+        start =
+          Number.isFinite(sy) && Number.isFinite(sm) && Number.isFinite(sd)
+            ? createPhilippineDate(sy, sm, sd, 0, 0, 0)
+            : new Date(
+                today.getFullYear(),
+                today.getMonth(),
+                today.getDate(),
+                0,
+                0,
+                0,
+                0
+              );
+        end =
+          Number.isFinite(ey) && Number.isFinite(em) && Number.isFinite(ed)
+            ? createPhilippineDate(ey, em, ed, 23, 59, 59)
+            : new Date(
+                today.getFullYear(),
+                today.getMonth(),
+                today.getDate(),
+                23,
+                59,
+                59,
+                999
+              );
+        const msDiff = end.getTime() - start.getTime();
+        const oneDayMs = 24 * 60 * 60 * 1000;
+        bucket = msDiff <= oneDayMs ? 'hour' : 'day';
       } else if (period.value === 'month') {
         start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
         end = new Date(
@@ -691,15 +1125,59 @@
         bucket = 'month';
       }
 
-      const data = await posStore.fetchSalesTrends(
-        selectedEntry.value.branch_id,
-        {
-          dateFrom: start.toISOString(),
-          dateTo: end.toISOString(),
-          period: period.value,
+      // Use remittance data when "Remitted" is selected, otherwise use sales trends
+      let data;
+      if (detailsMetric.value === 'remitted') {
+        // Fetch actual remittance data for accurate remitted amounts
+        const remittances = await posStore.fetchRemittances({
+          branchId: selectedEntry.value.branch_id,
+          status: 'approved',
+          limit: 1000,
+        });
+
+        // Group remittances by date and aggregate amounts
+        const dailyMap = new Map();
+        (remittances.data || []).forEach((r) => {
+          const approvedAt = new Date(
+            r.approved_at || r.created_at || r.date_to || r.date_from
+          );
+          if (approvedAt >= start && approvedAt <= end) {
+            const dateKey = approvedAt.toISOString().split('T')[0];
+            const prev = dailyMap.get(dateKey) || 0;
+            dailyMap.set(dateKey, prev + Number(r.remitted_amount || 0));
+          }
+        });
+
+        const labels = Array.from(dailyMap.keys()).sort((a, b) => {
+          // Sort dates chronologically, not alphabetically
+          return new Date(a) - new Date(b);
+        });
+        const amounts = labels.map((date) => Number(dailyMap.get(date) || 0));
+
+        data = {
+          labels: labels,
+          remitted_amount: amounts,
+        };
+      } else {
+        // Use regular sales trends for other metrics
+        data = await posStore.fetchSalesTrends(selectedEntry.value.branch_id, {
+          dateFrom:
+            period.value === 'dateRange'
+              ? formatForAPI(start)
+              : start.toISOString(),
+          dateTo:
+            period.value === 'dateRange'
+              ? formatForAPI(end)
+              : end.toISOString(),
+          period:
+            period.value === 'customMonth'
+              ? 'month'
+              : period.value === 'dateRange'
+                ? 'month'
+                : period.value,
           bucket,
-        }
-      );
+        });
+      }
 
       const labels = Array.isArray(data.labels) ? data.labels : [];
       const seriesMap = {
@@ -721,6 +1199,9 @@
       detailsSeries.value = labels.map((_, i) =>
         Math.round(Number(arr[i] || 0))
       );
+    } catch (error) {
+      console.error('Failed to build details chart:', error);
+      showToast('Failed to load chart data', 'error');
     } finally {
       detailsLoading.value = false;
     }
@@ -745,9 +1226,14 @@
   watch([branchIdToShow, period], () => {
     page.value = 1;
     overviewPage.value = 1;
+    loadPendingCount();
   });
 
-  const openRemitForBranch = async (row) => {
+  watch([selectedBranchId, customMonth, startDate, endDate], () => {
+    loadPendingCount();
+  });
+
+  const openRemitForBranch = async (row, specificEntry = null) => {
     try {
       if (
         isSuperAdmin.value &&
@@ -755,12 +1241,30 @@
         currentBranch.value?.id !== row.branch_id
       ) {
         await branchContext.setCurrentBranch(row.branch_id);
+        showToast('Branch context updated', 'success');
       }
       selectedRemitBranchId.value = row?.branch_id || null;
+
+      // Use the specific entry if provided, otherwise fall back to the latest
+      const targetEntry =
+        specificEntry || (row?.entries || [])[row?.entries?.length - 1];
+      if (targetEntry && targetEntry.id) {
+        // The entry.id should be the actual remittance ID
+        selectedRemittanceId.value = Number(targetEntry.id);
+
+        // Set the remittance date range for the chart
+        remittanceDateRange.value = null; // Let the modal handle its own date range
+      } else {
+        selectedRemittanceId.value = null;
+        remittanceDateRange.value = null;
+      }
+
       showRemitModal.value = true;
     } catch (e) {
       console.error('Failed to open remit modal for branch', e);
+      showToast('Failed to open remittance modal', 'error');
       selectedRemitBranchId.value = row?.branch_id || null;
+      selectedRemittanceId.value = null;
       showRemitModal.value = true; // still open with current context as fallback
     }
   };
@@ -777,7 +1281,7 @@
 <template>
   <div class="space-y-6">
     <div
-      class="flex flex-col md:flex-row md:items-center md:justify-between gap-3"
+      class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 justify-between items-center"
     >
       <div>
         <h1 class="text-2xl font-bold text-primaryColor">Remitted Sales</h1>
@@ -785,19 +1289,52 @@
           Finance view of per-branch remittances
         </p>
       </div>
-      <div class="flex flex-wrap gap-2 items-center">
-        <select
-          v-model="period"
-          @change="loadRealRemits"
-          class="select select-bordered select-sm"
-        >
-          <option value="today">Today</option>
-          <option value="week">This Week</option>
-          <option value="month">This Month</option>
-          <option value="year">This Year</option>
-        </select>
+      <div class="flex flex-wrap items-center gap-3">
+        <!-- Period Select -->
+        <div>
+          <select
+            v-model="period"
+            @change="loadRealRemits"
+            class="select select-bordered select-sm"
+          >
+            <option value="today">Today</option>
+            <option value="week">This Week</option>
+            <option value="dateRange">Date Range</option>
+            <option value="customMonth">Custom Month</option>
+            <option value="month">This Month</option>
+            <option value="year">This Year</option>
+          </select>
+        </div>
+
+        <!-- Custom Month Input -->
+        <div v-if="period === 'customMonth'">
+          <input
+            type="month"
+            class="input input-bordered input-sm"
+            v-model="customMonth"
+            @change="loadRealRemits"
+          />
+        </div>
+
+        <!-- Exact Date Range Inputs -->
+        <div v-if="period === 'dateRange'" class="flex items-center gap-2">
+          <input
+            type="date"
+            class="input input-bordered input-sm"
+            v-model="startDate"
+            @change="loadRealRemits"
+          />
+          <span class="text-sm">to</span>
+          <input
+            type="date"
+            class="input input-bordered input-sm"
+            v-model="endDate"
+            @change="loadRealRemits"
+          />
+        </div>
+
+        <!-- Branch Filter -->
         <div class="flex items-center gap-2">
-          <label class="text-sm text-gray-600">Branch</label>
           <select
             class="select select-bordered select-sm"
             :value="selectedBranchId"
@@ -809,13 +1346,24 @@
             </option>
           </select>
         </div>
-        <button
-          class="btn btn-sm btn-outline"
-          @click="showFinanceRemittances = true"
-        >
-          <font-awesome-icon icon="fa-solid fa-file-invoice" class="mr-2" />
-          Review Remittances
-        </button>
+
+        <!-- Review Button -->
+        <div class="ml-auto">
+          <button
+            v-if="!isBoardMember"
+            class="btn btn-sm font-thin hover:bg-gray-100 relative"
+            @click="showFinanceRemittances = true"
+          >
+            <font-awesome-icon icon="fa-solid fa-file-invoice" class="mr-2" />
+            Review Remittances
+            <span
+              v-if="pendingCount > 0"
+              class="badge badge-error badge-xs absolute -top-2 -right-2"
+            >
+              {{ pendingCount }}
+            </span>
+          </button>
+        </div>
       </div>
     </div>
 
@@ -1001,6 +1549,7 @@
                     <th class="text-xs">Gross Sales</th>
                     <th class="text-xs">Net Sales</th>
                     <th class="text-xs">Refunds</th>
+                    <th class="text-xs">Loss (Voids)</th>
                     <th class="text-xs">Void</th>
                     <th class="text-xs">Remitted</th>
                     <th class="text-xs">Action</th>
@@ -1027,7 +1576,10 @@
                       }}
                     </td>
                     <td class="text-xs">
-                      {{ entry.refunds.toLocaleString() }}
+                      ₱{{ Number(entry.refunds || 0).toLocaleString() }}
+                    </td>
+                    <td class="text-xs">
+                      ₱{{ Number(entry.voided_amount || 0).toLocaleString() }}
                     </td>
                     <td class="text-xs">{{ entry.disposed }}</td>
                     <td class="text-xs font-semibold text-primaryColor">
@@ -1036,12 +1588,23 @@
                       }}
                     </td>
                     <td class="text-xs">
-                      <button
-                        class="btn btn-xs btn-outline text-primaryColor"
-                        @click.stop="openRemitForBranch(row)"
-                      >
-                        View Remit
-                      </button>
+                      <div class="flex gap-1">
+                        <button
+                          class="btn btn-xs"
+                          @click.stop="openRemitForBranch(row, entry)"
+                        >
+                          View Remit
+                        </button>
+                        <a
+                          v-if="entry.csv_url"
+                          class="btn btn-xs"
+                          :href="entry.csv_url"
+                          download
+                          @click.stop
+                        >
+                          Download CSV
+                        </a>
+                      </div>
                     </td>
                   </tr>
                 </tbody>
@@ -1129,6 +1692,12 @@
                     }}</span>
                   </div>
                   <div class="grid grid-cols-2">
+                    <span class="text-gray-600">Loss (Voids)</span>
+                    <span class="text-right"
+                      >₱{{ getRowTotals(row).loss.toLocaleString() }}</span
+                    >
+                  </div>
+                  <div class="grid grid-cols-2">
                     <span class="text-gray-600">Voided Amount</span>
                     <span class="text-right"
                       >₱{{
@@ -1159,9 +1728,11 @@
                   </div>
                   <SalesTrendChart
                     :branch-id="row.branch_id"
-                    :period="period"
+                    :period="selectedRemittanceId ? 'dateRange' : period"
                     :metric="detailsMetric"
                     :auto-load="true"
+                    :custom-month="customMonth"
+                    :remittance-date-range="remittanceDateRange"
                   >
                     <template #default="{ labels, series, loading }">
                       <div v-if="loading" class="flex justify-center py-8">
@@ -1208,6 +1779,10 @@
       :show="showRemitModal"
       :period="period"
       :branch-id="selectedRemitBranchId || branchIdToShow"
+      :custom-month="customMonth"
+      :start-date="startDate"
+      :end-date="endDate"
+      :remittance-id="selectedRemittanceId"
       @close="closeRemitModal"
     />
     <RemittancesModal

@@ -5,14 +5,20 @@ const {
   requireAnyPermission,
 } = require("../middleware/rbac");
 const OvertimeRequest = require("../models/OvertimeRequest");
+const NotificationService = require("../services/NotificationService");
 const EmployeeScheduleService = require("../services/EmployeeScheduleService");
+const {
+  formatPhilippineTime,
+  createPhilippineDate,
+  formatForDatabase,
+} = require("../utils/timezoneUtils");
 
 function normalizeYMD(value) {
   if (!value) return null;
-  if (value instanceof Date) return value.toISOString().slice(0, 10);
-  const str = String(value);
-  const m = str.match(/\d{4}-\d{2}-\d{2}/);
-  return m ? m[0] : null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(String(value))) return String(value);
+  const d = value instanceof Date ? value : new Date(String(value));
+  if (isNaN(d.getTime())) return null;
+  return formatPhilippineTime(d, "date").replace(/\//g, "-");
 }
 
 async function applyApprovedOTToAttendance(_db, employeeId, otDate) {
@@ -46,16 +52,18 @@ async function applyApprovedOTToAttendance(_db, employeeId, otDate) {
       .update({
         overtime_hours: approvedHours.toFixed(2),
         is_overtime: approvedHours > 0,
-        updated_at: knex.fn.now(),
+        updated_at: formatForDatabase(),
       });
   } else {
+    const [y, m, d] = dateStr.split("-").map((n) => parseInt(n, 10));
+    const phMidnight = createPhilippineDate(y, m, d, 0, 0, 0);
     await knex("attendance_records").insert({
       employee_id: employeeId,
       overtime_hours: approvedHours.toFixed(2),
       is_overtime: approvedHours > 0,
       status: "present",
-      created_at: new Date(`${dateStr}T00:00:00`),
-      updated_at: knex.fn.now(),
+      created_at: formatForDatabase(phMidnight),
+      updated_at: formatForDatabase(),
     });
   }
 }
@@ -153,7 +161,7 @@ router.post("/", authenticateToken, async (req, res) => {
     }
 
     // Build Date objects considering possible overnight shifts
-    const baseDateStr = ot_date; // YYYY-MM-DD
+    const baseDateStr = normalizeYMD(ot_date); // YYYY-MM-DD (PH)
     const schedStart = new Date(`${baseDateStr}T${schedule.start_time}`);
     let schedEnd = new Date(`${baseDateStr}T${schedule.end_time}`);
     if (schedEnd <= schedStart) {
@@ -191,6 +199,21 @@ router.post("/", authenticateToken, async (req, res) => {
       },
       employeeId
     );
+
+    // Create notification for HR managers
+    try {
+      await NotificationService.createOvertimeLeaveNotification(
+        created.id,
+        "requested",
+        "overtime"
+      );
+    } catch (notificationError) {
+      console.error(
+        "Error creating overtime request notification:",
+        notificationError
+      );
+      // Don't fail the main request if notification fails
+    }
 
     res.status(201).json({
       success: true,
@@ -278,13 +301,21 @@ router.get("/mine", authenticateToken, async (req, res) => {
 router.get(
   "/",
   authenticateToken,
-  // Allow Managers by role, otherwise require permissions
+  // Allow Managers and Board Members by role, otherwise require permissions
   (req, res, next) => {
     const user = req.user || {};
     const roleName = (user.role || "").toLowerCase();
-    if (roleName.includes("manager")) {
+
+    // Allow managers and board members
+    if (
+      roleName.includes("manager") ||
+      user.user_type === "board_member" ||
+      user.board_id ||
+      user.position
+    ) {
       return next();
     }
+
     return requireAnyPermission([
       "manage_overtime",
       "manage_employees",
@@ -293,7 +324,14 @@ router.get(
   },
   async (req, res) => {
     try {
-      const { status, branch_id, department_only, department } = req.query;
+      const {
+        status,
+        branch_id,
+        department_only,
+        department,
+        exclude_employee_id,
+        hr_only,
+      } = req.query;
       const page = parseInt(req.query.page || "1");
       const limit = parseInt(req.query.limit || "50");
       const rows = await OvertimeRequest.getAll({
@@ -301,6 +339,10 @@ router.get(
         branch_id,
         department_only,
         department,
+        exclude_employee_id: exclude_employee_id
+          ? parseInt(exclude_employee_id)
+          : undefined,
+        hr_only,
         page,
         limit,
       });
@@ -348,9 +390,17 @@ router.post(
   (req, res, next) => {
     const user = req.user || {};
     const roleName = (user.role || "").toLowerCase();
-    if (roleName.includes("manager")) {
+
+    // Allow managers and board members
+    if (
+      roleName.includes("manager") ||
+      user.user_type === "board_member" ||
+      user.board_id ||
+      user.position
+    ) {
       return next();
     }
+
     return requireAnyPermission([
       "manage_overtime",
       "manage_employees",
@@ -375,9 +425,35 @@ router.post(
           );
         }
       }
+
+      // Create notification for employee
+      try {
+        await NotificationService.createOvertimeLeaveNotification(
+          id,
+          "approved",
+          "overtime"
+        );
+      } catch (notificationError) {
+        console.error(
+          "Error creating overtime approval notification:",
+          notificationError
+        );
+        // Don't fail the main request if notification fails
+      }
+
       res.json({ success: true, data: updated, message: "Overtime approved" });
     } catch (error) {
       console.error("Error approving overtime:", error);
+
+      // Handle self-approval error specifically
+      if (error.message.includes("cannot approve your own overtime request")) {
+        return res.status(403).json({
+          success: false,
+          message: error.message,
+          code: "SELF_APPROVAL_NOT_ALLOWED",
+        });
+      }
+
       res.status(500).json({
         success: false,
         message: "Error approving overtime",
@@ -419,9 +495,17 @@ router.post(
   (req, res, next) => {
     const user = req.user || {};
     const roleName = (user.role || "").toLowerCase();
-    if (roleName.includes("manager")) {
+
+    // Allow managers and board members
+    if (
+      roleName.includes("manager") ||
+      user.user_type === "board_member" ||
+      user.board_id ||
+      user.position
+    ) {
       return next();
     }
+
     return requireAnyPermission([
       "manage_overtime",
       "manage_employees",
@@ -449,6 +533,16 @@ router.post(
       res.json({ success: true, data: updated, message: "Overtime rejected" });
     } catch (error) {
       console.error("Error rejecting overtime:", error);
+
+      // Handle self-rejection error specifically
+      if (error.message.includes("cannot reject your own overtime request")) {
+        return res.status(403).json({
+          success: false,
+          message: error.message,
+          code: "SELF_REJECTION_NOT_ALLOWED",
+        });
+      }
+
       res.status(500).json({
         success: false,
         message: "Error rejecting overtime",

@@ -13,6 +13,12 @@ export default [
     meta: { title: 'Request Approval' },
   },
   {
+    path: 'payroll-approval',
+    name: 'PayrollApproval',
+    component: () => import('../../views/finance/PayrollApproval.vue'),
+    meta: { title: 'Payroll Approval' },
+  },
+  {
     path: 'budget-release',
     name: 'BudgetRelease',
     component: () => import('../../views/finance/BudgetRelease.vue'),
@@ -24,7 +30,12 @@ export default [
     component: () => import('../../views/finance/Sales.vue'),
     meta: { title: 'Sales' },
   },
-
+  {
+    path: 'cash-management',
+    name: 'CashManagement',
+    component: () => import('../../views/finance/CashManagement.vue'),
+    meta: { title: 'Cash Management' },
+  },
   {
     path: 'attendance',
     name: 'FinanceAttendance',

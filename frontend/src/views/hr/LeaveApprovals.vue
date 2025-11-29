@@ -1,5 +1,5 @@
 <template>
-  <div class="space-y-6">
+  <div class="space-y-6 p-4">
     <!-- Header -->
     <div
       class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4"
@@ -21,29 +21,11 @@
     </div>
 
     <!-- Summary Stats (match OvertimeApproval) -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-4">
       <div class="card bg-white shadow-lg">
         <div class="card-body py-4">
-          <div class="text-sm opacity-60">Pending Manager</div>
-          <div class="text-2xl font-semibold">{{ pendingManagerCount }}</div>
-        </div>
-      </div>
-      <div class="card bg-white shadow-lg">
-        <div class="card-body py-4">
-          <div class="text-sm opacity-60">Pending HR</div>
+          <div class="text-sm opacity-60">Pending</div>
           <div class="text-2xl font-semibold">{{ pendingHRCount }}</div>
-        </div>
-      </div>
-      <div class="card bg-white shadow-lg">
-        <div class="card-body py-4">
-          <div class="text-sm opacity-60">Approved Today</div>
-          <div class="text-2xl font-semibold">{{ approvedTodayCount }}</div>
-        </div>
-      </div>
-      <div class="card bg-white shadow-lg">
-        <div class="card-body py-4">
-          <div class="text-sm opacity-60">Total Requests</div>
-          <div class="text-2xl font-semibold">{{ totalRequestsCount }}</div>
         </div>
       </div>
     </div>
@@ -126,14 +108,19 @@
       </div>
     </div>
 
-    <!-- Leave Requests Table -->
+    <!-- Tabs Container -->
     <div class="card bg-base-100 shadow-xl">
-      <div class="card-body">
-        <div
-          class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4"
-        >
-          <h3 class="card-title text-primaryColor">
-            <UserCheck class="w-5 h-5" />
+      <div class="card-body p-0">
+        <!-- Tab Navigation -->
+        <div class="tabs tabs-boxed bg-base-200 m-6 mb-0">
+          <button
+            @click="activeTab = 'requests'"
+            :class="[
+              'tab tab-lg',
+              activeTab === 'requests' ? 'tab-active' : '',
+            ]"
+          >
+            <UserCheck class="w-5 h-5 mr-2" />
             Leave Requests
             <span
               v-if="loading"
@@ -143,184 +130,15 @@
               v-if="!loading && filteredLeaveRequests.length > 0"
               class="badge badge-ghost ml-2"
             >
-              {{ filteredLeaveRequests.length }} requests
+              {{ filteredLeaveRequests.length }}
             </span>
-          </h3>
-          <div class="flex gap-2">
-            <button
-              @click="refreshData"
-              class="btn btn-sm btn-outline"
-              :disabled="loading"
-            >
-              <RefreshCcw
-                class="w-4 h-4"
-                :class="{ 'animate-spin': loading }"
-              />
-              <span class="hidden sm:inline">{{
-                loading ? 'Refreshing...' : 'Refresh'
-              }}</span>
-            </button>
-            <button
-              @click="exportToCSV"
-              class="btn btn-outline btn-sm"
-              :disabled="filteredLeaveRequests.length === 0"
-            >
-              <Download class="w-4 h-4 mr-1" />
-              <span class="hidden sm:inline">Export CSV</span>
-              <span class="sm:hidden">Export</span>
-            </button>
-          </div>
-        </div>
-
-        <!-- Loading State -->
-        <div v-if="loading" class="flex items-center justify-center py-12">
-          <div class="flex flex-col items-center space-y-3">
-            <span class="loading loading-spinner loading-lg"></span>
-            <p class="text-sm text-gray-500">Loading leave requests...</p>
-          </div>
-        </div>
-
-        <!-- Empty State -->
-        <div
-          v-else-if="filteredLeaveRequests.length === 0"
-          class="text-center py-8 text-gray-500"
-        >
-          <div class="flex flex-col items-center space-y-2">
-            <FileText class="w-12 h-12 text-gray-300" />
-            <p>
-              {{
-                hasActiveFilters
-                  ? 'No leave requests match your filters'
-                  : 'No leave requests found'
-              }}
-            </p>
-          </div>
-        </div>
-
-        <!-- Table -->
-        <div v-else class="overflow-x-auto">
-          <table class="table table-zebra w-full">
-            <thead>
-              <tr>
-                <th>Employee</th>
-                <th>Department</th>
-                <th>Branch</th>
-                <th>Leave Type</th>
-                <th>From Date</th>
-                <th>To Date</th>
-                <th>Days</th>
-                <th>Status</th>
-                <th>Submitted</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="request in paginatedRequests" :key="request.id">
-                <td>
-                  <div class="flex items-center space-x-3">
-                    <div>
-                      <div class="font-medium">
-                        {{ request.first_name }} {{ request.last_name }}
-                      </div>
-                    </div>
-                  </div>
-                </td>
-                <td>
-                  <span class="">{{ request.department || 'N/A' }}</span>
-                </td>
-                <td>
-                  <span class="">{{ getBranchName(request.branch_id) }}</span>
-                </td>
-                <td>
-                  <span class="font-medium">{{ request.leave_type }}</span>
-                </td>
-                <td>{{ formatDate(request.from_date) }}</td>
-                <td>{{ formatDate(request.to_date) }}</td>
-                <td>
-                  <span class="badge badge-ghost"
-                    >{{
-                      calculateDays(request.from_date, request.to_date)
-                    }}
-                    days</span
-                  >
-                </td>
-                <td>
-                  <div
-                    :class="[
-                      'badge badge-sm border-none font-medium',
-                      getStatusBadgeClass(request.status),
-                    ]"
-                  >
-                    {{ getStatusDisplayText(request.status, request) }}
-                  </div>
-                </td>
-                <td>{{ formatDateTime(request.created_at) }}</td>
-                <td>
-                  <div class="flex space-x-2">
-                    <button
-                      @click="viewLeaveRequest(request)"
-                      class="btn btn-ghost btn-xs"
-                      title="View Details"
-                    >
-                      <Eye class="w-4 h-4" />
-                    </button>
-                    <button
-                      v-if="canApprove(request)"
-                      @click="approveLeaveRequest(request)"
-                      class="btn btn-xs bg-success/10 rounded-full font-thin shadow-none border border-none hover:bg-success/30 text-success"
-                      title="Approve"
-                    >
-                      <CheckCircle class="w-4 h-4" />
-                    </button>
-                    <button
-                      v-if="canReject(request)"
-                      @click="rejectLeaveRequest(request)"
-                      class="btn btn-xs bg-error/10 rounded-full font-thin shadow-none border border-none hover:bg-error/30 text-error"
-                      title="Reject"
-                    >
-                      <XCircle class="w-4 h-4" />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-
-          <!-- Pagination -->
-          <div class="flex justify-center mt-4">
-            <div class="join">
-              <button
-                class="join-item btn btn-sm"
-                :disabled="currentPage === 1"
-                @click="currentPage = Math.max(1, currentPage - 1)"
-              >
-                «
-              </button>
-              <button class="join-item btn btn-sm">
-                Page {{ currentPage }} of {{ totalPages }}
-              </button>
-              <button
-                class="join-item btn btn-sm"
-                :disabled="currentPage === totalPages"
-                @click="currentPage = Math.min(totalPages, currentPage + 1)"
-              >
-                »
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Leave Requests History -->
-    <div class="card bg-base-100 shadow-xl">
-      <div class="card-body">
-        <div
-          class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4"
-        >
-          <h3 class="card-title text-primaryColor">
-            <Clock class="w-5 h-5" />
-            Leave Requests History
+          </button>
+          <button
+            @click="activeTab = 'history'"
+            :class="['tab tab-lg', activeTab === 'history' ? 'tab-active' : '']"
+          >
+            <Clock class="w-5 h-5 mr-2" />
+            Leave History
             <span
               v-if="historyLoading"
               class="loading loading-spinner loading-sm ml-2"
@@ -329,203 +147,434 @@
               v-if="!historyLoading && filteredHistoryRequests.length > 0"
               class="badge badge-ghost ml-2"
             >
-              {{ filteredHistoryRequests.length }} completed requests
+              {{ filteredHistoryRequests.length }}
             </span>
-          </h3>
-          <div class="flex gap-2">
-            <button
-              @click="refreshHistoryData"
-              class="btn btn-sm btn-outline"
-              :disabled="historyLoading"
-            >
-              <RefreshCcw
-                class="w-4 h-4"
-                :class="{ 'animate-spin': historyLoading }"
-              />
-              <span class="hidden sm:inline">{{
-                historyLoading ? 'Refreshing...' : 'Refresh'
-              }}</span>
-            </button>
-            <button
-              @click="exportHistoryToCSV"
-              class="btn btn-outline btn-sm"
-              :disabled="filteredHistoryRequests.length === 0"
-            >
-              <Download class="w-4 h-4 mr-1" />
-              <span class="hidden sm:inline">Export CSV</span>
-              <span class="sm:hidden">Export</span>
-            </button>
-          </div>
+          </button>
         </div>
 
-        <!-- History Filters -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-          <div class="space-y-2">
-            <label class="block text-sm font-medium text-gray-700">
-              Date Range
-            </label>
-            <select
-              v-model="historyFilters.dateRange"
-              @change="applyHistoryFilters"
-              class="select select-bordered w-full"
+        <!-- Tab Content -->
+        <div class="p-6">
+          <!-- Leave Requests Tab -->
+          <div v-if="activeTab === 'requests'" class="space-y-4">
+            <div
+              class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4"
             >
-              <option value="today">Today</option>
-              <option value="week">This Week</option>
-              <option value="month">This Month</option>
-              <option value="all">All Time</option>
-            </select>
-          </div>
+              <h3 class="card-title text-primaryColor">
+                <UserCheck class="w-5 h-5" />
+                Leave Requests
+              </h3>
+              <div class="flex gap-2">
+                <button
+                  @click="refreshData"
+                  class="btn btn-sm btn-outline"
+                  :disabled="loading"
+                >
+                  <RefreshCcw
+                    class="w-4 h-4"
+                    :class="{ 'animate-spin': loading }"
+                  />
+                  <span class="hidden sm:inline">{{
+                    loading ? 'Refreshing...' : 'Refresh'
+                  }}</span>
+                </button>
+                <button
+                  @click="exportToCSV"
+                  class="btn btn-outline btn-sm"
+                  :disabled="filteredLeaveRequests.length === 0"
+                >
+                  <Download class="w-4 h-4 mr-1" />
+                  <span class="hidden sm:inline">Export CSV</span>
+                  <span class="sm:hidden">Export</span>
+                </button>
+              </div>
+            </div>
 
-          <div class="space-y-2">
-            <label class="block text-sm font-medium text-gray-700">
-              Search
-            </label>
-            <div class="relative">
-              <Search
-                class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4"
-              />
-              <input
-                v-model="historyFilters.search"
-                @input="applyHistoryFilters"
-                type="text"
-                placeholder="Search by employee name..."
-                class="input input-bordered w-full pl-10"
-              />
+            <!-- Loading State -->
+            <div v-if="loading" class="flex items-center justify-center py-12">
+              <div class="flex flex-col items-center space-y-3">
+                <span class="loading loading-spinner loading-lg"></span>
+                <p class="text-sm text-gray-500">Loading leave requests...</p>
+              </div>
+            </div>
+
+            <!-- Empty State -->
+            <div
+              v-else-if="filteredLeaveRequests.length === 0"
+              class="text-center py-8 text-gray-500"
+            >
+              <div class="flex flex-col items-center space-y-2">
+                <FileText class="w-12 h-12 text-gray-300" />
+                <p>
+                  {{
+                    hasActiveFilters
+                      ? 'No leave requests match your filters'
+                      : 'No leave requests found'
+                  }}
+                </p>
+              </div>
+            </div>
+
+            <!-- Table -->
+            <div v-else class="overflow-x-auto">
+              <table class="table table-zebra w-full">
+                <thead>
+                  <tr>
+                    <th>Employee</th>
+                    <th>Department</th>
+                    <th>Branch</th>
+                    <th>Leave Type</th>
+                    <th>From Date</th>
+                    <th>To Date</th>
+                    <th>Days</th>
+                    <th>Status</th>
+                    <th>Submitted</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="request in paginatedRequests" :key="request.id">
+                    <td>
+                      <div class="flex items-center space-x-3">
+                        <div>
+                          <div class="font-medium">
+                            {{ request.first_name }} {{ request.last_name }}
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+                    <td>
+                      <span class="">{{ request.department || 'N/A' }}</span>
+                    </td>
+                    <td>
+                      <span class="">{{
+                        getBranchName(request.branch_id)
+                      }}</span>
+                    </td>
+                    <td>
+                      <div class="flex items-center space-x-2">
+                        <span class="font-medium">{{
+                          request.leave_type
+                        }}</span>
+                        <span
+                          v-if="request.use_sil"
+                          class="badge badge-sm bg-info/10 text-info"
+                          title="Uses Service Incentive Leave"
+                        >
+                          SIL
+                        </span>
+                      </div>
+                    </td>
+                    <td>{{ formatDate(request.from_date) }}</td>
+                    <td>{{ formatDate(request.to_date) }}</td>
+                    <td>
+                      <span class="badge badge-ghost"
+                        >{{
+                          calculateDays(request.from_date, request.to_date)
+                        }}
+                        days</span
+                      >
+                    </td>
+                    <td>
+                      <div
+                        :class="[
+                          'badge badge-sm border-none font-medium',
+                          getStatusBadgeClass(request.status),
+                        ]"
+                      >
+                        {{ getStatusDisplayText(request.status, request) }}
+                      </div>
+                    </td>
+                    <td>{{ formatDateTime(request.created_at) }}</td>
+                    <td>
+                      <div class="flex space-x-2">
+                        <button
+                          @click="viewLeaveRequest(request)"
+                          class="btn btn-ghost btn-xs"
+                          title="View Details"
+                        >
+                          <Eye class="w-4 h-4" />
+                        </button>
+                        <button
+                          v-if="canApprove(request)"
+                          @click="approveLeaveRequest(request)"
+                          class="btn btn-xs bg-success/10 rounded-full font-thin shadow-none border border-none hover:bg-success/30 text-success"
+                          title="Approve"
+                        >
+                          <CheckCircle class="w-4 h-4" />
+                        </button>
+                        <button
+                          v-if="canReject(request)"
+                          @click="rejectLeaveRequest(request)"
+                          class="btn btn-xs bg-error/10 rounded-full font-thin shadow-none border border-none hover:bg-error/30 text-error"
+                          title="Reject"
+                        >
+                          <XCircle class="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <!-- Pagination -->
+              <div class="flex justify-center mt-4">
+                <div class="join">
+                  <button
+                    class="join-item btn btn-sm"
+                    :disabled="currentPage === 1"
+                    @click="currentPage = Math.max(1, currentPage - 1)"
+                  >
+                    «
+                  </button>
+                  <button class="join-item btn btn-sm">
+                    Page {{ currentPage }} of {{ totalPages }}
+                  </button>
+                  <button
+                    class="join-item btn btn-sm"
+                    :disabled="currentPage === totalPages"
+                    @click="currentPage = Math.min(totalPages, currentPage + 1)"
+                  >
+                    »
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
 
-        <!-- Loading State -->
-        <div
-          v-if="historyLoading"
-          class="flex items-center justify-center py-12"
-        >
-          <div class="flex flex-col items-center space-y-3">
-            <span class="loading loading-spinner loading-lg"></span>
-            <p class="text-sm text-gray-500">Loading leave history...</p>
-          </div>
-        </div>
+          <!-- Leave History Tab -->
+          <div v-if="activeTab === 'history'" class="space-y-4">
+            <div
+              class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4"
+            >
+              <h3 class="card-title text-primaryColor">
+                <Clock class="w-5 h-5" />
+                Leave Requests History
+              </h3>
+              <div class="flex gap-2">
+                <button
+                  @click="refreshHistoryData"
+                  class="btn btn-sm bg-gray-100 hover:bg-gray-200 font-thin"
+                  :disabled="historyLoading"
+                >
+                  <RefreshCcw
+                    class="w-4 h-4"
+                    :class="{ 'animate-spin': historyLoading }"
+                  />
+                  <span class="hidden sm:inline">{{
+                    historyLoading ? 'Refreshing...' : 'Refresh'
+                  }}</span>
+                </button>
+                <button
+                  @click="exportHistoryToCSV"
+                  class="btn btn-outline btn-sm"
+                  :disabled="filteredHistoryRequests.length === 0"
+                >
+                  <Download class="w-4 h-4 mr-1" />
+                  <span class="hidden sm:inline">Export CSV</span>
+                  <span class="sm:hidden">Export</span>
+                </button>
+              </div>
+            </div>
 
-        <!-- Empty State -->
-        <div
-          v-else-if="filteredHistoryRequests.length === 0"
-          class="text-center py-8 text-gray-500"
-        >
-          <div class="flex flex-col items-center space-y-2">
-            <FileText class="w-12 h-12 text-gray-300" />
-            <p>
-              {{
-                hasActiveHistoryFilters
-                  ? 'No completed leave requests match your filters'
-                  : 'No completed leave requests found'
-              }}
-            </p>
-          </div>
-        </div>
+            <!-- History Filters -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div class="space-y-2">
+                <label class="block text-sm font-medium text-gray-700">
+                  Date Range
+                </label>
+                <select
+                  v-model="historyFilters.dateRange"
+                  @change="applyHistoryFilters"
+                  class="select select-bordered w-full"
+                >
+                  <option value="today">Today</option>
+                  <option value="week">This Week</option>
+                  <option value="month">This Month</option>
+                  <option value="custom_month">Custom Month</option>
+                </select>
+              </div>
 
-        <!-- History Table -->
-        <div v-else class="overflow-x-auto">
-          <table class="table table-zebra w-full">
-            <thead>
-              <tr>
-                <th>Employee</th>
-                <th>Department</th>
-                <th>Branch</th>
-                <th>Leave Type</th>
-                <th>From Date</th>
-                <th>To Date</th>
-                <th>Days</th>
-                <th>Status</th>
-                <th>Completed Date</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="request in paginatedHistoryRequests" :key="request.id">
-                <td>
-                  <div class="flex items-center space-x-3">
-                    <div>
-                      <div class="font-medium">
-                        {{ request.first_name }} {{ request.last_name }}
-                      </div>
-                      <div class="text-sm text-gray-500">
-                        {{ request.employee_code }}
-                      </div>
-                    </div>
-                  </div>
-                </td>
-                <td>
-                  <span class="">{{ request.department || 'N/A' }}</span>
-                </td>
-                <td>
-                  <span class="">{{ getBranchName(request.branch_id) }}</span>
-                </td>
-                <td>
-                  <span class="font-medium">{{ request.leave_type }}</span>
-                </td>
-                <td>{{ formatDate(request.from_date) }}</td>
-                <td>{{ formatDate(request.to_date) }}</td>
-                <td>
-                  <span class="badge badge-ghost"
-                    >{{
-                      calculateDays(request.from_date, request.to_date)
-                    }}
-                    days</span
-                  >
-                </td>
-                <td>
-                  <div
-                    :class="[
-                      'badge badge-sm border-none font-medium',
-                      getStatusBadgeClass(request.status),
-                    ]"
-                  >
-                    {{ getStatusDisplayText(request.status, request) }}
-                  </div>
-                </td>
-                <td>{{ formatDateTime(getCompletionDate(request)) }}</td>
-                <td>
-                  <div class="flex space-x-2">
-                    <button
-                      @click="viewLeaveRequest(request)"
-                      class="btn btn-ghost btn-xs"
-                      title="View Details"
-                    >
-                      <Eye class="w-4 h-4" />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-
-          <!-- History Pagination -->
-          <div class="flex justify-center mt-4">
-            <div class="join">
-              <button
-                class="join-item btn btn-sm"
-                :disabled="currentHistoryPage === 1"
-                @click="
-                  currentHistoryPage = Math.max(1, currentHistoryPage - 1)
-                "
+              <!-- Custom Month Picker -->
+              <div
+                class="space-y-2"
+                v-if="historyFilters.dateRange === 'custom_month'"
               >
-                «
-              </button>
-              <button class="join-item btn btn-sm">
-                Page {{ currentHistoryPage }} of {{ totalHistoryPages }}
-              </button>
-              <button
-                class="join-item btn btn-sm"
-                :disabled="currentHistoryPage === totalHistoryPages"
-                @click="
-                  currentHistoryPage = Math.min(
-                    totalHistoryPages,
-                    currentHistoryPage + 1
-                  )
-                "
-              >
-                »
-              </button>
+                <label class="block text-sm font-medium text-gray-700">
+                  Select Month
+                </label>
+                <input
+                  type="month"
+                  v-model="historyCustomMonth"
+                  @change="applyHistoryFilters"
+                  class="input input-bordered w-full"
+                />
+              </div>
+
+              <div class="space-y-2">
+                <label class="block text-sm font-medium text-gray-700">
+                  Search
+                </label>
+                <div class="relative">
+                  <Search
+                    class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4"
+                  />
+                  <input
+                    v-model="historyFilters.search"
+                    @input="applyHistoryFilters"
+                    type="text"
+                    placeholder="Search by employee name..."
+                    class="input input-bordered w-full pl-10"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <!-- Loading State -->
+            <div
+              v-if="historyLoading"
+              class="flex items-center justify-center py-12"
+            >
+              <div class="flex flex-col items-center space-y-3">
+                <span class="loading loading-spinner loading-lg"></span>
+                <p class="text-sm text-gray-500">Loading leave history...</p>
+              </div>
+            </div>
+
+            <!-- Empty State -->
+            <div
+              v-else-if="filteredHistoryRequests.length === 0"
+              class="text-center py-8 text-gray-500"
+            >
+              <div class="flex flex-col items-center space-y-2">
+                <FileText class="w-12 h-12 text-gray-300" />
+                <p>
+                  {{
+                    hasActiveHistoryFilters
+                      ? 'No completed leave requests match your filters'
+                      : 'No completed leave requests found'
+                  }}
+                </p>
+              </div>
+            </div>
+
+            <!-- History Table -->
+            <div v-else class="overflow-x-auto">
+              <table class="table table-zebra w-full">
+                <thead>
+                  <tr>
+                    <th>Employee</th>
+                    <th>Department</th>
+                    <th>Branch</th>
+                    <th>Leave Type</th>
+                    <th>From Date</th>
+                    <th>To Date</th>
+                    <th>Days</th>
+                    <th>Status</th>
+                    <th>Completed Date</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="request in paginatedHistoryRequests"
+                    :key="request.id"
+                  >
+                    <td>
+                      <div class="flex items-center space-x-3">
+                        <div>
+                          <div class="font-medium">
+                            {{ request.first_name }} {{ request.last_name }}
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+                    <td>
+                      <span class="">{{ request.department || 'N/A' }}</span>
+                    </td>
+                    <td>
+                      <span class="">{{
+                        getBranchName(request.branch_id)
+                      }}</span>
+                    </td>
+                    <td>
+                      <div class="flex items-center space-x-2">
+                        <span class="font-medium"
+                          >{{ request.leave_type }} /
+                        </span>
+                        <span
+                          v-if="request.use_sil"
+                          class="badge badge-sm bg-info/10 text-info"
+                          title="Uses Service Incentive Leave"
+                        >
+                          SIL
+                        </span>
+                      </div>
+                    </td>
+                    <td>{{ formatDate(request.from_date) }}</td>
+                    <td>{{ formatDate(request.to_date) }}</td>
+                    <td>
+                      <span class="badge badge-ghost"
+                        >{{
+                          calculateDays(request.from_date, request.to_date)
+                        }}
+                        days</span
+                      >
+                    </td>
+                    <td>
+                      <div
+                        :class="[
+                          'badge badge-sm border-none font-medium',
+                          getStatusBadgeClass(request.status),
+                        ]"
+                      >
+                        {{ getStatusDisplayText(request.status, request) }}
+                      </div>
+                    </td>
+                    <td>{{ formatDateTime(getCompletionDate(request)) }}</td>
+                    <td>
+                      <div class="flex space-x-2">
+                        <button
+                          @click="viewLeaveRequest(request)"
+                          class="btn btn-ghost btn-xs"
+                          title="View Details"
+                        >
+                          <Eye class="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <!-- History Pagination -->
+              <div class="flex justify-center mt-4">
+                <div class="join">
+                  <button
+                    class="join-item btn btn-sm"
+                    :disabled="currentHistoryPage === 1"
+                    @click="
+                      currentHistoryPage = Math.max(1, currentHistoryPage - 1)
+                    "
+                  >
+                    «
+                  </button>
+                  <button class="join-item btn btn-sm">
+                    Page {{ currentHistoryPage }} of {{ totalHistoryPages }}
+                  </button>
+                  <button
+                    class="join-item btn btn-sm"
+                    :disabled="currentHistoryPage === totalHistoryPages"
+                    @click="
+                      currentHistoryPage = Math.min(
+                        totalHistoryPages,
+                        currentHistoryPage + 1
+                      )
+                    "
+                  >
+                    »
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -612,6 +661,40 @@
                   <p class="font-medium ml-2 mt-1">
                     {{ selectedRequest.reason }}
                   </p>
+                </div>
+
+                <!-- SIL Information -->
+                <div v-if="selectedRequest.use_sil" class="col-span-2">
+                  <div
+                    class="mt-3 p-3 bg-info/10 rounded-lg border border-info/20"
+                  >
+                    <div class="flex items-center space-x-2 mb-2">
+                      <svg
+                        class="w-4 h-4 text-info"
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
+                        <path
+                          fill-rule="evenodd"
+                          d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                          clip-rule="evenodd"
+                        ></path>
+                      </svg>
+                      <span class="text-info font-medium"
+                        >Service Incentive Leave (SIL) Used</span
+                      >
+                    </div>
+                    <div class="text-sm text-info">
+                      <span class="font-medium">SIL Days Used:</span>
+                      <span class="ml-1"
+                        >{{ selectedRequest.sil_days || 0 }} days</span
+                      >
+                    </div>
+                    <div class="text-xs text-info/70 mt-1">
+                      This leave request uses the employee's Service Incentive
+                      Leave credits
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -892,7 +975,30 @@
             ></textarea>
           </div>
 
-          <div class="alert bg-warning/10 text-warning">
+          <!-- SIL Credit Restoration Notice -->
+          <div
+            v-if="selectedRequest.use_sil && selectedRequest.sil_days > 0"
+            class="alert bg-info/10 text-info shadow-none border border-info/20"
+          >
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path
+                fill-rule="evenodd"
+                d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                clip-rule="evenodd"
+              ></path>
+            </svg>
+            <div class="text-sm">
+              <p class="font-medium">
+                SIL Credits will be automatically restored
+              </p>
+              <p class="text-xs mt-1 opacity-80">
+                {{ selectedRequest.sil_days }} SIL day(s) used in this request
+                will be returned to the employee's available credits.
+              </p>
+            </div>
+          </div>
+
+          <div class="alert bg-warning/10 text-warning shadow-none">
             <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
               <path
                 fill-rule="evenodd"
@@ -969,12 +1075,14 @@
   } from 'lucide-vue-next';
   import { useLeaveStore } from '../../stores/leaveStore';
   import { useBranchStore } from '../../stores/branchStore';
+  import { useAuthStore } from '../../stores/authStore';
   import { useCustomToast } from '../../composables/useCustomToast';
   import { apiConfig } from '../../config/api';
 
   const { showSuccess, showError, showLoading, dismiss } = useCustomToast();
   const leaveStore = useLeaveStore();
   const branchStore = useBranchStore();
+  const authStore = useAuthStore();
 
   // Reactive state
   const loading = ref(false);
@@ -983,6 +1091,9 @@
   const itemsPerPage = ref(10);
   const allLeaveRequests = ref([]);
   const departments = ref([]);
+
+  // Tab state
+  const activeTab = ref('requests');
 
   // History section state
   const historyLoading = ref(false);
@@ -1005,6 +1116,7 @@
     branch_id: '',
     search: '',
   });
+  const historyCustomMonth = ref(''); // YYYY-MM
 
   // Modal states
   const showViewModal = ref(false);
@@ -1020,9 +1132,33 @@
 
   // Computed properties
   const activeBranches = computed(() => branchStore.activeBranches || []);
+  const currentUser = computed(() => authStore.user);
+  const isBoardMember = computed(
+    () =>
+      authStore.userRole === 'Board of Directors' ||
+      authStore.userRole === 'Chairman of the Board'
+  );
 
   const filteredLeaveRequests = computed(() => {
     let filtered = [...allLeaveRequests.value];
+
+    // For Board Members: show only HR department requests, and prefer HR Manager when role metadata exists
+    if (isBoardMember.value) {
+      filtered = filtered.filter((req) => {
+        const isHR = (req.department || '').toLowerCase() === 'human resource';
+        const roleFields = [
+          req.role,
+          req.requestor_role,
+          req.employee_role,
+          req.job_title,
+        ]
+          .filter(Boolean)
+          .map((r) => String(r).toLowerCase());
+        const hasRoleMetadata = roleFields.length > 0;
+        const isManager = roleFields.some((r) => r.includes('manager'));
+        return isHR && (!hasRoleMetadata || isManager);
+      });
+    }
 
     // For HR Leave Approvals, exclude rejected requests by default
     // Only show them if specifically filtering by rejected status
@@ -1115,6 +1251,24 @@
   const filteredHistoryRequests = computed(() => {
     let filtered = [...allHistoryRequests.value];
 
+    // For Board Members: show only HR department requests in history, prefer HR Manager when metadata exists
+    if (isBoardMember.value) {
+      filtered = filtered.filter((req) => {
+        const isHR = (req.department || '').toLowerCase() === 'human resource';
+        const roleFields = [
+          req.role,
+          req.requestor_role,
+          req.employee_role,
+          req.job_title,
+        ]
+          .filter(Boolean)
+          .map((r) => String(r).toLowerCase());
+        const hasRoleMetadata = roleFields.length > 0;
+        const isManager = roleFields.some((r) => r.includes('manager'));
+        return isHR && (!hasRoleMetadata || isManager);
+      });
+    }
+
     // Apply date range filter
     if (historyFilters.value.dateRange !== 'all') {
       const now = new Date();
@@ -1135,14 +1289,44 @@
         case 'month':
           startDate = new Date(now.getFullYear(), now.getMonth(), 1);
           break;
+        case 'custom_month': {
+          const [yStr, mStr] = (historyCustomMonth.value || '').split('-');
+          const y = parseInt(yStr);
+          const m = parseInt(mStr);
+          if (!isNaN(y) && !isNaN(m)) {
+            startDate = new Date(y, m - 1, 1);
+          } else {
+            startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+          }
+          break;
+        }
         default:
           startDate = null;
       }
 
       if (startDate) {
         filtered = filtered.filter((req) => {
-          const completionDate = getCompletionDate(req);
-          return new Date(completionDate) >= startDate;
+          const completionDate = new Date(getCompletionDate(req));
+          if (historyFilters.value.dateRange === 'custom_month') {
+            // End at last day of selected month
+            const [yStr, mStr] = (historyCustomMonth.value || '').split('-');
+            const y = parseInt(yStr);
+            const m = parseInt(mStr);
+            const endDate =
+              !isNaN(y) && !isNaN(m)
+                ? new Date(y, m, 0, 23, 59, 59, 999)
+                : new Date(
+                    now.getFullYear(),
+                    now.getMonth() + 1,
+                    0,
+                    23,
+                    59,
+                    59,
+                    999
+                  );
+            return completionDate >= startDate && completionDate <= endDate;
+          }
+          return completionDate >= startDate;
         });
       }
     }
@@ -1203,8 +1387,17 @@
   // Error handling methods
   const handleApprovalError = (error) => {
     const errorMessage = error.response?.data?.message || error.message || '';
+    const errorCode = error.response?.data?.code || '';
 
-    if (errorMessage.includes('Leave request is already')) {
+    if (
+      errorCode === 'SELF_APPROVAL_NOT_ALLOWED' ||
+      errorMessage.includes('cannot approve your own leave request')
+    ) {
+      showError(
+        'You cannot approve your own leave request. Please have another manager or HR staff member handle this approval.',
+        'Self-Approval Not Allowed'
+      );
+    } else if (errorMessage.includes('Leave request is already')) {
       showError(
         'This leave request has already been processed. Please refresh the page to see the latest status.',
         'Request Already Processed'
@@ -1241,8 +1434,17 @@
 
   const handleRejectionError = (error) => {
     const errorMessage = error.response?.data?.message || error.message || '';
+    const errorCode = error.response?.data?.code || '';
 
-    if (errorMessage.includes('Leave request is already')) {
+    if (
+      errorCode === 'SELF_REJECTION_NOT_ALLOWED' ||
+      errorMessage.includes('cannot reject your own leave request')
+    ) {
+      showError(
+        'You cannot reject your own leave request. Please have another manager or HR staff member handle this rejection.',
+        'Self-Rejection Not Allowed'
+      );
+    } else if (errorMessage.includes('Leave request is already')) {
       showError(
         'This leave request has already been processed. Please refresh the page to see the latest status.',
         'Request Already Processed'
@@ -1422,6 +1624,8 @@
       'Department',
       'Branch',
       'Leave Type',
+      'Uses SIL',
+      'SIL Days',
       'From Date',
       'To Date',
       'Days',
@@ -1436,6 +1640,8 @@
       `"${request.department || 'N/A'}"`,
       `"${getBranchName(request.branch_id)}"`,
       `"${request.leave_type}"`,
+      request.use_sil ? 'Yes' : 'No',
+      request.sil_days || 0,
       `"${formatDate(request.from_date)}"`,
       `"${formatDate(request.to_date)}"`,
       calculateDays(request.from_date, request.to_date),
@@ -1472,7 +1678,11 @@
   };
 
   const canApprove = (request) => {
-    if (!request) return false;
+    if (!request || !currentUser.value) return false;
+
+    // Prevent self-approval - user cannot approve their own request
+    if (request.employee_id === currentUser.value.id) return false;
+
     // HR can approve after manager approval OR department employees with pending status
     return (
       request.status === 'approved_by_manager' ||
@@ -1481,7 +1691,11 @@
   };
 
   const canReject = (request) => {
-    if (!request) return false;
+    if (!request || !currentUser.value) return false;
+
+    // Prevent self-rejection - user cannot reject their own request
+    if (request.employee_id === currentUser.value.id) return false;
+
     return ['pending', 'approved_by_manager'].includes(request.status);
   };
 
@@ -1613,10 +1827,14 @@
         selectedRequest.value.id,
         rejectionReason.value
       );
-      showSuccess(
-        `Leave request for ${selectedRequest.value.first_name} ${selectedRequest.value.last_name} has been rejected.`,
-        'Leave Request Rejected'
-      );
+
+      // Success message with SIL credit restoration info if applicable
+      let successMessage = `Leave request for ${selectedRequest.value.first_name} ${selectedRequest.value.last_name} has been rejected.`;
+      if (selectedRequest.value.use_sil && selectedRequest.value.sil_days > 0) {
+        successMessage += ` ${selectedRequest.value.sil_days} SIL day(s) have been automatically restored to the employee's account.`;
+      }
+
+      showSuccess(successMessage, 'Leave Request Rejected');
 
       closeRejectionModal();
       await fetchLeaveRequests();
@@ -1644,6 +1862,8 @@
       'Department',
       'Branch',
       'Leave Type',
+      'Uses SIL',
+      'SIL Days',
       'From Date',
       'To Date',
       'Days',
@@ -1658,6 +1878,8 @@
       `"${request.department || 'N/A'}"`,
       `"${getBranchName(request.branch_id)}"`,
       `"${request.leave_type}"`,
+      request.use_sil ? 'Yes' : 'No',
+      request.sil_days || 0,
       `"${formatDate(request.from_date)}"`,
       `"${formatDate(request.to_date)}"`,
       calculateDays(request.from_date, request.to_date),
@@ -1739,10 +1961,18 @@
       case 'approved_by_hr':
         return 'Approved';
       case 'approved_by_manager':
+        // Check if this is an HR staff member's request
+        if (request && request.department === 'Human Resource') {
+          return 'Pending Board Approval';
+        }
         return 'Pending HR';
       case 'rejected':
         return 'Rejected';
       case 'pending':
+        // Check if this is an HR staff member's request
+        if (request && request.department === 'Human Resource') {
+          return 'Pending Board Approval';
+        }
         // Department employees (no branch_id) with pending status go directly to HR (single approval)
         if (request && !request.branch_id) {
           return 'Pending HR Approval';
@@ -1762,10 +1992,20 @@
     { deep: true }
   );
 
+  // Watch for tab changes to load data when needed
+  watch(activeTab, (newTab) => {
+    if (newTab === 'history' && allHistoryRequests.value.length === 0) {
+      fetchHistoryRequests();
+    }
+  });
+
   // Lifecycle
   onMounted(() => {
     refreshData();
-    fetchHistoryRequests();
+    // Only fetch history if history tab is active by default
+    if (activeTab.value === 'history') {
+      fetchHistoryRequests();
+    }
   });
 </script>
 

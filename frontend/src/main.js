@@ -14,6 +14,7 @@ import { fab } from '@fortawesome/free-brands-svg-icons';
 import Toast from 'vue-toastification';
 import { toastConfig } from './config/toast.js';
 import './styles/toast.css';
+import Vue3PrintNb from 'vue3-print-nb';
 
 const app = createApp(App);
 const pinia = createPinia();
@@ -25,6 +26,7 @@ if (import.meta.env.DEV) {
 
 app.use(pinia);
 app.use(router);
+app.use(Vue3PrintNb);
 
 // Configure toast notifications with custom styling
 app.use(Toast, toastConfig);
@@ -33,10 +35,9 @@ app.use(Toast, toastConfig);
 const authStore = useAuthStore();
 authStore.initializeAuth();
 
-// Initialize theme system
+// Initialize theme system (light mode only)
 const themeStore = useThemeStore();
 themeStore.initializeTheme();
-themeStore.watchSystemTheme();
 
 // Initialize PikaDay
 const pikaDay = new PikaDay({

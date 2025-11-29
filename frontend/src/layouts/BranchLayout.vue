@@ -50,11 +50,34 @@
   const canSwitchBranches = computed(
     () => branchContextStore.canSwitchBranches
   );
+
+  // Check if current branch is inactive
+  const isBranchInactive = computed(() => {
+    // Check if branch exists and is inactive (is_active === false)
+    if (!currentBranch.value) return false;
+    return currentBranch.value.is_active === false;
+  });
+
+  // Check if user is on inactive route or allowed routes when branch is inactive
+  const isOnInactiveRoute = computed(() => {
+    // If branch is inactive and user is not Super Admin
+    if (isBranchInactive.value && !canSwitchBranches.value) {
+      // Hide navigation on inactive route and allowed routes (profile only)
+      const allowedInactiveRoutes = ['BranchInactive', 'BranchProfile'];
+      return allowedInactiveRoutes.includes(route.name);
+    }
+    return false;
+  });
   const availableOperations = computed(() => {
     // Filter out 'pos' from navigation since it's a separate page with its own access control
-    return branchContextStore.availableOperations.filter(
+    const ops = branchContextStore.availableOperations.filter(
       (operation) => operation !== 'pos'
     );
+    // Ensure cooks see Kitchen entry even if store did not include it
+    if (userRole.value === 'Cook' && !ops.includes('kitchen')) {
+      ops.push('kitchen');
+    }
+    return ops;
   });
 
   // Check if user can access POS (separate from navigation)
@@ -83,7 +106,9 @@
     dashboard: LayoutDashboard,
     pos: CreditCard,
     sales: BarChart3,
+    utilities: FileText,
     inventory: Package,
+    kitchen: Timer,
     employees: Users,
     profile: UserCircle,
     attendance: Clock,
@@ -94,7 +119,9 @@
     dashboard: 'Dashboard',
     pos: 'POS',
     sales: 'Sales',
+    utilities: 'Utilities',
     inventory: 'Inventory',
+    kitchen: 'Kitchen',
     employees: 'Employees',
     profile: 'Profile',
     attendance: 'Attendance',
@@ -193,6 +220,19 @@
     }
   });
 
+  // Watch for inactive branch and redirect if needed
+  watch([currentBranch, isBranchInactive], ([branch, isInactive]) => {
+    // Only redirect if branch exists, is inactive, not a Super Admin, and not already on allowed routes
+    if (
+      branch &&
+      isInactive &&
+      !canSwitchBranches.value &&
+      !['BranchInactive', 'BranchProfile'].includes(route.name)
+    ) {
+      router.push('/branch/inactive');
+    }
+  });
+
   // Initialize on mount
   onMounted(async () => {
     await initializeBranchContext();
@@ -201,13 +241,23 @@
     if (canSwitchBranches.value) {
       await branchContextStore.restoreBranchContext();
     }
+
+    // Check if branch is inactive after initialization
+    if (
+      currentBranch.value &&
+      isBranchInactive.value &&
+      !canSwitchBranches.value &&
+      !['BranchInactive', 'BranchProfile'].includes(route.name)
+    ) {
+      router.push('/branch/inactive');
+    }
   });
 </script>
 <template>
-  <div class="min-h-screen bg-base-100">
+  <div class="min-h-screen bg-accentColor">
     <!-- Branch Header -->
     <div class="bg-primaryColor text-white shadow-lg">
-      <div class="container mx-auto px-4 py-3">
+      <div class="w-full px-4 py-3">
         <div class="flex flex-row items-center justify-between gap-2 sm:gap-4">
           <!-- Branch Info -->
           <div class="flex items-center space-x-2 sm:space-x-4 flex-1 min-w-0">
@@ -217,10 +267,6 @@
                 <h1 class="text-sm sm:text-lg font-semibold truncate">
                   {{ currentBranch?.name || user?.name || 'Branch Operations' }}
                 </h1>
-                <p class="text-xs sm:text-sm opacity-80 truncate">
-                  {{ currentBranch?.code || 'No Branch Assigned' }} •
-                  {{ userRole }}
-                </p>
               </div>
             </div>
           </div>
@@ -317,7 +363,7 @@
                   </router-link>
                 </li>
 
-                <li>
+                <li v-if="!isBranchInactive || canSwitchBranches">
                   <router-link
                     :to="{ path: '/branch/attendance', query: { tab: 'ot' } }"
                     class="flex items-center space-x-3 px-3 py-2 rounded-md hover:bg-gray-50 transition-colors"
@@ -326,7 +372,7 @@
                     <span class="text-sm">Apply Overtime</span>
                   </router-link>
                 </li>
-                <li>
+                <li v-if="!isBranchInactive || canSwitchBranches">
                   <router-link
                     :to="{
                       path: '/branch/attendance',
@@ -339,7 +385,7 @@
                   </router-link>
                 </li>
 
-                <li>
+                <li v-if="!isBranchInactive || canSwitchBranches">
                   <router-link
                     to="/branch/attendance"
                     class="flex items-center space-x-3 px-3 py-2 rounded-md hover:bg-gray-50 transition-colors"
@@ -470,7 +516,7 @@
                   </router-link>
                 </li>
 
-                <li>
+                <li v-if="!isBranchInactive || canSwitchBranches">
                   <router-link
                     :to="{ path: '/branch/attendance', query: { tab: 'ot' } }"
                     class="flex items-center space-x-3 px-3 py-2 rounded-md hover:bg-gray-50 transition-colors"
@@ -479,7 +525,7 @@
                     <span class="text-sm">Apply Overtime</span>
                   </router-link>
                 </li>
-                <li>
+                <li v-if="!isBranchInactive || canSwitchBranches">
                   <router-link
                     :to="{
                       path: '/branch/attendance',
@@ -492,7 +538,7 @@
                   </router-link>
                 </li>
 
-                <li>
+                <li v-if="!isBranchInactive || canSwitchBranches">
                   <router-link
                     to="/branch/attendance"
                     class="flex items-center space-x-3 px-3 py-2 rounded-md hover:bg-gray-50 transition-colors"
@@ -520,8 +566,11 @@
     </div>
 
     <!-- Branch Navigation -->
-    <div class="bg-white border-b border-gray-200 shadow-sm">
-      <div class="container mx-auto px-4">
+    <div
+      v-if="!isOnInactiveRoute"
+      class="bg-white border-b border-gray-200 shadow-sm"
+    >
+      <div class="w-full px-4">
         <nav class="flex justify-between items-center">
           <!-- Desktop Navigation -->
           <div class="hidden lg:flex space-x-8">
@@ -608,7 +657,7 @@
     </div>
 
     <!-- Main Content -->
-    <main class="container mx-auto px-4 py-4 lg:py-6">
+    <main class="w-full px-4 py-4 lg:py-6">
       <!-- Loading State -->
       <div v-if="loading" class="flex justify-center items-center py-12">
         <div class="text-center">
@@ -732,9 +781,7 @@
 
 <style scoped>
   /* Custom styles for branch layout */
-  .container {
-    max-width: 1200px;
-  }
+  /* Removed max-width constraint to utilize full screen width */
 
   /* Toast positioning */
   .toast {
@@ -773,8 +820,6 @@
 
   /* Ensure proper spacing on mobile */
   @media (max-width: 1024px) {
-    .container {
-      max-width: 100%;
-    }
+    /* Full width layout maintained for all screen sizes */
   }
 </style>

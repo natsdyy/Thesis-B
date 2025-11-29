@@ -24,16 +24,24 @@
   import { useShiftTypesStore } from '../../stores/shiftTypesStore';
   import { useEmployeeStore } from '../../stores/employeeStore';
   import { useLeaveStore } from '../../stores/leaveStore';
+  import { useAuthStore } from '../../stores/authStore';
   import ShiftManagementModal from '../../components/branch/ShiftManagementModal.vue';
+  import {
+    getCurrentPhilippineTime,
+    formatPhilippineTime,
+    createPhilippineDate,
+    PHILIPPINE_TIMEZONE,
+  } from '../../utils/timezoneUtils.js';
 
   const { showSuccess, showError, showWarning, showInfo } = useCustomToast();
   const scheduleStore = useEmployeeScheduleStore();
   const shiftTypesStore = useShiftTypesStore();
   const employeeStore = useEmployeeStore();
   const leaveStore = useLeaveStore();
+  const authStore = useAuthStore();
 
-  // Local state
-  const currentWeek = ref(new Date());
+  // Local state - Initialize with Philippine time
+  const currentWeek = ref(getCurrentPhilippineTime());
   const showAddShiftModal = ref(false);
   const showEditShiftModal = ref(false);
   const showDeleteConfirmModal = ref(false);
@@ -43,6 +51,8 @@
   const editingShift = ref(null);
   const shiftToDelete = ref(null);
   const loading = ref(false);
+  const loadingEmployees = ref(false);
+  const lastLoadTime = ref(0);
 
   // Search and filters
   const searchQuery = ref('');
@@ -62,6 +72,17 @@
     'Customer Relationship',
   ]);
 
+  // Get current user's department and role
+  const currentUserDepartment = computed(() => {
+    const dept = authStore.userDepartment || 'Department';
+    console.log('currentUserDepartment computed:', dept, 'type:', typeof dept);
+    return dept;
+  });
+  const currentUserRole = computed(() => authStore.userRole);
+  const isManager = computed(() => currentUserRole.value === 'Manager');
+  const isHR = computed(() => currentUserDepartment.value === 'Human Resource');
+  const isHRManager = computed(() => isHR.value && isManager.value);
+
   // Form data for adding/editing shifts
   const shiftForm = ref({
     employeeId: null,
@@ -77,27 +98,29 @@
   // Computed properties
   const weekDays = computed(() => {
     const days = [];
+    const currentPhilippineTime = getCurrentPhilippineTime();
     const startOfWeek = new Date(currentWeek.value);
     startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
 
     for (let i = 0; i < 7; i++) {
       const day = new Date(startOfWeek);
       day.setDate(startOfWeek.getDate() + i);
-      // Format date as YYYY-MM-DD in local timezone to avoid UTC conversion issues
-      const year = day.getFullYear();
-      const month = String(day.getMonth() + 1).padStart(2, '0');
-      const dayOfMonth = String(day.getDate()).padStart(2, '0');
-      const dateString = `${year}-${month}-${dayOfMonth}`;
+
+      // Use timezone utility for consistent Philippine timezone formatting
+      const dateString = formatPhilippineTime(day, 'date').replace(/\//g, '-');
+
+      // Use Philippine time for accurate past/future comparison
+      const isPast =
+        day < currentPhilippineTime &&
+        day.toDateString() !== currentPhilippineTime.toDateString();
 
       days.push({
         date: day,
         dateString: dateString,
         dayName: day.toLocaleDateString('en-US', { weekday: 'short' }),
         dayNumber: day.getDate(),
-        isToday: day.toDateString() === new Date().toDateString(),
-        isPast:
-          day < new Date() &&
-          !day.toDateString().includes(new Date().toDateString()),
+        isToday: day.toDateString() === currentPhilippineTime.toDateString(),
+        isPast: isPast,
       });
     }
     return days;
@@ -195,7 +218,7 @@
   };
 
   const goToCurrentWeek = async () => {
-    currentWeek.value = new Date();
+    currentWeek.value = getCurrentPhilippineTime();
 
     // Load leave data for the current week
     const startDate = weekDays.value[0].dateString;
@@ -248,34 +271,96 @@
   };
 
   const loadEmployees = async () => {
+    const now = Date.now();
+
+    // Prevent multiple simultaneous calls and rapid successive calls
+    if (loadingEmployees.value || now - lastLoadTime.value < 1000) {
+      console.log(
+        'Employee loading already in progress or too recent, skipping...'
+      );
+      return;
+    }
+
     try {
       loading.value = true;
+      loadingEmployees.value = true;
+      lastLoadTime.value = now;
+
+      // Wait for user data to be available
+      if (!authStore.user || !authStore.user.department) {
+        console.warn('User data not available, skipping employee loading');
+        allEmployees.value = [];
+        return;
+      }
+
+      // Debug logging
+      console.log('Current user:', authStore.user);
+      console.log('Current user department:', authStore.user.department);
+      console.log('Current user role:', authStore.user.role);
+      console.log('isHR:', isHR.value);
+      console.log('isManager:', isManager.value);
+      console.log('currentUserDepartment:', currentUserDepartment);
+
       // Fetch all employees without pagination
       await employeeStore.fetchEmployees(false, 1, 1000); // Large limit to get all employees
       const employees = employeeStore.employees || [];
+      console.log('All employees fetched:', employees);
 
-      // Filter out branch employees - only show department employees (HR, SCM, Finance, Production, CRM)
-      const departmentEmployees = employees.filter(
-        (emp) =>
-          emp.department &&
-          !emp.department.toLowerCase().includes('branch') &&
-          [
-            'Human Resource',
-            'HR',
-            'Supply Chain',
-            'SCM',
-            'Finance',
-            'Production',
-            'Customer Relationship',
-            'CRM',
-          ].includes(emp.department)
-      );
+      let departmentEmployees;
+
+      // If user is HR, they can only see employees from their own department
+      if (isHR.value) {
+        console.log(
+          'User is HR, filtering for department:',
+          currentUserDepartment.value
+        );
+        departmentEmployees = employees.filter((emp) => {
+          const matches =
+            emp.department &&
+            !emp.department.toLowerCase().includes('branch') &&
+            emp.department === currentUserDepartment.value;
+          console.log(
+            `Employee ${emp.first_name} ${emp.last_name}: department=${emp.department}, matches=${matches}`
+          );
+          return matches;
+        });
+        console.log('HR filtered employees:', departmentEmployees);
+      }
+      // If user is a manager, they can only see employees from their department
+      else if (isManager.value && currentUserDepartment.value) {
+        console.log(
+          'User is Manager, filtering for department:',
+          currentUserDepartment.value
+        );
+        departmentEmployees = employees.filter((emp) => {
+          const matches =
+            emp.department &&
+            !emp.department.toLowerCase().includes('branch') &&
+            emp.department === currentUserDepartment.value;
+          console.log(
+            `Employee ${emp.first_name} ${emp.last_name}: department=${emp.department}, matches=${matches}`
+          );
+          return matches;
+        });
+        console.log('Manager filtered employees:', departmentEmployees);
+      }
+      // Default fallback - no employees
+      else {
+        console.log('User is neither HR nor Manager, or no department:', {
+          isHR: isHR.value,
+          isManager: isManager.value,
+          department: currentUserDepartment.value,
+        });
+        departmentEmployees = [];
+      }
+
       allEmployees.value = departmentEmployees;
     } catch (error) {
       console.error('Error loading employees:', error);
       showError('Failed to load employees');
     } finally {
       loading.value = false;
+      loadingEmployees.value = false;
     }
   };
 
@@ -303,14 +388,18 @@
 
   const openAddShiftModal = (employee, date) => {
     // All days are working days - no restrictions
+    // Check if there's an existing schedule (e.g., Day Off) that will be replaced
+    const existingSchedule = getShiftForEmployee(employee.id, date.dateString);
+
     selectedEmployee.value = employee;
     selectedDate.value = date;
+    editingShift.value = existingSchedule || null; // Set if exists to allow override
     shiftForm.value = {
       employeeId: employee.id,
       branchId: null, // Department employees don't have branch_id
       date: date.dateString,
       shiftId: null,
-      notes: '',
+      notes: existingSchedule?.notes || '',
     };
     showAddShiftModal.value = true;
   };
@@ -320,11 +409,16 @@
     selectedEmployee.value = employee;
     selectedDate.value = date;
     editingShift.value = schedule;
+
+    // Find the shift type ID by matching the shift name
+    const shiftType = shiftTypesStore.getShiftTypeByName(schedule.shift.name);
+    const shiftTypeId = shiftType ? shiftType.id : null;
+
     shiftForm.value = {
       employeeId: employee.id,
       branchId: null, // Department employees don't have branch_id
       date: date.dateString,
-      shiftId: schedule.shift.id,
+      shiftId: shiftTypeId,
       notes: schedule.notes || '',
     };
     showEditShiftModal.value = true;
@@ -353,15 +447,25 @@
         notes: shiftForm.value.notes,
       };
 
-      if (editingShift.value) {
-        // Update existing schedule
-        await scheduleStore.updateSchedule(editingShift.value.shift.id, {
+      // Check if there's an existing schedule for this date (e.g., Day Off to override)
+      const existingSchedule = getShiftForEmployee(
+        shiftForm.value.employeeId,
+        shiftForm.value.date
+      );
+
+      if (existingSchedule) {
+        // Update existing schedule (e.g., changing Day Off to working shift)
+        await scheduleStore.updateSchedule(existingSchedule.id, {
           shift_name: selectedShift.name,
           start_time: selectedShift.start_time,
           end_time: selectedShift.end_time,
           notes: shiftForm.value.notes,
         });
-        showSuccess('Shift updated successfully');
+        showSuccess(
+          existingSchedule.shift.name === 'Day Off'
+            ? 'Working shift assigned (Day Off overridden)'
+            : 'Shift updated successfully'
+        );
       } else {
         // Create new schedule
         await scheduleStore.createSchedule(scheduleData);
@@ -392,8 +496,9 @@
         const { employeeId, dateString } = shiftToDelete.value;
         const schedule = getShiftForEmployee(employeeId, dateString);
 
-        if (schedule && schedule.shift.id !== 'day-off') {
-          await scheduleStore.deleteSchedule(schedule.shift.id);
+        if (schedule) {
+          // Allow deletion of all shifts, including Day Off
+          await scheduleStore.deleteSchedule(schedule.id);
           showSuccess('Shift removed successfully');
         }
       }
@@ -437,14 +542,17 @@
 
   const isEmployeeOnLeave = (employeeId, dateString) => {
     // Check if employee has approved leave for this date
-    const date = new Date(dateString);
+    const date = createPhilippineDate(
+      parseInt(dateString.split('-')[0]), // year
+      parseInt(dateString.split('-')[1]), // month
+      parseInt(dateString.split('-')[2]) // day
+    );
     const leaveRequests = leaveStore.allLeaveRequests || [];
 
     return leaveRequests.some(
       (request) =>
         request.employee_id === employeeId &&
-        (request.status === 'approved_by_hr' ||
-          request.status === 'approved_by_manager') &&
+        request.status === 'approved_by_hr' && // Only show "On Leave" when fully approved by HR
         new Date(request.from_date) <= date &&
         new Date(request.to_date) >= date
     );
@@ -472,6 +580,34 @@
 
   // Initialize
   onMounted(async () => {
+    // Wait for auth store to be properly initialized
+    let attempts = 0;
+    while (!authStore.user && attempts < 10) {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      attempts++;
+    }
+
+    if (!authStore.user) {
+      console.error('User data not available after waiting');
+      showError('Unable to load user data. Please refresh the page.');
+      return;
+    }
+
+    console.log('User data loaded:', authStore.user);
+
+    // Check if user has permission to access schedule management
+    if (!isHR.value && !isManager.value) {
+      showError(
+        'Access denied. Only HR staff and Department Managers can access schedule management.',
+        'Access Denied'
+      );
+      // Redirect to dashboard or appropriate page
+      setTimeout(() => {
+        window.location.href = '/dashboard';
+      }, 2000);
+      return;
+    }
+
     // Clear any existing schedule data to start fresh
     scheduleStore.clearSchedules();
 
@@ -488,12 +624,21 @@
       console.warn('Could not load leave data:', error);
     }
 
-    await Promise.all([loadEmployees(), loadShiftTypes(), loadSchedules()]);
+    // Load data sequentially to avoid race conditions
+    await loadShiftTypes();
+    await loadEmployees();
+    await loadSchedules();
+
+    // Show welcome message
+    showInfo(
+      `Managing schedules for ${currentUserDepartment.value || 'your department'} employees`,
+      'Department Schedule Management'
+    );
   });
 </script>
 
 <template>
-  <div class="space-y-6">
+  <div class="space-y-6 p-4">
     <!-- Schedule Header -->
     <div
       class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4"
@@ -501,13 +646,15 @@
       <div>
         <h2 class="text-2xl font-bold text-primaryColor flex items-center">
           <Calendar class="w-6 h-6 mr-2" />
-          Employee Schedules
+          {{ `${currentUserDepartment || 'Department'} Schedules` }}
         </h2>
         <p class="text-gray-600 mt-1">
-          Manage shift assignments for department employees (HR, SCM, Finance,
-          Production, CRM)
+          {{
+            `Manage shift assignments for ${currentUserDepartment || 'your department'} employees`
+          }}
         </p>
         <button
+          v-if="isHR"
           @click="openShiftManagement"
           class="btn btn-outline btn-sm mt-2"
         >
@@ -520,7 +667,7 @@
       <div class="flex items-center space-x-2">
         <button
           @click="navigateWeek(-1)"
-          class="btn btn-outline btn-sm"
+          class="btn bg-gray-100 hover:bg-gray-200 btn-sm"
           :disabled="loading"
         >
           <ChevronLeft class="w-4 h-4" />
@@ -538,7 +685,7 @@
 
         <button
           @click="navigateWeek(1)"
-          class="btn btn-outline btn-sm"
+          class="btn bg-gray-100 hover:bg-gray-200 btn-sm"
           :disabled="loading"
         >
           <ChevronRight class="w-4 h-4" />
@@ -568,10 +715,16 @@
             <select
               v-model="departmentFilter"
               class="select select-bordered w-full"
+              disabled
             >
-              <option value="">All Departments</option>
-              <option v-for="dept in departments" :key="dept" :value="dept">
-                {{ dept }}
+              <option value="">
+                {{ `${currentUserDepartment || 'Your Department'} Only` }}
+              </option>
+              <option
+                :value="currentUserDepartment || 'Your Department'"
+                :key="currentUserDepartment"
+              >
+                {{ currentUserDepartment || 'Your Department' }}
               </option>
             </select>
           </div>
@@ -696,84 +849,141 @@
                         getShiftForEmployee(employee.id, day.dateString)
                       "
                     >
-                      <div
-                        class="badge badge-xs sm:badge-sm mb-1 text-xs"
-                        :class="
-                          getShiftForEmployee(employee.id, day.dateString).shift
-                            .color
-                        "
-                      >
-                        <span class="hidden sm:inline">{{
-                          getShiftForEmployee(employee.id, day.dateString).shift
-                            .name
-                        }}</span>
-                        <span class="sm:hidden">{{
-                          getShiftForEmployee(
-                            employee.id,
-                            day.dateString
-                          ).shift.name.split(' ')[0]
-                        }}</span>
-                      </div>
-                      <div
+                      <!-- Day Off Display -->
+                      <template
                         v-if="
                           getShiftForEmployee(employee.id, day.dateString).shift
-                            .name !== 'Day Off'
+                            .name === 'Day Off'
                         "
-                        class="text-xs text-gray-600 hidden sm:block"
                       >
-                        {{
-                          getShiftForEmployee(employee.id, day.dateString).shift
-                            .startTime
-                        }}
-                        -
-                        {{
-                          getShiftForEmployee(employee.id, day.dateString).shift
-                            .endTime
-                        }}
-                      </div>
-                      <div
-                        v-if="
-                          getShiftForEmployee(employee.id, day.dateString).shift
-                            .name !== 'Day Off'
-                        "
-                        class="text-xs text-gray-600 sm:hidden"
-                      >
-                        {{
-                          getShiftForEmployee(employee.id, day.dateString).shift
-                            .startTime
-                        }}-{{
-                          getShiftForEmployee(employee.id, day.dateString).shift
-                            .endTime
-                        }}
-                      </div>
+                        <div
+                          class="badge badge-xs sm:badge-sm mb-1 bg-gray-200 text-gray-700 font-semibold"
+                        >
+                          <span class="hidden sm:inline">Day Off</span>
+                          <span class="sm:hidden">Off</span>
+                        </div>
+                        <div
+                          class="text-xs text-gray-500 italic hidden sm:block"
+                        >
+                          No work scheduled
+                        </div>
+                      </template>
+
+                      <!-- Working Shift Display -->
+                      <template v-else>
+                        <div
+                          class="badge badge-xs sm:badge-sm mb-1 text-xs"
+                          :class="
+                            getShiftForEmployee(employee.id, day.dateString)
+                              .shift.color
+                          "
+                        >
+                          <span class="hidden sm:inline">{{
+                            getShiftForEmployee(employee.id, day.dateString)
+                              .shift.name
+                          }}</span>
+                          <span class="sm:hidden">{{
+                            getShiftForEmployee(
+                              employee.id,
+                              day.dateString
+                            ).shift.name.split(' ')[0]
+                          }}</span>
+                        </div>
+                        <div
+                          class="text-xs text-gray-600 font-mono hidden sm:block"
+                        >
+                          {{
+                            getShiftForEmployee(employee.id, day.dateString)
+                              .shift.startTime
+                          }}
+                          -
+                          {{
+                            getShiftForEmployee(employee.id, day.dateString)
+                              .shift.endTime
+                          }}
+                        </div>
+                        <div class="text-xs text-gray-600 font-mono sm:hidden">
+                          {{
+                            getShiftForEmployee(employee.id, day.dateString)
+                              .shift.startTime
+                          }}-{{
+                            getShiftForEmployee(employee.id, day.dateString)
+                              .shift.endTime
+                          }}
+                        </div>
+                        <!-- Rest Day Override Indicator -->
+                        <div
+                          v-if="
+                            getShiftForEmployee(employee.id, day.dateString)
+                              .is_rest_day_override
+                          "
+                          class="text-xs text-primaryColor font-medium mt-0.5 hidden sm:block"
+                        >
+                          (Rest Day Pay)
+                        </div>
+                      </template>
 
                       <!-- Action Buttons -->
                       <div
                         class="flex space-x-1 mt-1"
                         v-if="canEditSchedule(day)"
                       >
-                        <button
-                          @click="
-                            openEditShiftModal(
-                              employee,
-                              day,
-                              getShiftForEmployee(employee.id, day.dateString)
-                            )
+                        <!-- For Day Off: Show "Add Working Shift" button to override with working shift -->
+                        <template
+                          v-if="
+                            getShiftForEmployee(employee.id, day.dateString)
+                              .shift.name === 'Day Off'
                           "
-                          class="btn btn-ghost btn-xs hidden sm:flex"
-                          title="Edit shift"
                         >
-                          <Edit class="w-3 h-3" />
-                        </button>
-                        <button
-                          @click="
-                            openDeleteConfirmModal(employee.id, day.dateString)
-                          "
-                          class="btn btn-ghost btn-xs text-error hidden sm:flex"
-                          title="Remove shift"
-                        >
-                          <Trash2 class="w-3 h-3" />
-                        </button>
+                          <button
+                            @click="openAddShiftModal(employee, day)"
+                            class="btn btn-ghost btn-xs text-primaryColor hidden sm:flex"
+                            title="Add working shift (override Day Off)"
+                          >
+                            <Plus class="w-3 h-3 mr-1" />
+                            Work
+                          </button>
+                          <button
+                            @click="
+                              openDeleteConfirmModal(
+                                employee.id,
+                                day.dateString
+                              )
+                            "
+                            class="btn btn-ghost btn-xs text-error hidden sm:flex"
+                            title="Remove Day Off"
+                          >
+                            <Trash2 class="w-3 h-3" />
+                          </button>
+                        </template>
+                        <!-- For Regular Shifts: Show Edit and Delete -->
+                        <template v-else>
+                          <button
+                            @click="
+                              openEditShiftModal(
+                                employee,
+                                day,
+                                getShiftForEmployee(employee.id, day.dateString)
+                              )
+                            "
+                            class="btn btn-ghost btn-xs hidden sm:flex"
+                            title="Edit shift"
+                          >
+                            <Edit class="w-3 h-3" />
+                          </button>
+                          <button
+                            @click="
+                              openDeleteConfirmModal(
+                                employee.id,
+                                day.dateString
+                              )
+                            "
+                            class="btn btn-ghost btn-xs text-error hidden sm:flex"
+                            title="Remove shift"
+                          >
+                            <Trash2 class="w-3 h-3" />
+                          </button>
+                        </template>
                       </div>
                     </template>
 
@@ -830,8 +1040,8 @@
                 :class="[
                   'btn btn-sm',
                   page === currentPage
-                    ? 'bg-primaryColor text-white border-primaryColor'
-                    : 'btn-outline',
+                    ? 'text-black bg-primaryColor/0 border-none'
+                    : 'text-gray-600 ',
                 ]"
               >
                 {{ page }}
@@ -867,11 +1077,12 @@
     <div v-if="filteredEmployees.length === 0" class="text-center py-12">
       <Users class="w-16 h-16 mx-auto text-gray-400 mb-4" />
       <h3 class="text-lg font-medium text-gray-900 mb-2">
-        No department employees found
+        {{ `No ${currentUserDepartment || 'department'} employees found` }}
       </h3>
       <p class="text-gray-600">
-        Try adjusting your search criteria. Only department employees (HR, SCM,
-        Finance, Production, CRM) are shown here.
+        {{
+          `Try adjusting your search criteria. Only ${currentUserDepartment || 'your department'} employees are shown here.`
+        }}
       </p>
     </div>
 
@@ -879,9 +1090,29 @@
     <div v-if="showAddShiftModal" class="modal modal-open">
       <div class="modal-box">
         <h3 class="font-bold text-lg mb-4">
-          Assign Shift - {{ selectedEmployee?.first_name }}
-          {{ selectedEmployee?.last_name }}
+          <template
+            v-if="editingShift && editingShift.shift.name === 'Day Off'"
+          >
+            Add Working Shift (Override Day Off) -
+            {{ selectedEmployee?.first_name }}
+            {{ selectedEmployee?.last_name }}
+          </template>
+          <template v-else>
+            Assign Shift - {{ selectedEmployee?.first_name }}
+            {{ selectedEmployee?.last_name }}
+          </template>
         </h3>
+        <div
+          v-if="editingShift && editingShift.shift.name === 'Day Off'"
+          class="alert alert-info mb-4"
+        >
+          <AlertCircle class="w-5 h-5" />
+          <span>
+            This employee has a Day Off scheduled. Adding a working shift will
+            override it. The employee will be eligible for rest day pay rates in
+            payroll.
+          </span>
+        </div>
 
         <div class="space-y-4">
           <div>

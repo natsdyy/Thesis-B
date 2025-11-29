@@ -27,6 +27,18 @@
   import SupplierRatingModal from '../../components/scm/SupplierRatingModal.vue';
   import POCompletionModal from '../../components/scm/POCompletionModal.vue';
   import { useRouter } from 'vue-router';
+  import Editor from '@tinymce/tinymce-vue';
+  import tinymce from 'tinymce/tinymce';
+  import 'tinymce/icons/default';
+  import 'tinymce/themes/silver';
+  import 'tinymce/models/dom/model';
+  import 'tinymce/plugins/link';
+  import 'tinymce/plugins/lists';
+  import 'tinymce/plugins/image';
+  import 'tinymce/plugins/table';
+  import 'tinymce/plugins/code';
+  import 'tinymce/skins/ui/oxide/skin.min.css';
+  import { formatImageUrl } from '../../config/api.js';
 
   const router = useRouter();
 
@@ -130,6 +142,88 @@
   const grnStore = useGRNStore();
   const authStore = useAuthStore();
 
+  try {
+    tinymce?.EditorManager?.overrideDefaults?.({ license_key: 'gpl' });
+  } catch (_) {}
+
+  const tinyMCEConfig = {
+    menubar: false,
+    height: 220,
+    branding: false,
+    statusbar: false,
+    plugins: 'link lists image table code paste',
+    toolbar:
+      'undo redo | bold italic underline | bullist numlist | link image table | uploadimage | removeformat',
+    toolbar_mode: 'wrap',
+    automatic_uploads: false,
+    paste_data_images: true,
+    file_picker_types: 'image',
+    content_style:
+      'html,body{max-width:100%;} img{max-width:100%;height:auto;display:block;margin:6px 0;}',
+    images_upload_handler: async (blobInfo) => {
+      return new Promise((resolve, reject) => {
+        try {
+          const token = localStorage.getItem('token');
+          const formData = new FormData();
+          formData.append('file', blobInfo.blob(), blobInfo.filename());
+          fetch(getApiUrl('/uploads/proofs'), {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+            body: formData,
+          })
+            .then((r) => r.json())
+            .then((data) => {
+              if (data?.location) {
+                resolve(formatImageUrl(data.location));
+              } else {
+                reject(data?.message || 'Upload failed');
+              }
+            })
+            .catch((e) => reject(e?.message || 'Upload failed'));
+        } catch (e) {
+          reject(e?.message || 'Upload failed');
+        }
+      });
+    },
+    setup: (ed) => {
+      ed.ui.registry.addButton('uploadimage', {
+        text: 'Upload Image',
+        tooltip: 'Upload image',
+        onAction: () => {
+          const input = document.createElement('input');
+          input.type = 'file';
+          input.accept = 'image/png,image/jpeg';
+          input.onchange = async () => {
+            const file = input.files && input.files[0];
+            if (!file) return;
+            try {
+              const token = localStorage.getItem('token');
+              const fd = new FormData();
+              fd.append('file', file);
+              const res = await fetch(getApiUrl('/uploads/proofs'), {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}` },
+                body: fd,
+              });
+              const json = await res.json();
+              if (res.ok && json.location) {
+                ed.insertContent(
+                  `<img src="${formatImageUrl(json.location)}" />`
+                );
+              } else {
+                alert(json.message || 'Upload failed');
+              }
+            } catch (_) {
+              alert('Upload failed');
+            }
+          };
+          input.click();
+        },
+      });
+    },
+    license_key: 'gpl',
+  };
+
   // Computed properties
   const suppliers = computed(() => supplierStore.activeSuppliers);
   const orderStats = computed(() => purchaseOrderStore.stats);
@@ -141,6 +235,16 @@
       // The backend will determine which items are available when user selects a request
       return true;
     });
+  });
+
+  // Determine if current PO is sourced from a manual request (no supplier on the request)
+  const isManualSourceRequest = computed(() => {
+    // Prefer explicit flag set during selection; fallback to store lookup
+    if (orderForm.value?.is_manual_source) return true;
+    const reqId = orderForm.value?.supply_request_id;
+    if (!reqId) return false;
+    const req = (supplyRequestStore.requests || []).find((r) => r.id === reqId);
+    return !!req && !req.supplier_id;
   });
 
   // Local state
@@ -215,6 +319,7 @@
     supply_request_id: '',
     supply_request_display: '', // New: Display text for selected supply request
     selected_items_count: 0, // New: Count of selected items
+    is_manual_source: false,
     selected_items: [], // New: Store selected items for PO creation
     order_date: '',
     expected_delivery: '',
@@ -248,6 +353,28 @@
     'Completed',
     'Cancelled',
   ];
+  // Edit-modal specific status behavior: suppliers drive Sent/Confirmed/In Progress
+  const modalStatusOptions = computed(() => {
+    const m = modal.value;
+    // Restrict create modal to Draft and Sent only
+    if (m?.type === 'create') return ['Draft', 'Sent'];
+    if (m?.type !== 'edit' || !m?.order) return orderStatuses;
+    const current = m.order.status;
+    if (current === 'In Progress') return ['In Progress', 'Completed'];
+    if (['Sent', 'Confirmed', 'Completed', 'Cancelled'].includes(current)) {
+      return [current];
+    }
+    return orderStatuses;
+  });
+
+  const isStatusDisabled = computed(() => {
+    const m = modal.value;
+    if (m?.type === 'view') return true;
+    if (m?.type !== 'edit' || !m?.order) return false;
+    const current = m.order.status;
+    // Disable when supplier controls status, except allow transition from In Progress → Completed
+    return ['Sent', 'Confirmed', 'Completed', 'Cancelled'].includes(current);
+  });
   const activeOrderStatuses = ['Draft', 'Sent', 'Confirmed', 'In Progress'];
   const historyOrderStatuses = ['Completed', 'Cancelled'];
   const months = [
@@ -727,11 +854,45 @@
     return options;
   });
 
-  const supplyRequestFilterOptions = ref([
-    { type: 'today', label: 'Today', count: 0 },
-    { type: 'week', label: 'This Week', count: 0 },
-    { type: 'month', label: 'This Month', count: 0 },
-  ]);
+  const supplyRequestFilterOptions = computed(() => {
+    const options = [
+      { type: 'today', label: 'Today', count: 0 },
+      { type: 'week', label: 'This Week', count: 0 },
+      { type: 'month', label: 'This Month', count: 0 },
+    ];
+
+    // Calculate counts based on actual supply request data
+    options.forEach((option) => {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      option.count = approvedSupplyRequests.value.filter((request) => {
+        const requestDate = new Date(request.request_date);
+        requestDate.setHours(0, 0, 0, 0);
+
+        switch (option.type) {
+          case 'today':
+            return requestDate.getTime() === today.getTime();
+          case 'week': {
+            const startOfWeek = new Date(today);
+            startOfWeek.setDate(today.getDate() - today.getDay());
+            const endOfWeek = new Date(startOfWeek);
+            endOfWeek.setDate(startOfWeek.getDate() + 6);
+            return requestDate >= startOfWeek && requestDate <= endOfWeek;
+          }
+          case 'month':
+            return (
+              requestDate.getMonth() === today.getMonth() &&
+              requestDate.getFullYear() === today.getFullYear()
+            );
+          default:
+            return false;
+        }
+      }).length;
+    });
+
+    return options;
+  });
 
   const supplyRequestFilterType = ref('today');
   const showSupplyRequestCustomMonthPicker = ref(false);
@@ -1071,7 +1232,6 @@
 
   const toggleCustomMonthPicker = () => {
     showCustomMonthPicker.value = !showCustomMonthPicker.value;
-    if (showCustomMonthPicker.value) historyFilterType.value = 'custom';
   };
 
   const applyCustomMonthFilter = () => {
@@ -1083,7 +1243,6 @@
   // Active Orders custom month picker functions
   const toggleActiveCustomMonthPicker = () => {
     showCustomMonthPicker.value = !showCustomMonthPicker.value;
-    if (showCustomMonthPicker.value) dateFilterType.value = 'custom';
   };
 
   const applyActiveCustomMonthFilter = () => {
@@ -1173,6 +1332,20 @@
       default:
         return 'All History';
     }
+  };
+
+  const getCurrentHistoryFilterLabel = () => {
+    const currentOption = historyFilterOptions.value.find(
+      (option) => option.type === historyFilterType.value
+    );
+    return currentOption ? currentOption.label : 'All History';
+  };
+
+  const getCurrentHistoryFilterCount = () => {
+    const currentOption = historyFilterOptions.value.find(
+      (option) => option.type === historyFilterType.value
+    );
+    return currentOption ? currentOption.count : 0;
   };
 
   const getSupplyRequestFilterDisplayText = () => {
@@ -1266,6 +1439,21 @@
 
     modal.value.show = true;
   };
+  // Helper: generate a unique PO number based on a base string
+  const generateUniquePONumber = (base) => {
+    const existing = (purchaseOrderStore.purchaseOrders || []).map((o) =>
+      String(o.po_number)
+    );
+    if (!existing.includes(base)) return base;
+    // Try numeric suffixes -001, -002, ... up to 999
+    for (let i = 1; i < 1000; i++) {
+      const candidate = `${base}-${String(i).padStart(3, '0')}`;
+      if (!existing.includes(candidate)) return candidate;
+    }
+    // Fallback with timestamp tail
+    const tail = String(Date.now()).slice(-4);
+    return `${base}-${tail}`;
+  };
 
   const closeModal = () => {
     modal.value = { type: null, show: false, order: null };
@@ -1279,6 +1467,7 @@
       supply_request_id: '',
       supply_request_display: '',
       selected_items_count: 0,
+      is_manual_source: false,
       selected_items: [],
       order_date: new Date().toISOString().split('T')[0],
       expected_delivery: '',
@@ -1378,6 +1567,7 @@
     // Store the request ID and selected items count before clearing
     const requestId = supplyRequestModal.value.selectedRequest.request_id;
     const selectedItemsCount = supplyRequestModal.value.selectedItems.length;
+    const supplierId = supplyRequestModal.value.selectedRequest.supplier_id;
 
     // Calculate total amount from selected items
     const totalAmount = supplyRequestModal.value.selectedItems.reduce(
@@ -1390,8 +1580,17 @@
       supplyRequestModal.value.selectedRequest.id;
     orderForm.value.total_amount = totalAmount;
 
-    // Auto-generate PO number with PO-{request_id} format
-    orderForm.value.po_number = `PO-${requestId}`;
+    // Auto-generate PO number with PO-{request_id}[ -suffix ] ensuring uniqueness
+    const basePo = `PO-${requestId}`;
+    orderForm.value.po_number = generateUniquePONumber(basePo);
+
+    // Auto-populate supplier if available from supply request and set manual flag
+    if (supplierId) {
+      orderForm.value.supplier_id = String(supplierId);
+      orderForm.value.is_manual_source = false;
+    } else {
+      orderForm.value.is_manual_source = true;
+    }
 
     // Update the supply request display in the form
     orderForm.value.supply_request_display = `${supplyRequestModal.value.selectedRequest.request_id} - ${supplyRequestModal.value.selectedRequest.request_description}`;
@@ -1430,6 +1629,7 @@
     orderForm.value.selected_items = [];
     orderForm.value.total_amount = 0;
     orderForm.value.po_number = ''; // Clear auto-generated PO number
+    orderForm.value.supplier_id = ''; // Clear auto-populated supplier
   };
 
   // Receipt methods
@@ -1466,6 +1666,21 @@
   };
 
   const printReceipt = () => window.print();
+
+  // Treat as completed if status says so OR received/completion fields exist
+  const receiptIsCompleted = computed(() => {
+    const order = receiptModal.value.order;
+    if (!order) return false;
+    if (order.status === 'Completed') return true;
+    if (order.completed_at || order.completion_notes) return true;
+    const items = order.items || [];
+    return items.some(
+      (it) =>
+        it?.received_quantity != null ||
+        it?.received_unit_price != null ||
+        it?.received_total_price != null
+    );
+  });
 
   // Return methods
   const returnStats = ref({});
@@ -1529,7 +1744,8 @@
         showToast('error', 'Please enter PO number');
         return;
       }
-      if (!orderForm.value.supplier_id) {
+      // Supplier is required unless the source supply request is manual (no supplier)
+      if (!orderForm.value.supplier_id && !isManualSourceRequest.value) {
         showToast('error', 'Please select supplier');
         return;
       }
@@ -1543,6 +1759,7 @@
 
       const orderData = {
         ...orderForm.value,
+        supplier_id: orderForm.value.supplier_id || null,
         order_date:
           orderForm.value.order_date || new Date().toISOString().split('T')[0],
         expected_delivery: orderForm.value.expected_delivery || null,
@@ -1581,6 +1798,19 @@
 
       closeModal();
       showToast('success', 'Purchase order created successfully');
+
+      // Notify supplier via email (SendGrid-first with SMTP fallback)
+      try {
+        if (createdOrder?.id) {
+          await axios.post(
+            getApiUrl(`purchase-orders/${createdOrder.id}/notify-supplier`)
+          );
+          showToast('success', 'Supplier notified by email');
+        }
+      } catch (e) {
+        console.error('Failed to notify supplier:', e);
+        // Non-blocking: user can still proceed
+      }
 
       // Check if the created order has "Completed" status and trigger rating modal
       if (orderForm.value.status === 'Completed' && createdOrder) {
@@ -1627,7 +1857,7 @@
         showToast('error', 'Please enter PO number');
         return;
       }
-      if (!orderForm.value.supplier_id) {
+      if (!orderForm.value.supplier_id && !isManualSourceRequest.value) {
         showToast('error', 'Please select supplier');
         return;
       }
@@ -1644,6 +1874,7 @@
 
       const updatedData = {
         ...orderForm.value,
+        supplier_id: orderForm.value.supplier_id || null,
         order_date: orderForm.value.order_date,
         expected_delivery: orderForm.value.expected_delivery || null,
         status: orderForm.value.status,
@@ -1835,7 +2066,7 @@
       showToast('error', 'Please enter PO number');
       return;
     }
-    if (!orderForm.value.supplier_id) {
+    if (!orderForm.value.supplier_id && !isManualSourceRequest.value) {
       showToast('error', 'Please select supplier');
       return;
     }
@@ -1869,7 +2100,7 @@
       showToast('error', 'Please enter PO number');
       return;
     }
-    if (!orderForm.value.supplier_id) {
+    if (!orderForm.value.supplier_id && !isManualSourceRequest.value) {
       showToast('error', 'Please select supplier');
       return;
     }
@@ -1931,6 +2162,11 @@
   const handleReturnCancelled = (returnItem) => {
     purchaseOrderStore.fetchPurchaseOrders();
     showToast('success', 'Return cancelled successfully');
+  };
+
+  const handleReturnSentToSupplier = (returnItem) => {
+    purchaseOrderStore.fetchPurchaseOrders();
+    showToast('success', 'Return marked for supplier pickup');
   };
 
   const viewReturnDetails = (returnItem) => {
@@ -2039,7 +2275,12 @@
         );
     } catch (error) {
       console.error('Error creating GRN:', error);
-      showToast('error', error.message || 'Failed to create GRN');
+      const serverMessage =
+        error?.response?.data?.message ||
+        error?.response?.data?.error ||
+        error?.message ||
+        'Failed to create GRN';
+      showToast('error', serverMessage);
     } finally {
       // Always ensure loading state is reset
       grnConfirmModal.value.loading = false;
@@ -2061,6 +2302,22 @@
   const openCompletionModal = async (order) => {
     if (order.status === 'Completed') {
       showToast('error', 'Purchase order is already completed');
+      return;
+    }
+
+    // Check if this is a manual entry (no supplier required)
+    const isManualEntry = !order.supplier_id || order.supplier_id === null;
+
+    // Enforce supplier progress before completion only for supplier-sourced orders
+    // Manual entries can be completed regardless of status (Draft, Sent, etc.)
+    if (
+      !isManualEntry &&
+      !['In Progress', 'Confirmed'].includes(order.status)
+    ) {
+      showToast(
+        'error',
+        'Order must be Confirmed or In Progress by the supplier before completion.'
+      );
       return;
     }
 
@@ -2303,7 +2560,7 @@
 </script>
 
 <template>
-  <div class="container mx-auto p-2 sm:p-4 lg:p-6 max-w-6xl">
+  <div class="mx-auto p-2 sm:p-4 lg:p-6">
     <!-- Header -->
     <div class="text-center mb-4 sm:mb-6 lg:mb-8">
       <h1
@@ -2314,123 +2571,6 @@
       <p class="text-sm sm:text-base text-black/50 px-2">
         Manage and track purchase orders for Countryside Steakhouse.
       </p>
-    </div>
-
-    <!-- Stats -->
-    <div
-      class="stats shadow w-full mb-4 sm:mb-6 bg-accentColor border border-black/10 stats-vertical lg:stats-horizontal xl:stats-horizontal rounded-lg"
-    >
-      <div
-        class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
-      >
-        <div class="stat-figure">
-          <FileText
-            class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-primaryColor"
-          />
-        </div>
-        <div class="stat-title text-black/50 text-xs sm:text-sm">
-          Total Orders
-        </div>
-        <div
-          class="stat-value text-primaryColor text-lg sm:text-xl lg:text-2xl xl:text-3xl"
-        >
-          <span v-if="orderStats.total !== undefined">{{
-            orderStats.total
-          }}</span>
-          <span v-else class="loading loading-spinner loading-sm"></span>
-        </div>
-        <div class="stat-desc text-black/50 text-xs sm:text-sm">
-          All purchase orders
-        </div>
-      </div>
-
-      <div
-        class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
-      >
-        <div class="stat-figure">
-          <CheckCircle
-            class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-success"
-          />
-        </div>
-        <div class="stat-title text-black/50 text-xs sm:text-sm">Completed</div>
-        <div
-          class="stat-value text-success text-lg sm:text-xl lg:text-2xl xl:text-3xl"
-        >
-          <span v-if="orderStats.completed !== undefined">{{
-            orderStats.completed
-          }}</span>
-          <span v-else class="loading loading-spinner loading-sm"></span>
-        </div>
-        <div class="stat-desc text-black/50 text-xs sm:text-sm">
-          Successfully delivered
-        </div>
-      </div>
-
-      <div
-        class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
-      >
-        <div class="stat-figure">
-          <Clock class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-warning" />
-        </div>
-        <div class="stat-title text-black/50 text-xs sm:text-sm">Pending</div>
-        <div
-          class="stat-value text-warning text-lg sm:text-xl lg:text-2xl xl:text-3xl"
-        >
-          <span v-if="orderStats.pending !== undefined">{{
-            orderStats.pending
-          }}</span>
-          <span v-else class="loading loading-spinner loading-sm"></span>
-        </div>
-        <div class="stat-desc text-black/50 text-xs sm:text-sm">
-          Awaiting delivery
-        </div>
-      </div>
-
-      <div
-        class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
-      >
-        <div class="stat-figure">
-          <AlertTriangle
-            class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-error"
-          />
-        </div>
-        <div class="stat-title text-black/50 text-xs sm:text-sm">Returns</div>
-        <div
-          class="stat-value text-error text-lg sm:text-xl lg:text-2xl xl:text-3xl"
-        >
-          <span v-if="orderStats.returns !== undefined">{{
-            orderStats.returns
-          }}</span>
-          <span v-else class="loading loading-spinner loading-sm"></span>
-        </div>
-        <div class="stat-desc text-black/50 text-xs sm:text-sm">
-          Items returned
-        </div>
-      </div>
-
-      <div
-        class="stat sm:!border sm:!border-l-0 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
-      >
-        <div class="stat-figure">
-          <PhilippinePeso
-            class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-black/80"
-          />
-        </div>
-        <div class="stat-title text-black/50 text-xs sm:text-sm">
-          Total Value
-        </div>
-        <div
-          class="stat-value text-black/80 text-lg sm:text-xl lg:text-2xl xl:text-3xl"
-        >
-          <span v-if="orderStats.totalValue !== undefined"
-            >₱{{ orderStats.totalValue.toLocaleString() }}</span
-          >
-          <span v-else class="loading loading-spinner loading-sm"></span>
-        </div>
-        <div class="stat-desc text-black/50 text-xs sm:text-sm">
-          All orders combined
-        </div>
-      </div>
     </div>
 
     <!-- Purchase Order List -->
@@ -2496,7 +2636,7 @@
             class="tab font-medium"
             :class="
               activeTab === 'active'
-                ? 'tab-active bg-primaryColor text-white'
+                ? 'tab-active text-black'
                 : 'text-primaryColor'
             "
             @click="activeTab = 'active'"
@@ -2508,7 +2648,7 @@
             class="tab font-medium"
             :class="
               activeTab === 'history'
-                ? 'tab-active bg-primaryColor text-white'
+                ? 'tab-active  text-black'
                 : 'text-primaryColor'
             "
             @click="activeTab = 'history'"
@@ -2532,7 +2672,7 @@
                   v-model="searchQuery"
                   type="text"
                   placeholder="Search purchase orders..."
-                  class="input input-sm sm:input-md input-bordered bg-white border-primaryColor/30 text-black/70 pl-10 w-full shadow-none text-sm sm:text-base"
+                  class="input input-sm sm:input-md input-bordered bg-white !border-primaryColor/30 text-black/70 pl-10 w-full shadow-none text-sm sm:text-base"
                 />
               </div>
             </div>
@@ -3038,26 +3178,28 @@
                   v-model="historySearchQuery"
                   type="text"
                   placeholder="Search order history..."
-                  class="input input-sm sm:input-md input-bordered bg-white border-primaryColor/30 text-black/70 pl-10 w-full shadow-none text-sm sm:text-base"
+                  class="input input-sm sm:input-md input-bordered bg-white !border-primaryColor/30 text-black/70 pl-10 w-full shadow-none text-sm sm:text-base"
                 />
               </div>
             </div>
 
             <!-- History Date Filter Section -->
             <div
-              class="mb-6 p-4 bg-white/5 rounded-lg border border-primaryColor/20"
+              class="mb-6 p-3 sm:p-4 bg-white/5 rounded-lg border border-primaryColor/20"
             >
-              <div
-                class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4"
-              >
+              <div class="flex flex-col gap-4">
                 <!-- Current Filter Display -->
                 <div class="flex items-center gap-3">
-                  <Calendar class="w-5 h-5 text-primaryColor" />
-                  <div>
-                    <h3 class="font-semibold text-primaryColor">
+                  <Calendar
+                    class="w-4 h-4 sm:w-5 sm:h-5 text-primaryColor flex-shrink-0"
+                  />
+                  <div class="min-w-0 flex-1">
+                    <h3
+                      class="font-semibold text-primaryColor text-sm sm:text-base truncate"
+                    >
                       {{ getHistoryFilterDisplayText() }}
                     </h3>
-                    <p class="text-sm text-black/60">
+                    <p class="text-xs sm:text-sm text-black/60">
                       Showing {{ filteredHistory.length }} order{{
                         filteredHistory.length !== 1 ? 's' : ''
                       }}
@@ -3066,20 +3208,28 @@
                 </div>
 
                 <!-- Filter Controls -->
-                <div class="flex flex-col sm:flex-row gap-3">
-                  <!-- Quick Date Dropdown -->
+                <div class="flex flex-col sm:flex-row gap-2 sm:gap-3">
+                  <!-- Quick Date Filter Dropdown -->
                   <div class="relative" @click.stop>
                     <button
-                      class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
+                      class="btn btn-xs sm:btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin w-full sm:w-auto"
                       @click="toggleHistoryDateDropdown"
                     >
-                      <Filter class="w-4 h-4" />
+                      <Filter class="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                      <span class="truncate">{{
+                        getCurrentHistoryFilterLabel()
+                      }}</span>
+                      <span
+                        class="badge badge-xs ml-1 bg-secondaryColor border-none flex-shrink-0"
+                      >
+                        {{ getCurrentHistoryFilterCount() }}
+                      </span>
                     </button>
 
                     <!-- Dropdown Menu -->
                     <div
                       v-if="showHistoryDateDropdown"
-                      class="absolute top-full left-0 mt-1 w-48 bg-white border border-gray-200 rounded-md shadow-lg z-50"
+                      class="absolute top-full left-0 right-0 sm:right-auto mt-1 w-full sm:w-48 bg-white border border-gray-200 rounded-md shadow-lg z-50"
                     >
                       <div class="py-1">
                         <button
@@ -3110,95 +3260,96 @@
                   </div>
 
                   <!-- Custom Month Selection -->
-                  <div class="flex items-center gap-2">
-                    <div class="relative">
-                      <button
-                        class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
-                        @click="toggleCustomMonthPicker"
-                      >
-                        <Calendar class="w-4 h-4 mr-1" />
-                        Custom Month
-                      </button>
+                  <div class="relative">
+                    <button
+                      class="btn btn-xs sm:btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin w-full sm:w-auto"
+                      @click="toggleCustomMonthPicker"
+                    >
+                      <Calendar class="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                      <span class="hidden xs:inline">Custom Month</span>
+                      <span class="xs:hidden">Custom</span>
+                    </button>
 
-                      <!-- Custom Month Picker -->
-                      <div
-                        v-if="showCustomMonthPicker"
-                        class="absolute top-full left-0 mt-1 bg-white border border-primaryColor/30 rounded-lg shadow-lg z-10 p-3 min-w-64"
-                      >
-                        <div class="flex items-center justify-between mb-3">
-                          <h4 class="font-medium text-sm text-black">
-                            Select Month
-                          </h4>
-                          <button
-                            @click="showCustomMonthPicker = false"
-                            class="btn btn-ghost btn-xs"
-                          >
-                            <X class="w-3 h-3" />
-                          </button>
-                        </div>
+                    <!-- Custom Month Picker -->
+                    <div
+                      v-if="showCustomMonthPicker"
+                      class="absolute top-full left-0 right-0 sm:right-auto mt-1 bg-white border border-primaryColor/30 rounded-lg shadow-lg z-10 p-3 sm:min-w-64"
+                    >
+                      <div class="flex items-center justify-between mb-3">
+                        <h4 class="font-medium text-sm text-black">
+                          Select Month
+                        </h4>
+                        <button
+                          @click="showCustomMonthPicker = false"
+                          class="btn btn-ghost btn-xs"
+                        >
+                          <X class="w-3 h-3" />
+                        </button>
+                      </div>
 
-                        <!-- Month Selection -->
-                        <div class="grid grid-cols-3 gap-2 mb-3">
-                          <button
-                            v-for="month in months"
-                            :key="month.value"
-                            class="btn btn-xs font-thin"
-                            :class="{
-                              'bg-primaryColor text-white':
-                                customMonthPicker.month === month.value,
-                              'btn-ghost':
-                                customMonthPicker.month !== month.value,
-                            }"
-                            @click="customMonthPicker.month = month.value"
-                          >
-                            {{ month.label }}
-                          </button>
-                        </div>
+                      <!-- Month Selection -->
+                      <div class="grid grid-cols-3 gap-1 sm:gap-2 mb-3">
+                        <button
+                          v-for="month in months"
+                          :key="month.value"
+                          class="btn btn-xs font-thin"
+                          :class="{
+                            'bg-primaryColor text-white':
+                              customMonthPicker.month === month.value,
+                            'btn-ghost':
+                              customMonthPicker.month !== month.value,
+                          }"
+                          @click="customMonthPicker.month = month.value"
+                        >
+                          {{ month.label }}
+                        </button>
+                      </div>
 
-                        <!-- Year Selection -->
-                        <div class="flex items-center gap-2 mb-3">
-                          <span class="text-sm text-black/70">Year:</span>
-                          <select
-                            v-model="customMonthPicker.year"
-                            class="select select-xs select-bordered bg-white border-primaryColor/30 text-black/70"
+                      <!-- Year Selection -->
+                      <div class="flex items-center gap-2 mb-3">
+                        <span class="text-xs sm:text-sm text-black/70"
+                          >Year:</span
+                        >
+                        <select
+                          v-model="customMonthPicker.year"
+                          class="select select-xs select-bordered bg-white border-primaryColor/30 text-black/70 flex-1"
+                        >
+                          <option
+                            v-for="year in availableYears"
+                            :key="year"
+                            :value="year"
                           >
-                            <option
-                              v-for="year in availableYears"
-                              :key="year"
-                              :value="year"
-                            >
-                              {{ year }}
-                            </option>
-                          </select>
-                        </div>
+                            {{ year }}
+                          </option>
+                        </select>
+                      </div>
 
-                        <!-- Apply Button -->
-                        <div class="flex gap-2">
-                          <button
-                            @click="applyCustomMonthFilter"
-                            class="btn btn-xs bg-primaryColor text-white font-thin"
-                          >
-                            Apply
-                          </button>
-                          <button
-                            @click="showCustomMonthPicker = false"
-                            class="btn btn-xs btn-ghost font-thin"
-                          >
-                            Cancel
-                          </button>
-                        </div>
+                      <!-- Apply Button -->
+                      <div class="flex gap-2">
+                        <button
+                          @click="applyCustomMonthFilter"
+                          class="btn btn-xs bg-primaryColor text-white font-thin flex-1"
+                        >
+                          Apply
+                        </button>
+                        <button
+                          @click="showCustomMonthPicker = false"
+                          class="btn btn-xs btn-ghost font-thin flex-1"
+                        >
+                          Cancel
+                        </button>
                       </div>
                     </div>
-
-                    <!-- Clear Filters Button -->
-                    <button
-                      class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
-                      @click="clearHistoryFilters"
-                    >
-                      <RefreshCcw class="w-4 h-4 mr-1" />
-                      Clear
-                    </button>
                   </div>
+
+                  <!-- Clear Filters Button -->
+                  <button
+                    class="btn btn-xs sm:btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin w-full sm:w-auto"
+                    @click="clearHistoryFilters"
+                  >
+                    <RefreshCcw class="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                    Clear
+                  </button>
                 </div>
               </div>
             </div>
@@ -3285,7 +3436,7 @@
                 >
                 <select
                   v-model="historySupplierFilter"
-                  class="select select-xs sm:select-sm select-bordered bg-white border-primaryColor/30 text-black/70 text-xs sm:text-sm"
+                  class="select select-xs sm:select-sm select-bordered bg-white !border-primaryColor/30 text-black/70 text-xs sm:text-sm"
                 >
                   <option value="">All Suppliers</option>
                   <option
@@ -3455,10 +3606,22 @@
                     <span class="font-medium text-black/70 w-16 sm:w-20"
                       >Total:</span
                     >
-                    <span class="text-black font-semibold"
-                      >₱{{ order.total_amount.toLocaleString() }}</span
+                    <span
+                      class="text-black font-semibold flex items-center gap-1"
                     >
+                      <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                      {{
+                        Number(order.total_amount || 0).toLocaleString(
+                          'en-PH',
+                          {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          }
+                        )
+                      }}
+                    </span>
                   </div>
+
                   <div
                     v-if="order.supply_request_number"
                     class="flex items-center text-xs sm:text-sm"
@@ -3509,12 +3672,10 @@
           </div>
 
           <!-- History Pagination -->
-          <div
-            class="flex flex-col sm:flex-row justify-between items-center mt-4 sm:mt-6 gap-3"
-            v-if="totalHistoryPages > 1"
-          >
+          <div v-if="totalHistoryPages > 1" class="mt-4 sm:mt-6">
+            <!-- Summary text -->
             <div
-              class="text-xs sm:text-sm text-black/60 text-center sm:text-left"
+              class="text-xs sm:text-sm text-black/60 text-center sm:text-left mb-2 sm:mb-3"
             >
               Showing
               {{ (historyCurrentPage - 1) * historyOrdersPerPage + 1 }} to
@@ -3528,35 +3689,61 @@
               {{ getHistoryFilterDisplayText() }}
             </div>
 
-            <div class="join space-x-1">
+            <!-- Compact mobile pager -->
+            <div class="sm:hidden flex items-center justify-between gap-2">
               <button
-                class="join-item btn font-thin !bg-gray-200 text-black/50 btn-xs sm:btn-sm border border-none hover:bg-gray-300"
+                class="btn btn-xs font-thin !bg-gray-200 text-black/60 border-none"
                 :disabled="historyCurrentPage <= 1"
                 @click="historyCurrentPage--"
               >
                 « Prev
               </button>
-
+              <span class="text-xs text-black/60">
+                Page {{ historyCurrentPage }} / {{ totalHistoryPages }}
+              </span>
               <button
-                class="join-item btn font-thin !bg-gray-200 text-black/50 border border-none btn-xs sm:btn-sm shadow-none"
-                v-for="page in totalHistoryPages"
-                :key="page"
-                :class="{
-                  'btn-active': historyCurrentPage === page,
-                  '!bg-primaryColor text-white': historyCurrentPage === page,
-                }"
-                @click="historyCurrentPage = page"
-              >
-                {{ page }}
-              </button>
-
-              <button
-                class="join-item btn font-thin btn-xs sm:btn-sm !bg-gray-200 text-black/50 border border-none"
+                class="btn btn-xs font-thin !bg-gray-200 text-black/60 border-none"
                 :disabled="historyCurrentPage >= totalHistoryPages"
                 @click="historyCurrentPage++"
               >
                 Next »
               </button>
+            </div>
+
+            <!-- Full pager for tablet/desktop -->
+            <div class="hidden sm:flex items-center justify-between gap-3">
+              <div class="flex-1"></div>
+              <div class="join space-x-1 overflow-x-auto whitespace-nowrap">
+                <button
+                  class="join-item btn font-thin !bg-gray-200 text-black/50 btn-xs sm:btn-sm border border-none hover:bg-gray-300"
+                  :disabled="historyCurrentPage <= 1"
+                  @click="historyCurrentPage--"
+                >
+                  « Prev
+                </button>
+
+                <button
+                  class="join-item btn font-thin !bg-gray-200 text-black/50 border border-none btn-xs sm:btn-sm shadow-none"
+                  v-for="page in totalHistoryPages"
+                  :key="page"
+                  :class="{
+                    'btn-active': historyCurrentPage === page,
+                    '!bg-primaryColor text-white': historyCurrentPage === page,
+                  }"
+                  @click="historyCurrentPage = page"
+                >
+                  {{ page }}
+                </button>
+
+                <button
+                  class="join-item btn font-thin btn-xs sm:btn-sm !bg-gray-200 text-black/50 border border-none"
+                  :disabled="historyCurrentPage >= totalHistoryPages"
+                  @click="historyCurrentPage++"
+                >
+                  Next »
+                </button>
+              </div>
+              <div class="flex-1"></div>
             </div>
           </div>
         </div>
@@ -3654,9 +3841,7 @@
         <div v-if="modal.type === 'create'" class="mb-6">
           <div class="form-control">
             <label class="label">
-              <span class="label-text font-medium"
-                >Supply Request (Optional)</span
-              >
+              <span class="label-text font-medium">Supply Request</span>
             </label>
             <div class="flex gap-2">
               <input
@@ -3673,6 +3858,15 @@
               >
                 <Link class="w-4 h-4 mr-1" />
                 Select Request
+              </button>
+              <button
+                v-if="orderForm.supply_request_id"
+                type="button"
+                class="btn border-none border bg-white font-thin"
+                @click="clearSupplyRequestSelection"
+                title="Clear supply request selection"
+              >
+                <X class="w-4 h-4" />
               </button>
             </div>
           </div>
@@ -3707,15 +3901,40 @@
           <div class="form-control">
             <label class="label">
               <span class="label-text font-medium">Supplier</span>
-              <span class="label-text-alt text-error">*</span>
+              <span
+                v-if="!isManualSourceRequest"
+                class="label-text-alt text-error"
+                >*</span
+              >
+              <span
+                v-if="orderForm.supply_request_id && orderForm.supplier_id"
+                class="label-text-alt text-info text-xs"
+              >
+                Auto-populated from supply request
+              </span>
+              <span
+                v-else-if="isManualSourceRequest"
+                class="label-text-alt text-xs text-black/60"
+              >
+                Optional for manual requests
+              </span>
             </label>
             <select
               v-model="orderForm.supplier_id"
               class="select select-bordered w-full"
-              required
-              :disabled="modal.type === 'view'"
+              :required="!isManualSourceRequest"
+              :disabled="
+                modal.type === 'view' ||
+                (orderForm.supply_request_id && !isManualSourceRequest)
+              "
             >
-              <option value="">Select Supplier</option>
+              <option value="">
+                {{
+                  isManualSourceRequest
+                    ? 'Optional — no supplier needed'
+                    : 'Select Supplier'
+                }}
+              </option>
               <option
                 v-for="supplier in suppliers"
                 :key="supplier.id"
@@ -3806,7 +4025,7 @@
             <select
               v-model="orderForm.status"
               class="select select-bordered w-full"
-              :disabled="modal.type === 'view'"
+              :disabled="isStatusDisabled"
               @change="handleFieldChange('status', $event.target.value)"
               :class="{
                 'border-warning bg-warning/5':
@@ -3815,11 +4034,9 @@
                   orderForm.status !== modal.order.status,
               }"
             >
-              <option value="Draft">Draft</option>
-              <option value="Sent">Sent</option>
-              <option value="Confirmed">Confirmed</option>
-              <option value="In Progress">In Progress</option>
-              <option value="Completed">Completed</option>
+              <option v-for="s in modalStatusOptions" :key="s" :value="s">
+                {{ s }}
+              </option>
             </select>
           </div>
 
@@ -3834,6 +4051,7 @@
               class="input input-bordered w-full"
               placeholder="0.00"
               :disabled="modal.type === 'view'"
+              readonly
             />
           </div>
         </div>
@@ -4397,26 +4615,14 @@
                 <th class="border border-black">Item No.</th>
                 <th class="border border-black">Item Name</th>
                 <th class="border border-black">
-                  {{
-                    receiptModal.order.status === 'Completed'
-                      ? 'Received Qty'
-                      : 'Quantity'
-                  }}
+                  {{ receiptIsCompleted ? 'Received Qty' : 'Quantity' }}
                 </th>
                 <th class="border border-black">Unit</th>
                 <th class="border border-black">
-                  {{
-                    receiptModal.order.status === 'Completed'
-                      ? 'Unit Price'
-                      : 'Unit Price'
-                  }}
+                  {{ receiptIsCompleted ? 'Unit Price' : 'Unit Price' }}
                 </th>
                 <th class="border border-black">
-                  {{
-                    receiptModal.order.status === 'Completed'
-                      ? 'Paid Amount (₱)'
-                      : 'Amount (₱)'
-                  }}
+                  {{ receiptIsCompleted ? 'Paid Amount (₱)' : 'Amount (₱)' }}
                 </th>
               </tr>
             </thead>
@@ -4432,8 +4638,7 @@
                 </td>
                 <td class="border border-black">
                   {{
-                    receiptModal.order.status === 'Completed' &&
-                    item.received_quantity
+                    receiptIsCompleted && item.received_quantity
                       ? item.received_quantity
                       : item.quantity || 0
                   }}
@@ -4441,21 +4646,29 @@
                 <td class="border border-black">{{ item.unit || 'pcs' }}</td>
                 <td class="border border-black">
                   ₱{{
-                    receiptModal.order.status === 'Completed' &&
-                    item.received_unit_price
+                    receiptIsCompleted && item.received_unit_price
                       ? Number(item.received_unit_price).toFixed(2)
                       : Number(item.unit_price || 0).toFixed(2)
                   }}
                 </td>
                 <td class="border border-black">
-                  ₱{{
-                    receiptModal.order.status === 'Completed' &&
-                    item.received_total_price
-                      ? Number(item.received_total_price).toFixed(2)
+                  <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                  {{
+                    receiptIsCompleted && item.received_total_price
+                      ? Number(item.received_total_price).toLocaleString(
+                          'en-PH',
+                          {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          }
+                        )
                       : Number(
                           item.total_price ||
                             (item.quantity || 0) * (item.unit_price || 0)
-                        ).toFixed(2)
+                        ).toLocaleString('en-PH', {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })
                   }}
                 </td>
               </tr>
@@ -4467,8 +4680,9 @@
                   Total
                 </td>
                 <td class="font-semibold border border-black">
-                  ₱{{
-                    receiptModal.order.status === 'Completed'
+                  <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                  {{
+                    receiptIsCompleted
                       ? Number(
                           receiptModal.order.items?.reduce(
                             (sum, item) =>
@@ -4480,8 +4694,16 @@
                               ),
                             0
                           ) || 0
-                        ).toFixed(2)
-                      : Number(receiptModal.order.total_amount || 0).toFixed(2)
+                        ).toLocaleString('en-PH', {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })
+                      : Number(
+                          receiptModal.order.total_amount || 0
+                        ).toLocaleString('en-PH', {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })
                   }}
                 </td>
               </tr>
@@ -4491,7 +4713,7 @@
 
         <!-- Order vs Received Summary (for completed orders) -->
         <div
-          v-if="receiptModal.order.status === 'Completed'"
+          v-if="receiptIsCompleted"
           class="mt-4 p-4 bg-gray-50 border border-gray-200 rounded-lg"
         >
           <h6 class="text-sm font-semibold text-gray-800 mb-2">
@@ -4547,32 +4769,27 @@
           </div>
         </div>
 
-        <!-- Notes Section -->
+        <!-- Notes Section (Rich Text Render) -->
         <div class="mt-4 text-black">
-          <h6 class="text-xs font-medium">Notes:</h6>
-          <textarea
-            class="text-xs w-full h-20 border border-black/30 rounded-md p-2 text-black/50"
-            readonly
-            :value="receiptModal.order.notes || 'No notes provided'"
-          ></textarea>
+          <h6 class="text-xs font-medium">Notes / Proofs:</h6>
+          <div
+            class="receipt-notes prose prose-sm max-w-none bg-white p-3 rounded border border-black/20"
+            v-html="
+              receiptModal.order.completion_notes ||
+              receiptModal.order.notes ||
+              '<em>No notes provided</em>'
+            "
+          ></div>
         </div>
 
         <!-- Status and Additional Info -->
         <div class="space-y-2">
           <div class="flex justify-between items-center">
-            <span class="text-sm text-black/70">Status:</span>
-            <span
-              class="badge badge-sm"
-              :class="getStatusColor(receiptModal.order.status)"
-            >
-              {{ receiptModal.order.status }}
-            </span>
-          </div>
-          <div class="flex justify-between items-center">
             <span class="text-sm text-black/70">Total Amount:</span>
             <span class="font-semibold text-black">
-              ₱{{
-                receiptModal.order.status === 'Completed'
+              <font-awesome-icon icon="fa-solid fa-peso-sign" />
+              {{
+                receiptIsCompleted
                   ? Number(
                       receiptModal.order.items?.reduce(
                         (sum, item) =>
@@ -4584,20 +4801,18 @@
                           ),
                         0
                       ) || 0
-                    ).toLocaleString()
-                  : Number(
-                      receiptModal.order.total_amount || 0
-                    ).toLocaleString()
+                    ).toLocaleString('en-PH', {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })
+                  : Number(receiptModal.order.total_amount || 0).toLocaleString(
+                      'en-PH',
+                      {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      }
+                    )
               }}
-            </span>
-          </div>
-          <div
-            v-if="receiptModal.order.supply_request_number"
-            class="flex justify-between items-center"
-          >
-            <span class="text-sm text-black/70">Supply Request:</span>
-            <span class="text-info font-medium">
-              {{ receiptModal.order.supply_request_number }}
             </span>
           </div>
         </div>
@@ -4605,11 +4820,19 @@
         <!-- Signature Section -->
         <div class="flex justify-between mt-8 w-full">
           <div class="flex flex-col items-start">
-            <div class="border-b border-black w-[280px] mb-1"></div>
-            <div class="text-xs text-gray-600">Supplier Signature</div>
+            <div class="text-xs font-medium text-black mt-1">
+              {{ receiptModal.order.supplier_name || 'N/A' }}
+            </div>
+            <div class="text-xs text-gray-600">Supplier Name</div>
           </div>
           <div class="flex flex-col items-end">
-            <div class="border-b border-black w-[280px] mb-1"></div>
+            <div class="text-xs font-medium text-black mt-1">
+              {{
+                receiptModal.order.completed_by ||
+                receiptModal.order.received_by ||
+                getCurrentUserName()
+              }}
+            </div>
             <div class="text-xs text-gray-600">Received by</div>
           </div>
         </div>
@@ -4633,17 +4856,17 @@
 
       <div class="modal-action flex gap-2 mt-6">
         <button
+          class="btn btn-sm bg-gray-200 text-black/50 font-thin border border-none hover:bg-gray-300 shadow-none"
+          @click="closeReceiptModal"
+        >
+          Close
+        </button>
+        <button
           class="btn btn-sm bg-primaryColor text-white font-thin border border-none hover:bg-primaryColor/80 shadow-none"
           @click="printReceipt"
           :disabled="!receiptModal.order || !receiptModal.order.items"
         >
           Print Receipt
-        </button>
-        <button
-          class="btn btn-sm bg-gray-200 text-black/50 font-thin border border-none hover:bg-gray-300 shadow-none"
-          @click="closeReceiptModal"
-        >
-          Close
         </button>
       </div>
     </div>
@@ -4709,13 +4932,8 @@
         </div>
 
         <div class="form-control mb-4">
-          <label class="label w-full">Notes</label>
-          <textarea
-            v-model="returnForm.notes"
-            class="textarea textarea-bordered w-full"
-            rows="3"
-            placeholder="Additional details about the return..."
-          ></textarea>
+          <label class="label w-full">Notes / Proof</label>
+          <Editor v-model="returnForm.notes" :init="tinyMCEConfig" />
         </div>
 
         <div class="modal-action">
@@ -4851,6 +5069,7 @@
     :on-close="closeAuditTrailModal"
     @return-processed="handleReturnProcessed"
     @return-cancelled="handleReturnCancelled"
+    @return-sent-to-supplier="handleReturnSentToSupplier"
     @view-return-details="viewReturnDetails"
   />
 
@@ -4872,6 +5091,16 @@
     @complete="handleCompleteOrder"
   />
 </template>
+<style>
+  /* Raise TinyMCE dialogs above DaisyUI modal */
+  .tox,
+  .tox-tinymce-aux,
+  .tox-silver-sink,
+  .tox-dialog-wrap,
+  .tox-dialog {
+    z-index: 99999 !important;
+  }
+</style>
 <style scoped>
   /* Enhanced table styling */
   .table th {
@@ -5065,6 +5294,17 @@
     outline-offset: 2px;
   }
 
+  /* Receipt notes images (match BranchInventory sizing) */
+  .receipt-notes img {
+    max-width: 100%;
+    height: auto;
+    max-height: 220px; /* similar to branch notes */
+    object-fit: contain;
+    display: block;
+    margin: 8px 0;
+    border-radius: 6px;
+  }
+
   /* Smooth transitions */
   * {
     transition:
@@ -5212,6 +5452,103 @@
     .dropdown-content {
       max-height: 200px;
       overflow-y: auto;
+    }
+  }
+
+  /* Print-optimized receipt: fit on one A4 page */
+  @media print {
+    @page {
+      size: A4 landscape;
+      margin: 6mm;
+    }
+
+    body {
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    /* Only print the receipt modal content */
+    :deep(body *) {
+      visibility: hidden;
+    }
+    :deep(#purchase_order_receipt_modal),
+    :deep(#purchase_order_receipt_modal *) {
+      visibility: visible;
+    }
+
+    :deep(#purchase_order_receipt_modal .modal-box) {
+      position: static;
+      box-shadow: none !important;
+      border: none !important;
+      margin: 0 !important;
+      width: 100% !important;
+      max-width: none !important;
+      padding: 0 !important;
+    }
+
+    :deep(#purchase_order_receipt_modal .modal-action),
+    :deep(#purchase_order_receipt_modal .modal-backdrop) {
+      display: none !important;
+    }
+
+    /* Compact table and text for one-page fit */
+    :deep(#purchase_order_receipt_modal .table) {
+      width: 100% !important;
+      table-layout: fixed !important;
+      font-size: 10px;
+      border-collapse: collapse !important;
+      border-spacing: 0 !important;
+    }
+    :deep(#purchase_order_receipt_modal .table th),
+    :deep(#purchase_order_receipt_modal .table td) {
+      padding: 3px 5px !important;
+      line-height: 1.15 !important;
+      border: 1px solid #000 !important;
+      box-sizing: border-box !important;
+      vertical-align: middle !important;
+    }
+
+    /* Ensure header and body column widths stay aligned */
+    :deep(#purchase_order_receipt_modal .table thead th) {
+      font-weight: 700 !important;
+      white-space: nowrap !important;
+    }
+    :deep(#purchase_order_receipt_modal .table tbody td) {
+      word-break: break-word !important;
+    }
+
+    /* Avoid page breaks inside key blocks */
+    :deep(#purchase_order_receipt_modal .space-y-4 > *),
+    :deep(#purchase_order_receipt_modal table),
+    :deep(#purchase_order_receipt_modal .prose) {
+      page-break-inside: avoid;
+    }
+
+    /* Constrain proof images to keep within one page */
+    :deep(#purchase_order_receipt_modal .prose img),
+    :deep(#purchase_order_receipt_modal .receipt-notes img) {
+      max-width: 100% !important;
+      height: auto !important;
+      max-height: 70mm !important; /* reduce to fit landscape */
+      object-fit: contain;
+      page-break-inside: avoid;
+      break-inside: avoid;
+      display: block;
+      margin: 6mm 0 0 0;
+    }
+
+    /* Tighten headers and sections */
+    :deep(#purchase_order_receipt_modal h4),
+    :deep(#purchase_order_receipt_modal h5),
+    :deep(#purchase_order_receipt_modal h6) {
+      margin: 0 0 2mm 0 !important;
+      line-height: 1.2 !important;
+    }
+
+    :deep(#purchase_order_receipt_modal .prose) {
+      font-size: 10px !important;
+      margin-top: 2mm !important;
+      padding: 3mm !important;
     }
   }
 

@@ -1,14 +1,33 @@
 const { db: knex } = require("../config/database");
+const {
+  formatForDatabase,
+  formatPhilippineTime,
+} = require("../utils/timezoneUtils");
 
 class OvertimeRequest {
   static async create(
     { employee_id, ot_date, start_time, end_time, total_hours, reason },
     createdBy
   ) {
+    // Normalize ot_date to YYYY-MM-DD in Asia/Manila
+    let normalizedOtDate = ot_date;
+    if (ot_date) {
+      if (/^\d{4}-\d{2}-\d{2}$/.test(ot_date)) {
+        normalizedOtDate = ot_date;
+      } else {
+        const d = new Date(ot_date);
+        if (!isNaN(d.getTime())) {
+          normalizedOtDate = formatPhilippineTime(d, "date").replace(
+            /\//g,
+            "-"
+          );
+        }
+      }
+    }
     const [row] = await knex("overtime_requests")
       .insert({
         employee_id,
-        ot_date,
+        ot_date: normalizedOtDate,
         start_time,
         end_time,
         total_hours,
@@ -16,6 +35,8 @@ class OvertimeRequest {
         status: "pending",
         created_by: createdBy || null,
         updated_by: createdBy || null,
+        created_at: formatForDatabase(),
+        updated_at: formatForDatabase(),
       })
       .returning("*");
     return row;
@@ -54,6 +75,8 @@ class OvertimeRequest {
     branch_id,
     department_only,
     department,
+    exclude_employee_id,
+    hr_only,
     page = 1,
     limit = 50,
   } = {}) {
@@ -104,38 +127,85 @@ class OvertimeRequest {
     if (department) {
       query = query.andWhere("ur.department", department);
     }
+    if (exclude_employee_id) {
+      query = query.where("ot.employee_id", "!=", exclude_employee_id);
+    }
+    if (hr_only === "true") {
+      // HR should only see: Department employees (no branch_id) OR Branch Managers (with branch_id and Manager role)
+      query = query.where(function () {
+        this.whereNull("e.branch_id") // Department employees
+          .orWhere(function () {
+            this.whereNotNull("e.branch_id") // Has branch assignment
+              .andWhere("ur.role", "Manager"); // And is a Manager
+          });
+      });
+    }
 
     const rows = await query.limit(limit).offset((page - 1) * limit);
     return rows;
   }
 
   static async approve(id, approverId, notes = null) {
+    // First get the overtime request to check for self-approval
+    const overtimeRequest = await knex("overtime_requests")
+      .where({ id })
+      .whereNull("deleted_at")
+      .first();
+
+    if (!overtimeRequest) {
+      throw new Error("Overtime request not found");
+    }
+
+    // Prevent self-approval
+    if (overtimeRequest.employee_id === approverId) {
+      throw new Error(
+        "You cannot approve your own overtime request. Please have another manager or HR approve it."
+      );
+    }
+
     const [row] = await knex("overtime_requests")
       .where({ id })
       .whereNull("deleted_at")
       .update({
         status: "approved",
         approved_by: approverId,
-        approved_at: knex.fn.now(),
+        approved_at: formatForDatabase(),
         approver_notes: notes || null,
         updated_by: approverId,
-        updated_at: knex.fn.now(),
+        updated_at: formatForDatabase(),
       })
       .returning("*");
     return row;
   }
 
   static async reject(id, approverId, notes = null) {
+    // First get the overtime request to check for self-rejection
+    const overtimeRequest = await knex("overtime_requests")
+      .where({ id })
+      .whereNull("deleted_at")
+      .first();
+
+    if (!overtimeRequest) {
+      throw new Error("Overtime request not found");
+    }
+
+    // Prevent self-rejection
+    if (overtimeRequest.employee_id === approverId) {
+      throw new Error(
+        "You cannot reject your own overtime request. Please have a manager or HR handle this."
+      );
+    }
+
     const [row] = await knex("overtime_requests")
       .where({ id })
       .whereNull("deleted_at")
       .update({
         status: "rejected",
         approved_by: approverId,
-        approved_at: knex.fn.now(),
+        approved_at: formatForDatabase(),
         approver_notes: notes || null,
         updated_by: approverId,
-        updated_at: knex.fn.now(),
+        updated_at: formatForDatabase(),
       })
       .returning("*");
     return row;
@@ -146,9 +216,9 @@ class OvertimeRequest {
       .where({ id })
       .whereNull("deleted_at")
       .update({
-        deleted_at: knex.fn.now(),
+        deleted_at: formatForDatabase(),
         updated_by: userId,
-        updated_at: knex.fn.now(),
+        updated_at: formatForDatabase(),
       })
       .returning("*");
     return row;

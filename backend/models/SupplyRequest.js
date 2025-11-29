@@ -1,6 +1,10 @@
 // backend/models/SupplyRequest.js
 const { db } = require("../config/database");
 const CategoryMappingService = require("../services/categoryMappingService");
+const {
+  getCurrentPhilippineTime,
+  formatForDatabase,
+} = require("../utils/timezoneUtils");
 
 class SupplyRequest {
   // Get all supply requests with optional filters
@@ -18,7 +22,10 @@ class SupplyRequest {
           "b.name as branch_name",
           "b.code as branch_code",
           db.raw("COUNT(sri.id) as item_count"),
-          db.raw("COALESCE(SUM(sri.item_amount), 0) as calculated_total")
+          db.raw("COALESCE(SUM(sri.item_amount), 0) as calculated_total"),
+          db.raw(
+            "SUM(CASE WHEN sri.supplier_product_id IS NOT NULL OR sri.source = 'supplier' THEN 1 ELSE 0 END) as supplier_item_count"
+          )
         )
         .groupBy(
           "sr.id",
@@ -58,6 +65,15 @@ class SupplyRequest {
       // Apply filters
       if (filters.status) {
         query = query.where("sr.request_status", filters.status);
+      }
+
+      if (filters.is_supplier_sourced !== undefined) {
+        const val = String(filters.is_supplier_sourced) === "true";
+        query = query.where("sr.is_supplier_sourced", val);
+      }
+
+      if (filters.supplier_id) {
+        query = query.where("sr.supplier_id", filters.supplier_id);
       }
 
       if (filters.department) {
@@ -177,8 +193,10 @@ class SupplyRequest {
   // Get supply request by request_id with items
   static async getByRequestId(requestId) {
     try {
-      if (!requestId) {
-        throw new Error("Invalid request ID provided");
+      // Check if requestId is valid (not null, undefined, or "null" string)
+      if (!requestId || requestId === "null" || requestId === "undefined") {
+        console.log("Invalid request_id provided:", requestId);
+        return null;
       }
 
       const request = await db("supply_requests as sr")
@@ -242,7 +260,7 @@ class SupplyRequest {
         })
         .returning("*");
 
-      // Create supply request items
+      // Create supply request items (include optional supplier linkage)
       const itemsToInsert = items.map((item, index) => ({
         supply_request_id: supplyRequest.id,
         item_number: index + 1,
@@ -253,11 +271,36 @@ class SupplyRequest {
         item_unit_price: item.item_unit_price,
         item_amount: item.item_quantity * item.item_unit_price,
         item_notes: item.item_notes || null,
+        supplier_id: item.supplier_id || null,
+        supplier_product_id: item.supplier_product_id || null,
+        item_sku: item.item_sku || null,
+        source: item.source || null,
       }));
 
       const createdItems = await trx("supply_request_items")
         .insert(itemsToInsert)
         .returning("*");
+
+      // Derive supplier summary for reporting
+      const supplierItems = createdItems.filter(
+        (it) => it.supplier_product_id || it.source === "supplier"
+      );
+      const isSupplierSourced = supplierItems.length > 0;
+      let headerSupplierId = null;
+      if (isSupplierSourced) {
+        const uniqueSupplierIds = [
+          ...new Set(supplierItems.map((it) => it.supplier_id).filter(Boolean)),
+        ];
+        if (uniqueSupplierIds.length === 1) {
+          headerSupplierId = uniqueSupplierIds[0];
+        }
+      }
+
+      await trx("supply_requests").where({ id: supplyRequest.id }).update({
+        is_supplier_sourced: isSupplierSourced,
+        supplier_item_count: supplierItems.length,
+        supplier_id: headerSupplierId,
+      });
 
       await trx.commit();
 
@@ -306,8 +349,8 @@ class SupplyRequest {
           request_status: "To Request",
           total_amount: 0,
           item_count: 0,
-          created_at: new Date(),
-          updated_at: new Date(),
+          created_at: getCurrentPhilippineTime(),
+          updated_at: getCurrentPhilippineTime(),
         })
         .returning("*");
 
@@ -336,8 +379,8 @@ class SupplyRequest {
           item_type: item.item_type,
           item_unit_price: item.item_unitPrice,
           item_amount: itemAmount,
-          created_at: new Date(),
-          updated_at: new Date(),
+          created_at: getCurrentPhilippineTime(),
+          updated_at: getCurrentPhilippineTime(),
         });
       }
 
@@ -345,7 +388,7 @@ class SupplyRequest {
       await trx("supply_requests").where("id", newRequest.id).update({
         total_amount: totalAmount,
         item_count: itemCount,
-        updated_at: new Date(),
+        updated_at: getCurrentPhilippineTime(),
       });
 
       await trx.commit();
@@ -398,11 +441,39 @@ class SupplyRequest {
           item_unit_price: item.item_unit_price,
           item_amount: item.item_quantity * item.item_unit_price,
           item_notes: item.item_notes || null,
+          // Preserve supplier linkage when updating
+          supplier_id: item.supplier_id || null,
+          supplier_product_id: item.supplier_product_id || null,
+          item_sku: item.item_sku || null,
+          source: item.source || null,
         }));
 
         const createdItems = await trx("supply_request_items")
           .insert(itemsToInsert)
           .returning("*");
+
+        // Recompute supplier summary on header
+        const supplierItems = createdItems.filter(
+          (it) => it.supplier_product_id || it.source === "supplier"
+        );
+        const isSupplierSourced = supplierItems.length > 0;
+        let headerSupplierId = null;
+        if (isSupplierSourced) {
+          const uniqueSupplierIds = [
+            ...new Set(
+              supplierItems.map((it) => it.supplier_id).filter(Boolean)
+            ),
+          ];
+          if (uniqueSupplierIds.length === 1) {
+            headerSupplierId = uniqueSupplierIds[0];
+          }
+        }
+
+        await trx("supply_requests").where({ id }).update({
+          is_supplier_sourced: isSupplierSourced,
+          supplier_item_count: supplierItems.length,
+          supplier_id: headerSupplierId,
+        });
 
         await trx.commit();
 
@@ -426,28 +497,28 @@ class SupplyRequest {
     try {
       const updateData = {
         request_status: status,
-        updated_at: new Date(),
+        updated_at: getCurrentPhilippineTime(),
       };
 
       // Add status-specific fields
       switch (status) {
         case "Approved":
           updateData.approved_by = updatedBy;
-          updateData.approved_at = new Date();
+          updateData.approved_at = getCurrentPhilippineTime();
           if (remarks) updateData.finance_remarks = remarks;
           break;
         case "Rejected":
           updateData.rejected_by = updatedBy;
-          updateData.rejected_at = new Date();
+          updateData.rejected_at = getCurrentPhilippineTime();
           if (remarks) updateData.finance_remarks = remarks;
           break;
         case "Cancelled":
           updateData.cancelled_by = updatedBy;
-          updateData.cancelled_at = new Date();
+          updateData.cancelled_at = getCurrentPhilippineTime();
           break;
         case "Sent Back":
           updateData.sent_back_by = updatedBy;
-          updateData.sent_back_at = new Date();
+          updateData.sent_back_at = getCurrentPhilippineTime();
           updateData.revision_count = db.raw("revision_count + 1");
           if (remarks) updateData.finance_remarks = remarks;
           break;
@@ -471,8 +542,8 @@ class SupplyRequest {
       const [deletedRequest] = await db("supply_requests")
         .where("id", id)
         .update({
-          deleted_at: new Date(),
-          updated_at: new Date(),
+          deleted_at: getCurrentPhilippineTime(),
+          updated_at: getCurrentPhilippineTime(),
         })
         .returning("*");
 
@@ -588,7 +659,7 @@ class SupplyRequest {
           .where("id", item.supply_request_item_id)
           .update({
             inventory_item_type_id: item.inventory_item_type_id,
-            updated_at: new Date(),
+            updated_at: getCurrentPhilippineTime(),
           });
         updatedCount++;
       }
@@ -613,7 +684,7 @@ class SupplyRequest {
           .where("id", item.supply_request_item_id)
           .update({
             inventory_item_type_id: item.inventory_item_type_id,
-            updated_at: new Date(),
+            updated_at: getCurrentPhilippineTime(),
           });
         updatedCount++;
       }

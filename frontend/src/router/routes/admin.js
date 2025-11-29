@@ -10,33 +10,33 @@ export default [
     },
   },
   {
-    path: 'users',
-    name: 'AdminUsers',
-    component: () => import('../../views/admin/Users.vue'),
-    meta: {
-      title: 'User Management',
-      permission: 'Manage User Management',
-      superAdminOnly: true,
-    },
-  },
-  {
-    path: 'roles',
-    name: 'AdminRoles',
-    component: () => import('../../views/admin/Roles.vue'),
-    meta: {
-      title: 'Role Management',
-      permission: 'Manage Role Management',
-      superAdminOnly: true, // Only Super Admin can manage roles
-    },
-  },
-  {
     path: 'branch-manager',
     name: 'AdminBranchManager',
     component: () => import('../../views/admin/BranchManager.vue'),
     meta: {
       title: 'Branch Management',
       permission: 'Manage Branch Management',
-      superAdminOnly: true,
+      requiresAuth: true,
+      requiresRole: [
+        'Super Admin',
+        'Chairman of the Board',
+        'Board of Directors',
+      ],
+    },
+  },
+  {
+    path: 'organizational-chart',
+    name: 'AdminOrganizationalChart',
+    component: () => import('../../views/admin/OrganizationalChart.vue'),
+    meta: {
+      title: 'Organizational Chart',
+      permission: 'Manage Organizational Chart',
+      requiresAuth: true,
+      requiresRole: [
+        'Super Admin',
+        'Chairman of the Board',
+        'Board of Directors',
+      ],
     },
   },
   {
@@ -49,13 +49,17 @@ export default [
     },
   },
   {
-    path: 'settings',
-    name: 'AdminSettings',
-    component: () => import('../../views/admin/Settings.vue'),
+    path: 'profile',
+    name: 'AdminProfile',
+    component: () => import('../../views/common/DepartmentProfile.vue'),
     meta: {
-      title: 'System Settings',
-      permission: 'Manage System Settings',
-      superAdminOnly: true,
+      title: 'Profile',
+      requiresAuth: true,
+      requiresRole: [
+        'Super Admin',
+        'Chairman of the Board',
+        'Board of Directors',
+      ],
     },
   },
 ];

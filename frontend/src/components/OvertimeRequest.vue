@@ -65,14 +65,33 @@
         <div class="flex justify-between items-center mb-4">
           <h3 class="card-title">
             My Overtime Requests
-            <span v-if="myOtRequests.length > 0" class="badge badge-ghost ml-2">
-              {{ myOtRequests.length }} records
+            <span
+              v-if="filteredMyOtRequests.length > 0"
+              class="badge badge-ghost ml-2"
+            >
+              {{ filteredMyOtRequests.length }} records
             </span>
           </h3>
+          <div class="flex items-center gap-2">
+            <label class="label label-text text-sm">Filter by Month:</label>
+            <select
+              v-model="selectedMonthFilter"
+              class="select select-bordered select-sm"
+            >
+              <option value="">All Months</option>
+              <option
+                v-for="month in availableMonths"
+                :key="month.value"
+                :value="month.value"
+              >
+                {{ month.label }}
+              </option>
+            </select>
+          </div>
         </div>
 
         <div
-          v-if="myOtRequests.length === 0"
+          v-if="filteredMyOtRequests.length === 0"
           class="text-center py-8 text-gray-500"
         >
           <div class="flex flex-col items-center space-y-2">
@@ -126,9 +145,7 @@
                       getOtBadgeClass(req.status),
                     ]"
                   >
-                    {{
-                      req.status.charAt(0).toUpperCase() + req.status.slice(1)
-                    }}
+                    {{ getStatusDisplayText(req.status) }}
                   </div>
                 </td>
               </tr>
@@ -236,10 +253,15 @@
 <script setup>
   import { ref, computed, onMounted, watch } from 'vue';
   import { useOvertimeStore } from '../stores/overtimeStore';
+  import { useAuthStore } from '../stores/authStore';
   import { apiConfig } from '../config/api';
 
-  // Store
+  // Stores
   const overtimeStore = useOvertimeStore();
+  const authStore = useAuthStore();
+
+  // Current user
+  const currentUser = computed(() => authStore.user);
 
   // OT form data
   const otDate = ref('');
@@ -255,13 +277,52 @@
   const myOtRequests = ref([]);
   const otCurrentPage = ref(1);
   const otItemsPerPage = ref(5);
+  // Month filter for My Overtime Requests
+  const selectedMonthFilter = ref('');
+
+  // Generate all 12 months of the current year
+  const availableMonths = computed(() => {
+    const currentYear = new Date().getFullYear();
+    const months = [];
+
+    // Create all 12 months for the current year
+    for (let month = 0; month < 12; month++) {
+      const date = new Date(currentYear, month, 1);
+      const yearMonth = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      const monthLabel = date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+      });
+      months.push({ value: yearMonth, label: monthLabel });
+    }
+
+    // Sort descending (newest month first, which is December)
+    return months.sort((a, b) => b.value.localeCompare(a.value));
+  });
+
+  // Filter My Overtime Requests by selected month
+  const filteredMyOtRequests = computed(() => {
+    if (!selectedMonthFilter.value) {
+      return myOtRequests.value;
+    }
+
+    return myOtRequests.value.filter((req) => {
+      const date = new Date(req.date);
+      const yearMonth = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      return yearMonth === selectedMonthFilter.value;
+    });
+  });
+
   const otTotalPages = computed(() =>
-    Math.max(1, Math.ceil(myOtRequests.value.length / otItemsPerPage.value))
+    Math.max(
+      1,
+      Math.ceil(filteredMyOtRequests.value.length / otItemsPerPage.value)
+    )
   );
   const paginatedMyOtRequests = computed(() => {
     const start = (otCurrentPage.value - 1) * otItemsPerPage.value;
     const end = start + otItemsPerPage.value;
-    return myOtRequests.value.slice(start, end);
+    return filteredMyOtRequests.value.slice(start, end);
   });
 
   // Debug computed property for button state
@@ -310,11 +371,11 @@
         startTime,
         scheduledEndMinutes,
         startTimeMinutes,
-        isValid: startTimeMinutes > scheduledEndMinutes,
+        isValid: startTimeMinutes >= scheduledEndMinutes,
       });
 
-      if (startTimeMinutes <= scheduledEndMinutes) {
-        otError.value = `Overtime must start after your scheduled end time (${scheduledEnd})`;
+      if (startTimeMinutes < scheduledEndMinutes) {
+        otError.value = `Overtime must start at or after your scheduled end time (${scheduledEnd})`;
         showOTConfirmModal.value = true;
         return;
       }
@@ -436,20 +497,68 @@
   // Utility methods
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
+    try {
+      // If YYYY-MM-DD, interpret as PH midnight to avoid TZ drift
+      if (/^\d{4}-\d{2}-\d{2}$/.test(String(dateString))) {
+        const d = new Date(`${dateString}T00:00:00+08:00`);
+        return d.toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric',
+          timeZone: 'Asia/Manila',
+        });
+      }
+      return new Date(String(dateString)).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        timeZone: 'Asia/Manila',
+      });
+    } catch (_) {
+      return String(dateString);
+    }
   };
 
   const formatTime = (timeString) => {
     if (!timeString) return 'N/A';
-    return new Date(timeString).toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true,
-    });
+    try {
+      let input = String(timeString);
+
+      // Handle time-only strings (HH:MM:SS or HH:MM)
+      if (/^\d{1,2}:\d{2}(?::\d{2})?$/.test(input)) {
+        // Convert time-only string to a full datetime for formatting
+        const today = new Date();
+        const [hours, minutes, seconds = '00'] = input.split(':');
+        today.setHours(
+          parseInt(hours),
+          parseInt(minutes),
+          parseInt(seconds),
+          0
+        );
+        return today.toLocaleTimeString('en-US', {
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: true,
+          timeZone: 'Asia/Manila',
+        });
+      }
+
+      // Handle full datetime strings
+      if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?$/.test(input)) {
+        if (!/[Zz]|[\+\-]\d{2}:?\d{2}$/.test(input)) {
+          input = input.replace(/$/, ':00+08:00');
+        }
+      }
+
+      return new Date(input).toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true,
+        timeZone: 'Asia/Manila',
+      });
+    } catch (_) {
+      return String(timeString);
+    }
   };
 
   const getOtBadgeClass = (status) => {
@@ -464,12 +573,33 @@
     }
   };
 
+  // Get status display text (handle HR staff special case)
+  const getStatusDisplayText = (status) => {
+    const isHRStaff = currentUser.value?.department === 'Human Resource';
+
+    switch ((status || '').toLowerCase()) {
+      case 'approved':
+        return 'Approved';
+      case 'rejected':
+        return 'Rejected';
+      case 'pending':
+        return isHRStaff ? 'Pending Board Approval' : 'Pending';
+      default:
+        return isHRStaff ? 'Pending Board Approval' : 'Pending';
+    }
+  };
+
   // Watch for modal state changes
   watch(showOTConfirmModal, (newVal) => {
     if (newVal) {
       console.log('Modal opened, otError value:', otError.value);
       console.log('Modal opened, isSubmittingOT value:', isSubmittingOT.value);
     }
+  });
+
+  // Watch for month filter changes to reset pagination
+  watch(selectedMonthFilter, () => {
+    otCurrentPage.value = 1;
   });
 
   // Lifecycle

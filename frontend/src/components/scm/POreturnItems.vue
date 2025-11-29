@@ -1,5 +1,16 @@
 <script setup>
   import { ref, computed, onMounted, watch } from 'vue';
+  import Editor from '@tinymce/tinymce-vue';
+  import tinymce from 'tinymce/tinymce';
+  import 'tinymce/icons/default';
+  import 'tinymce/themes/silver';
+  import 'tinymce/models/dom/model';
+  import 'tinymce/plugins/link';
+  import 'tinymce/plugins/lists';
+  import 'tinymce/plugins/image';
+  import 'tinymce/plugins/table';
+  import 'tinymce/plugins/code';
+  import 'tinymce/skins/ui/oxide/skin.min.css';
   import {
     FileText,
     Search,
@@ -17,6 +28,8 @@
     EllipsisVertical,
   } from 'lucide-vue-next';
   import { usePurchaseOrderStore } from '../../stores/purchaseOrderStore.js';
+  import { useAuthStore } from '../../stores/authStore.js';
+  import { formatImageUrl, getApiUrl } from '../../config/api.js';
 
   // Props
   const props = defineProps({
@@ -39,10 +52,104 @@
     'return-processed',
     'return-cancelled',
     'viewReturnDetails',
+    'return-sent-to-supplier',
   ]);
 
   // Store
   const purchaseOrderStore = usePurchaseOrderStore();
+  const authStore = useAuthStore();
+
+  const currentEmployeeName = computed(() => {
+    const u = authStore?.user || {};
+    return (
+      u.name ||
+      `${u.first_name || ''} ${u.last_name || ''}`.trim() ||
+      u.email ||
+      'Employee'
+    );
+  });
+
+  try {
+    tinymce?.EditorManager?.overrideDefaults?.({ license_key: 'gpl' });
+  } catch (_) {}
+
+  const tinyMCEConfig = {
+    menubar: false,
+    height: 220,
+    branding: false,
+    statusbar: false,
+    plugins: 'link lists image table code paste',
+    toolbar:
+      'undo redo | bold italic underline | bullist numlist | link image table | uploadimage | removeformat',
+    toolbar_mode: 'wrap',
+    automatic_uploads: false,
+    paste_data_images: true,
+    file_picker_types: 'image',
+    content_style:
+      'html,body{max-width:100%;} img{max-width:100%;height:auto;display:block;margin:6px 0;}',
+    images_upload_handler: async (blobInfo) => {
+      return new Promise((resolve, reject) => {
+        try {
+          const token = localStorage.getItem('token');
+          const formData = new FormData();
+          formData.append('file', blobInfo.blob(), blobInfo.filename());
+          fetch(getApiUrl('/uploads/proofs'), {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+            body: formData,
+          })
+            .then((r) => r.json())
+            .then((data) => {
+              if (data?.location) {
+                resolve(formatImageUrl(data.location));
+              } else {
+                reject(data?.message || 'Upload failed');
+              }
+            })
+            .catch((e) => reject(e?.message || 'Upload failed'));
+        } catch (e) {
+          reject(e?.message || 'Upload failed');
+        }
+      });
+    },
+    setup: (ed) => {
+      ed.ui.registry.addButton('uploadimage', {
+        text: 'Upload Image',
+        tooltip: 'Upload image',
+        onAction: () => {
+          const input = document.createElement('input');
+          input.type = 'file';
+          input.accept = 'image/png,image/jpeg';
+          input.onchange = async () => {
+            const file = input.files && input.files[0];
+            if (!file) return;
+            try {
+              const token = localStorage.getItem('token');
+              const fd = new FormData();
+              fd.append('file', file);
+              const res = await fetch(getApiUrl('/uploads/proofs'), {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}` },
+                body: fd,
+              });
+              const json = await res.json();
+              if (res.ok && json.location) {
+                ed.insertContent(
+                  `<img src="${formatImageUrl(json.location)}" />`
+                );
+              } else {
+                alert(json.message || 'Upload failed');
+              }
+            } catch (_) {
+              alert('Upload failed');
+            }
+          };
+          input.click();
+        },
+      });
+    },
+    license_key: 'gpl',
+  };
 
   // Local state
   const loading = ref(false);
@@ -69,6 +176,45 @@
     setTimeout(() => {
       toast.value.show = false;
     }, 3000);
+  };
+
+  // Confirmation modal state/helpers
+  const confirmDialog = ref({
+    show: false,
+    title: 'Please Confirm',
+    message: '',
+    confirmText: 'OK',
+    cancelText: 'Cancel',
+    _resolver: null,
+  });
+
+  const askConfirm = (message, options = {}) => {
+    return new Promise((resolve) => {
+      confirmDialog.value = {
+        show: true,
+        title: options.title || 'Please Confirm',
+        message,
+        confirmText: options.confirmText || 'OK',
+        cancelText: options.cancelText || 'Cancel',
+        _resolver: resolve,
+      };
+      // Open native <dialog> programmatically in case it's not open via :open binding
+      setTimeout(() => {
+        document.getElementById('po_confirm_modal')?.showModal?.();
+      }, 0);
+    });
+  };
+
+  const confirmYes = () => {
+    confirmDialog.value.show = false;
+    document.getElementById('po_confirm_modal')?.close?.();
+    confirmDialog.value._resolver?.(true);
+  };
+
+  const confirmNo = () => {
+    confirmDialog.value.show = false;
+    document.getElementById('po_confirm_modal')?.close?.();
+    confirmDialog.value._resolver?.(false);
   };
 
   // Helper functions
@@ -107,6 +253,14 @@
       Other: 'text-neutral',
     };
     return colors[reason] || 'text-neutral';
+  };
+
+  // Determine if a return has been marked as sent to supplier
+  const isMarkedForSupplier = (returnItem) => {
+    if (!returnItem) return false;
+    if (returnItem.sent_to_supplier) return true; // backend support if present
+    const text = String(returnItem.notes || '').toLowerCase();
+    return text.includes('sent to supplier');
   };
 
   // Date helpers for filtration
@@ -369,13 +523,56 @@
   });
 
   // Statistics
+  // Derive return value when backend field is missing or inaccurate.
+  const getDerivedReturnValue = (returnItem) => {
+    if (!returnItem) return 0;
+    // Prefer computed value from related PO item pricing
+    const po = purchaseOrderStore.purchaseOrders?.find?.(
+      (p) => p.id == returnItem.purchase_order_id
+    );
+    const poItem = (po?.items || []).find(
+      (it) => it.id == returnItem.purchase_order_item_id
+    );
+    const unitPrice = Number(
+      poItem?.received_unit_price ??
+        poItem?.unit_price ??
+        returnItem.unit_price ??
+        0
+    );
+    const qty = Number(returnItem.return_quantity || 0);
+    const computedValue = qty * (isNaN(unitPrice) ? 0 : unitPrice);
+    if (!isNaN(computedValue) && computedValue > 0) return computedValue;
+    // Fallback to explicit value from backend when computation fails
+    const explicit = Number(returnItem.return_value);
+    return isNaN(explicit) ? 0 : explicit;
+  };
+
+  // Helper for template usage in receipt modal
+  const computeReturnValue = (po, returnItem) => {
+    if (!returnItem) return 0;
+    const poItem = (po?.items || []).find(
+      (it) => it.id == returnItem.purchase_order_item_id
+    );
+    const unitPrice = Number(
+      poItem?.received_unit_price ??
+        poItem?.unit_price ??
+        returnItem.unit_price ??
+        0
+    );
+    const qty = Number(returnItem.return_quantity || 0);
+    const val = qty * (isNaN(unitPrice) ? 0 : unitPrice);
+    if (!isNaN(val) && val > 0) return val;
+    const explicit = Number(returnItem.return_value);
+    return isNaN(explicit) ? 0 : explicit;
+  };
+
   const returnStats = computed(() => {
     const returns = itemReturns.value || [];
     return {
       total: returns.length,
       pending: returns.filter((r) => r.status === 'Pending').length,
       completed: returns.filter((r) => r.status === 'Completed').length,
-      totalValue: returns.reduce((sum, r) => sum + (r.return_value || 0), 0),
+      totalValue: returns.reduce((sum, r) => sum + getDerivedReturnValue(r), 0),
     };
   });
 
@@ -470,7 +667,22 @@
       return;
     }
 
+    // Enforce supplier sending before completion
+    if (!isMarkedForSupplier(returnItem)) {
+      showToast(
+        'error',
+        'Send this return to the supplier first before completing.'
+      );
+      return;
+    }
+
     try {
+      // Ensure processed_by is set to current employee before completing
+      if (!returnItem.processed_by) {
+        await purchaseOrderStore.updateItemReturn(returnItem.id, {
+          processed_by: currentEmployeeName.value,
+        });
+      }
       await purchaseOrderStore.completeItemReturn(returnItem.id);
       showToast('success', 'Return completed successfully');
       emit('return-processed', returnItem);
@@ -491,6 +703,45 @@
       emit('return-cancelled', returnItem);
     } catch (error) {
       showToast('error', error.message || 'Failed to cancel return');
+    }
+  };
+
+  // NEW: Send return to supplier
+  const sendToSupplier = async (returnItem) => {
+    if (!['Pending', 'Processed'].includes(returnItem.status)) {
+      showToast(
+        'error',
+        'Only pending or processed returns can be sent to supplier'
+      );
+      return;
+    }
+
+    const confirmed = await askConfirm(
+      `Send this return to the supplier?\n\nItem: ${returnItem.item_name}\nQuantity: ${returnItem.return_quantity}\n\nThe supplier will be notified to arrange pickup.`,
+      { title: 'Send to Supplier', confirmText: 'Send', cancelText: 'Cancel' }
+    );
+    if (!confirmed) return;
+
+    try {
+      // Mark as Processed if currently Pending
+      if (returnItem.status === 'Pending') {
+        await purchaseOrderStore.processItemReturn(returnItem.id);
+      }
+
+      // Add note and set processed_by to the current employee
+      await purchaseOrderStore.updateItemReturn(returnItem.id, {
+        notes:
+          (returnItem.notes || '') +
+          '\n[Sent to Supplier for pickup/processing]',
+        sent_to_supplier: true,
+        processed_by: currentEmployeeName.value,
+      });
+
+      showToast('success', 'Return marked for supplier pickup');
+      emit('return-sent-to-supplier', returnItem);
+      await loadItemReturns();
+    } catch (error) {
+      showToast('error', error.message || 'Failed to send return to supplier');
     }
   };
 
@@ -534,6 +785,40 @@
 
   const printReturnReceipt = () => {
     window.print();
+  };
+
+  // Notes/Proof editor modal state
+  const notesEditor = ref({ show: false, item: null, content: '' });
+
+  const openNotesEditor = (returnItem) => {
+    notesEditor.value = {
+      show: true,
+      item: returnItem,
+      content: returnItem?.notes || '',
+    };
+    setTimeout(
+      () => document.getElementById('po_notes_editor_modal')?.showModal?.(),
+      0
+    );
+  };
+
+  const closeNotesEditor = () => {
+    document.getElementById('po_notes_editor_modal')?.close?.();
+    notesEditor.value = { show: false, item: null, content: '' };
+  };
+
+  const saveNotesEditor = async () => {
+    if (!notesEditor.value.item) return;
+    try {
+      await purchaseOrderStore.updateItemReturn(notesEditor.value.item.id, {
+        notes: notesEditor.value.content,
+      });
+      showToast('success', 'Notes updated');
+      closeNotesEditor();
+      await loadItemReturns();
+    } catch (e) {
+      showToast('error', e?.message || 'Failed to update notes');
+    }
   };
 
   // Lifecycle
@@ -594,33 +879,11 @@
       >
         <div class="stat">
           <div class="stat-figure">
-            <Package class="w-6 h-6 text-primaryColor" />
-          </div>
-          <div class="stat-title text-black/50">Total Returns</div>
-          <div class="stat-value text-primaryColor">
-            <span v-if="!loading">{{ returnStats.total }}</span>
-            <span v-else class="loading loading-spinner loading-sm"></span>
-          </div>
-        </div>
-
-        <div class="stat">
-          <div class="stat-figure">
             <Clock class="w-6 h-6 text-warning" />
           </div>
           <div class="stat-title text-black/50">Pending</div>
           <div class="stat-value text-warning">
             <span v-if="!loading">{{ returnStats.pending }}</span>
-            <span v-else class="loading loading-spinner loading-sm"></span>
-          </div>
-        </div>
-
-        <div class="stat">
-          <div class="stat-figure">
-            <CheckCircle class="w-6 h-6 text-success" />
-          </div>
-          <div class="stat-title text-black/50">Completed</div>
-          <div class="stat-value text-success">
-            <span v-if="!loading">{{ returnStats.completed }}</span>
             <span v-else class="loading loading-spinner loading-sm"></span>
           </div>
         </div>
@@ -793,8 +1056,7 @@
       <div v-else class="overflow-x-auto">
         <table class="table table-zebra w-full table-xs">
           <thead>
-            <tr class="border border-black">
-              <th class="text-black font-semibold">Return ID</th>
+            <tr class="border border-gray-200">
               <th class="text-black font-semibold">Item</th>
               <th class="text-black font-semibold">Quantity</th>
               <th class="text-black font-semibold">Reason</th>
@@ -810,7 +1072,6 @@
               :key="returnItem.id"
               class="border border-black"
             >
-              <td class="font-mono text-sm">#{{ returnItem.id }}</td>
               <td>
                 <div class="font-bold">
                   {{ returnItem.item_name || 'N/A' }}
@@ -834,7 +1095,10 @@
                 <div class="flex items-center gap-2">
                   <User class="w-4 h-4 text-black/50" />
                   <span class="text-sm">{{
-                    returnItem.processed_by || returnItem.logged_by || 'N/A'
+                    returnItem.received_by ||
+                    returnItem.processed_by ||
+                    returnItem.logged_by ||
+                    'N/A'
                   }}</span>
                 </div>
               </td>
@@ -850,18 +1114,40 @@
                 </div>
               </td>
               <td>
-                <div class="dropdown dropdown-left">
+                <div class="dropdown dropdown-left dropdown-center">
                   <label tabindex="0" class="btn btn-ghost btn-xs">
                     <EllipsisVertical class="w-4 h-4" />
                   </label>
                   <ul
                     tabindex="0"
-                    class="dropdown-content menu p-2 shadow bg-white rounded-box w-32 border border-black/10"
+                    class="dropdown-content menu p-2 shadow bg-white rounded-box w-48 border border-black/10"
                   >
-                    <!-- Complete Return (Pending or Processed) -->
+                    <li>
+                      <a
+                        @click="openNotesEditor(returnItem)"
+                        class="text-black/70"
+                      >
+                        <FileText class="w-4 h-4" />
+                        Edit Notes / Proof
+                      </a>
+                    </li>
+                    <!-- Send to Supplier (Pending or Processed) -->
                     <li
                       v-if="
                         ['Pending', 'Processed'].includes(returnItem.status)
+                      "
+                    >
+                      <a @click="sendToSupplier(returnItem)" class="text-info">
+                        <Package class="w-4 h-4" />
+                        Send to Supplier
+                      </a>
+                    </li>
+
+                    <!-- Complete Return (Pending or Processed) -->
+                    <li
+                      v-if="
+                        ['Pending', 'Processed'].includes(returnItem.status) &&
+                        isMarkedForSupplier(returnItem)
                       "
                     >
                       <a
@@ -880,7 +1166,7 @@
                       </a>
                     </li>
 
-                    <!-- Add a “View Receipt” action for completed returns -->
+                    <!-- Add a "View Receipt" action for completed returns -->
                     <li v-if="returnItem.status === 'Completed'">
                       <a
                         @click="openReturnReceipt(returnItem)"
@@ -949,6 +1235,30 @@
       <span>{{ toast.message }}</span>
     </div>
   </div>
+
+  <!-- Confirmation Modal -->
+  <dialog id="po_confirm_modal" class="modal" :open="confirmDialog.show">
+    <div class="modal-box bg-accentColor text-black/70 shadow-lg max-w-md">
+      <h3 class="font-bold text-lg text-black mb-2">
+        {{ confirmDialog.title }}
+      </h3>
+      <p class="whitespace-pre-line text-sm">{{ confirmDialog.message }}</p>
+      <div class="modal-action">
+        <button
+          class="btn btn-sm bg-gray-200 text-black/60 font-thin border-none hover:bg-gray-300"
+          @click="confirmNo"
+        >
+          {{ confirmDialog.cancelText }}
+        </button>
+        <button
+          class="btn btn-sm bg-primaryColor text-white font-thin border-none hover:bg-primaryColor/80"
+          @click="confirmYes"
+        >
+          {{ confirmDialog.confirmText }}
+        </button>
+      </div>
+    </div>
+  </dialog>
 
   <!-- NEW: Return Receipt Modal -->
   <dialog id="return_receipt_modal" class="modal">
@@ -1024,11 +1334,20 @@
                   {{ returnReceiptModal.item.return_reason }}
                 </td>
                 <td class="border border-black">
-                  {{ returnReceiptModal.item.processed_by || 'N/A' }}
+                  {{
+                    returnReceiptModal.item.received_by ||
+                    returnReceiptModal.item.processed_by ||
+                    'N/A'
+                  }}
                 </td>
                 <td class="border border-black">
                   ₱{{
-                    Number(returnReceiptModal.item.return_value || 0).toFixed(2)
+                    Number(
+                      computeReturnValue(
+                        returnReceiptModal.po,
+                        returnReceiptModal.item
+                      )
+                    ).toFixed(2)
                   }}
                 </td>
               </tr>
@@ -1041,7 +1360,12 @@
                 </td>
                 <td class="font-semibold border border-black">
                   ₱{{
-                    Number(returnReceiptModal.item.return_value || 0).toFixed(2)
+                    Number(
+                      computeReturnValue(
+                        returnReceiptModal.po,
+                        returnReceiptModal.item
+                      )
+                    ).toFixed(2)
                   }}
                 </td>
               </tr>
@@ -1049,14 +1373,13 @@
           </table>
         </div>
 
-        <!-- Notes -->
+        <!-- Notes (rich content) -->
         <div class="mt-4 text-black">
-          <h6 class="text-xs font-medium">Notes:</h6>
-          <textarea
-            class="text-xs w-full h-20 border border-black/30 rounded-md p-2 text-black/50"
-            readonly
-            :value="returnReceiptModal.item.notes || 'No notes provided'"
-          ></textarea>
+          <h6 class="text-xs font-medium">Notes / Proof:</h6>
+          <div
+            class="prose max-w-none text-xs border border-black/30 rounded-md p-2"
+            v-html="returnReceiptModal.item.notes || 'No notes provided'"
+          ></div>
         </div>
 
         <!-- Status -->
@@ -1096,6 +1419,32 @@
           @click="closeReturnReceipt"
         >
           Close
+        </button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Notes / Proof Editor Modal -->
+  <dialog id="po_notes_editor_modal" class="modal" :open="notesEditor.show">
+    <div class="modal-box bg-accentColor text-black/70 shadow-lg max-w-2xl">
+      <h3 class="font-bold text-lg text-black mb-2">Edit Notes / Proof</h3>
+      <p class="text-sm text-black/60 mb-3">
+        Attach images or add details about the return. This will appear in the
+        audit trail and receipt.
+      </p>
+      <Editor v-model="notesEditor.content" :init="tinyMCEConfig" />
+      <div class="modal-action">
+        <button
+          class="btn btn-sm bg-gray-200 text-black/60 font-thin border-none hover:bg-gray-300"
+          @click="closeNotesEditor"
+        >
+          Cancel
+        </button>
+        <button
+          class="btn btn-sm bg-primaryColor text-white font-thin border-none hover:bg-primaryColor/80"
+          @click="saveNotesEditor"
+        >
+          Save
         </button>
       </div>
     </div>
@@ -1236,5 +1585,16 @@
         0 0 0 3px var(--primaryColor),
         0 0 0 6px var(--primaryColor);
     }
+  }
+</style>
+
+<style>
+  /* Raise TinyMCE dialogs above DaisyUI modal */
+  .tox,
+  .tox-tinymce-aux,
+  .tox-silver-sink,
+  .tox-dialog-wrap,
+  .tox-dialog {
+    z-index: 99999 !important;
   }
 </style>

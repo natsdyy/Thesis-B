@@ -13,7 +13,10 @@
         'fixed top-0 left-0 h-screen bg-primaryColor shadow-xl z-40 transition-transform duration-300 ease-in-out',
         'w-64 flex flex-col text-white min-h-screen',
         props.isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full',
-        'lg:translate-x-0 lg:fixed lg:z-40',
+        props.isDesktopSidebarVisible
+          ? 'lg:translate-x-0'
+          : 'lg:-translate-x-full',
+        'lg:fixed lg:z-40',
       ]"
     >
       <!-- Header -->
@@ -241,6 +244,10 @@
       type: Boolean,
       default: false,
     },
+    isDesktopSidebarVisible: {
+      type: Boolean,
+      default: true,
+    },
   });
 
   // Define emits
@@ -252,19 +259,125 @@
   const router = useRouter();
 
   // Computed properties
-  const { isSuperAdmin, userDepartment, user } = authStore;
+  const { isSuperAdmin, isBoardDirector, isChairman, userDepartment, user } =
+    authStore;
 
   const availableMenus = computed(() => {
+    // Super Admin (includes Chairman): see all departments except attendance items
     if (isSuperAdmin) {
-      // Super Admin sees all departments
-      return menusByDepartment;
+      // Super Admin sees all departments EXCEPT any attendance-related items
+      const filtered = {};
+      Object.keys(menusByDepartment).forEach((dept) => {
+        const items = menusByDepartment[dept].filter((menu) => {
+          const isAttendanceByName = menu.name === 'My Attendance';
+          const isAttendanceByRoute =
+            typeof menu.route === 'string' &&
+            /\/attendance(\b|\/)/.test(menu.route);
+          const isEmployeeSchedulesByName = menu.name === 'Employee Schedules';
+          const isEmployeeSchedulesByRoute =
+            typeof menu.route === 'string' && menu.route === '/hr/schedules';
+          return !(
+            isAttendanceByName ||
+            isAttendanceByRoute ||
+            isEmployeeSchedulesByName ||
+            isEmployeeSchedulesByRoute
+          );
+        });
+        if (items.length > 0) {
+          filtered[dept] = items;
+        }
+      });
+      // If user is a board member, additionally tweak visibility
+      if (isChairman || isBoardDirector) {
+        const hrMenus = (filtered['Human Resource'] || []).map((menu) => {
+          if (
+            menu.name === 'Employee Management' &&
+            Array.isArray(menu.subItems)
+          ) {
+            return {
+              ...menu,
+              subItems: menu.subItems.filter(
+                (s) => s.name !== 'Schedules' && s.name !== 'Manage Employee'
+              ),
+            };
+          }
+          return menu;
+        });
+        if (hrMenus.length) filtered['Human Resource'] = hrMenus;
+
+        // SCM: keep only Inventory; hide Supply Request, Purchase Order, GRN, Suppliers
+        if (filtered['SCM']) {
+          filtered['SCM'] = filtered['SCM'].filter(
+            (menu) => menu.name === 'Inventory'
+          );
+          if (filtered['SCM'].length === 0) delete filtered['SCM'];
+        }
+
+        // Production: keep only Production Inventory; hide Menu Management and Recipe Management
+        if (filtered['Production']) {
+          filtered['Production'] = filtered['Production'].filter(
+            (menu) => menu.name === 'Production Inventory'
+          );
+          if (filtered['Production'].length === 0)
+            delete filtered['Production'];
+        }
+
+        // CRM: hide Customers Feedback for Board Members
+        if (filtered['CRM']) {
+          filtered['CRM'] = filtered['CRM'].filter(
+            (menu) => menu.name !== 'Customers Feedback'
+          );
+          if (filtered['CRM'].length === 0) delete filtered['CRM'];
+        }
+      }
+      return filtered;
+    } else if (isBoardDirector || isChairman) {
+      // Board Members (Chairman and Board of Directors)
+      // Board Directors can only access Administration menus from Executive Dashboard to Branch Management
+      const adminMenus = (menusByDepartment['Administration'] || []).filter(
+        (menu) => {
+          // Allow Executive Dashboard, Financial Statement, Organizational Chart, Branch Management
+          const allowedRoutes = [
+            '/super-admin',
+            '/super-admin/financial-statement',
+            '/admin/organizational-chart',
+            '/admin/branch-manager',
+          ];
+          const isAllowed = allowedRoutes.includes(menu.route);
+          const isEmployeeSchedules =
+            menu.name === 'Employee Schedules' ||
+            menu.route === '/hr/schedules';
+          return isAllowed && !isEmployeeSchedules;
+        }
+      );
+
+      const result = {};
+      if (adminMenus.length) result['Administration'] = adminMenus;
+      // Board Directors should NOT see Human Resource or any other departments
+      return result;
     } else if (userDepartment) {
       // Regular users see only their department, excluding super admin only items
       const filteredMenus = {};
       Object.keys(menusByDepartment).forEach((dept) => {
-        const departmentMenus = menusByDepartment[dept].filter(
-          (menu) => !menu.superAdminOnly
-        );
+        const departmentMenus = menusByDepartment[dept].filter((menu) => {
+          // Exclude super admin only items
+          if (menu.superAdminOnly) return false;
+
+          // Exclude manager-only items for non-managers
+          if (menu.managerOnly && user.role !== 'Manager') return false;
+
+          // Hide attendance for Administration (no attendance for admins)
+          if (
+            dept === 'Administration' &&
+            (menu.name === 'My Attendance' ||
+              (typeof menu.route === 'string' &&
+                /\/attendance(\b|\/)/.test(menu.route)))
+          ) {
+            return false;
+          }
+
+          return true;
+        });
         if (departmentMenus.length > 0) {
           filteredMenus[dept] = departmentMenus;
         }
@@ -278,7 +391,41 @@
   });
 
   const isActiveRoute = (menuRoute) => {
-    return route.path === menuRoute || route.path.startsWith(menuRoute + '/');
+    // Exact match
+    if (route.path === menuRoute) {
+      return true;
+    }
+
+    // Check if current path starts with menu route followed by a slash
+    // This ensures we don't match parent routes when on a child route
+    if (route.path.startsWith(menuRoute + '/')) {
+      // Get all menu routes to check for more specific matches
+      const allMenuRoutes = [];
+      Object.values(availableMenus.value).forEach((menus) => {
+        menus.forEach((menu) => {
+          if (menu.route) allMenuRoutes.push(menu.route);
+          if (menu.subItems) {
+            menu.subItems.forEach((subItem) => {
+              if (subItem.route) allMenuRoutes.push(subItem.route);
+            });
+          }
+        });
+      });
+
+      // Check if there's a more specific route that also matches
+      const hasMoreSpecificMatch = allMenuRoutes.some((otherRoute) => {
+        return (
+          otherRoute !== menuRoute &&
+          route.path.startsWith(otherRoute) &&
+          otherRoute.length > menuRoute.length
+        );
+      });
+
+      // Only highlight if there's no more specific match
+      return !hasMoreSpecificMatch;
+    }
+
+    return false;
   };
 
   // Methods

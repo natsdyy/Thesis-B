@@ -523,10 +523,135 @@ class Roles {
         throw error;
       }
 
+      const parsedRate = parseFloat(rate_per_hour);
+      
+      // Use transaction to ensure both updates succeed or fail together
+      const trx = await db.transaction();
+      
+      try {
+        // Update rate in user_roles
+        const [updatedPosition] = await trx("user_roles")
+          .where("role_id", role_id)
+          .update({
+            rate_per_hour: parsedRate,
+            updated_at: db.fn.now(),
+          })
+          .returning([
+            "role_id",
+            "role",
+            "department",
+            "description",
+            "rate_per_hour",
+            "is_active",
+            "created_at",
+            "updated_at",
+          ]);
+
+        // Also update matching positions in branch_positions table
+        // Priority 1: Match by role_id (for positions copied from user_roles)
+        let matchingBranchPositions = await trx("branch_positions")
+          .where("role_id", role_id)
+          .whereNull("deleted_at")
+          .select("id", "hours_per_month", "position_title", "branch_id", "rate_per_hour");
+
+        // Priority 2: If no role_id match and it's a Branch department role, try matching by position_title
+        if (matchingBranchPositions.length === 0 && (currentRole.department === "Branch" || currentRole.department === "branch")) {
+          // Try exact case-insensitive match by position_title
+          matchingBranchPositions = await trx("branch_positions")
+            .whereRaw("LOWER(TRIM(position_title)) = LOWER(TRIM(?))", [currentRole.role])
+            .whereNull("deleted_at")
+            .select("id", "hours_per_month", "position_title", "branch_id", "rate_per_hour");
+
+          // If no exact match, try LIKE match (handles any extra spaces or variations)
+          if (matchingBranchPositions.length === 0) {
+            console.log(`   No exact match found, trying LIKE match...`);
+            const likeMatch = await trx("branch_positions")
+              .whereRaw("LOWER(position_title) LIKE LOWER(?)", [`%${currentRole.role}%`])
+              .whereNull("deleted_at")
+              .select("id", "hours_per_month", "position_title", "branch_id", "rate_per_hour");
+            
+            if (likeMatch.length > 0) {
+              console.log(`   Found ${likeMatch.length} positions with LIKE match`);
+              matchingBranchPositions = likeMatch;
+            }
+          }
+        }
+
+        // Update all matching branch positions
+        if (matchingBranchPositions.length > 0) {
+          console.log(`\n🔄 Syncing rates for ${matchingBranchPositions.length} branch position(s) linked to role_id ${role_id}`);
+          console.log(`   Role: ${currentRole.role} (${currentRole.department}), New Rate: ₱${parsedRate}/hour`);
+          
+          // Update each matching branch position
+          let updatedCount = 0;
+          for (const branchPosition of matchingBranchPositions) {
+            const hoursPerMonth = branchPosition.hours_per_month || 160; // Default to 160 if not set
+            const monthlySalary = parsedRate * hoursPerMonth;
+            
+            const updated = await trx("branch_positions")
+              .where("id", branchPosition.id)
+              .update({
+                rate_per_hour: parsedRate,
+                monthly_salary: monthlySalary,
+                updated_at: db.fn.now(),
+              });
+            
+            if (updated > 0) {
+              updatedCount++;
+              console.log(`   ✓ Updated branch position ID ${branchPosition.id} ("${branchPosition.position_title}")`);
+              console.log(`     Old Rate: ₱${branchPosition.rate_per_hour || 'N/A'}/hr → New Rate: ₱${parsedRate}/hr`);
+              console.log(`     Monthly Salary: ₱${monthlySalary.toFixed(2)}`);
+            }
+          }
+          
+          console.log(`✅ Successfully updated ${updatedCount} of ${matchingBranchPositions.length} branch position(s) to match user_roles rate\n`);
+        } else {
+          console.log(`ℹ️  No branch positions found linked to role_id ${role_id} or matching position_title "${currentRole.role}"`);
+          console.log(`   This role's rate will only apply to Position Management (user_roles table)\n`);
+        }
+
+        await trx.commit();
+        return updatedPosition;
+      } catch (error) {
+        await trx.rollback();
+        throw error;
+      }
+    } catch (error) {
+      console.error("Error updating rate per hour:", error);
+      throw error;
+    }
+  }
+
+  // Update position status (is_active)
+  static async updatePositionStatus(role_id, is_active) {
+    try {
+      console.log(`updatePositionStatus called with role_id: ${role_id}, is_active: ${is_active}`)
+      
+      // First check if the role exists
+      const role = await db("user_roles")
+        .where("role_id", role_id)
+        .whereNull("deleted_at")
+        .first();
+      
+      console.log('Found role:', role)
+      
+      if (!role) {
+        const error = new Error("Position not found");
+        error.code = "POSITION_NOT_FOUND";
+        throw error;
+      }
+
+      // Validate is_active (should be boolean)
+      if (typeof is_active !== "boolean") {image.png
+        const error = new Error("is_active must be a boolean value");
+        error.code = "INVALID_STATUS";
+        throw error;
+      }
+
       const [updatedPosition] = await db("user_roles")
         .where("role_id", role_id)
         .update({
-          rate_per_hour: parseFloat(rate_per_hour),
+          is_active: is_active,
           updated_at: db.fn.now(),
         })
         .returning([
@@ -540,9 +665,19 @@ class Roles {
           "updated_at",
         ]);
 
+      console.log('Updated position:', updatedPosition)
+      console.log('is_active in DB should now be:', is_active)
+      
+      // Verify the update by reading it back
+      const verification = await db("user_roles")
+        .where("role_id", role_id)
+        .select("role_id", "role", "is_active")
+        .first();
+      console.log('Verification read from DB:', verification)
+      
       return updatedPosition;
     } catch (error) {
-      console.error("Error updating rate per hour:", error);
+      console.error("Error updating position status:", error);
       throw error;
     }
   }

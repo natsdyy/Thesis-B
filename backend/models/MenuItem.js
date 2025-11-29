@@ -1,5 +1,9 @@
 const { db } = require("../config/database");
 const AuditLogger = require("./AuditLogger");
+const {
+  formatForDatabaseWithTimezone,
+  parseFromDatabase,
+} = require("../utils/timezoneUtils");
 
 class MenuItem {
   // Get all menu items with recipe details
@@ -18,23 +22,23 @@ class MenuItem {
           "r.batch_unit",
           db.raw("concat(u.first_name,' ',u.last_name) as created_by_name"),
           "mi.image_url",
-          db.raw("COUNT(sp.id) as sample_count"),
+          // Promo discount fields
+          "mi.has_promo_discount",
+          "mi.promo_minimum_quantity",
+          "mi.promo_discount_percentage",
+          "mi.promo_discount_amount",
+          "mi.promo_discount_type",
+          "mi.promo_description",
+          "mi.promo_start_date",
+          "mi.promo_end_date",
+          db.raw("COUNT(qi_direct.id) as quality_inspections_count"),
           db.raw(
-            "COUNT(CASE WHEN sp.status = 'Completed' THEN 1 END) as completed_samples"
-          ),
-          db.raw(
-            "COUNT(CASE WHEN (qi.result = 'Pass' AND qi.deleted_at IS NULL) OR (qi_direct.result = 'Pass' AND qi_direct.deleted_at IS NULL) THEN 1 END) as passed_inspections"
+            "COUNT(CASE WHEN qi_direct.result = 'Pass' AND qi_direct.deleted_at IS NULL THEN 1 END) as passed_inspections"
           )
         )
         .leftJoin("menus as m", "mi.menu_id", "m.id")
         .leftJoin("recipes as r", "mi.recipe_id", "r.id")
         .leftJoin("employees as u", "mi.created_by", "u.id")
-        .leftJoin("sample_productions as sp", "mi.id", "sp.menu_item_id")
-        .leftJoin(
-          "menu_quality_inspections as qi",
-          "sp.id",
-          "qi.sample_production_id"
-        )
         .leftJoin(
           "menu_quality_inspections as qi_direct",
           "mi.id",
@@ -95,12 +99,16 @@ class MenuItem {
       }
 
       if (filters.inspection_pending) {
-        query = query
-          .having("sample_count", ">", 0)
-          .having("passed_inspections", "=", 0);
+        query = query.having("quality_inspections_count", "=", 0);
       }
 
-      return await query.orderBy("mi.sequence_order", "asc");
+      const menuItems = await query.orderBy("mi.sequence_order", "asc");
+
+      // Add promo info to each menu item
+      return menuItems.map((menuItem) => {
+        menuItem.promo_info = this.calculatePromoInfo(menuItem);
+        return menuItem;
+      });
     } catch (error) {
       console.error("Error fetching menu items:", error);
       throw new Error("Failed to retrieve menu items");
@@ -128,7 +136,16 @@ class MenuItem {
           db.raw(
             "COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'') as created_by_name"
           ),
-          "mi.image_url"
+          "mi.image_url",
+          // Promo discount fields
+          "mi.has_promo_discount",
+          "mi.promo_minimum_quantity",
+          "mi.promo_discount_percentage",
+          "mi.promo_discount_amount",
+          "mi.promo_discount_type",
+          "mi.promo_description",
+          "mi.promo_start_date",
+          "mi.promo_end_date"
         )
         .leftJoin("menus as m", "mi.menu_id", "m.id")
         .leftJoin("recipes as r", "mi.recipe_id", "r.id")
@@ -138,6 +155,9 @@ class MenuItem {
         .first();
 
       if (menuItem) {
+        // Add promo info to the menu item
+        menuItem.promo_info = this.calculatePromoInfo(menuItem);
+
         try {
           // Get recipe ingredients - handle missing columns gracefully
           menuItem.recipe_ingredients = await db("recipe_ingredients as ri")
@@ -158,30 +178,8 @@ class MenuItem {
           menuItem.recipe_ingredients = [];
         }
 
-        try {
-          // Get sample productions
-          menuItem.sample_productions = await db("sample_productions as sp")
-            .select(
-              "sp.*",
-              db.raw(
-                "concat(u.first_name,' ',u.last_name) as assigned_to_name"
-              ),
-              db.raw(
-                "concat(cu.first_name,' ',cu.last_name) as created_by_name"
-              )
-            )
-            .leftJoin("employees as u", "sp.assigned_to", "u.id")
-            .leftJoin("employees as cu", "sp.created_by", "cu.id")
-            .where("sp.menu_item_id", id)
-            .whereNull("sp.deleted_at")
-            .orderBy("sp.created_at", "desc");
-        } catch (sampleError) {
-          console.warn(
-            "Could not fetch sample productions:",
-            sampleError.message
-          );
-          menuItem.sample_productions = [];
-        }
+        // Sample productions are no longer used
+        menuItem.sample_productions = [];
 
         try {
           // Get quality inspections
@@ -190,15 +188,9 @@ class MenuItem {
           )
             .select(
               "qi.*",
-              db.raw("concat(u.first_name,' ',u.last_name) as inspector_name"),
-              "sp.sample_batch_number"
+              db.raw("concat(u.first_name,' ',u.last_name) as inspector_name")
             )
             .leftJoin("employees as u", "qi.inspector_id", "u.id")
-            .leftJoin(
-              "sample_productions as sp",
-              "qi.sample_production_id",
-              "sp.id"
-            )
             .where("qi.menu_item_id", id)
             .whereNull("qi.deleted_at")
             .orderBy("qi.created_at", "desc");
@@ -528,7 +520,7 @@ class MenuItem {
   // Update menu item
   static async update(id, updateData, userId) {
     try {
-        // Get current item data before update for audit logging (lightweight query)
+      // Get current item data before update for audit logging (lightweight query)
       const currentItem = await db("menu_items")
         .select("id", "menu_item_name", "image_url", "menu_id")
         .where("id", id)
@@ -552,6 +544,15 @@ class MenuItem {
         "serving_unit",
         "tags",
         "image_url",
+        // Promo discount fields
+        "has_promo_discount",
+        "promo_minimum_quantity",
+        "promo_discount_percentage",
+        "promo_discount_amount",
+        "promo_discount_type",
+        "promo_description",
+        "promo_start_date",
+        "promo_end_date",
       ];
 
       // Map incoming fields to database columns
@@ -579,6 +580,25 @@ class MenuItem {
       if (updateData.image_url !== undefined)
         filteredData.image_url = updateData.image_url;
 
+      // Promo discount fields mapping
+      if (updateData.has_promo_discount !== undefined)
+        filteredData.has_promo_discount = updateData.has_promo_discount;
+      if (updateData.promo_minimum_quantity !== undefined)
+        filteredData.promo_minimum_quantity = updateData.promo_minimum_quantity;
+      if (updateData.promo_discount_percentage !== undefined)
+        filteredData.promo_discount_percentage =
+          updateData.promo_discount_percentage;
+      if (updateData.promo_discount_amount !== undefined)
+        filteredData.promo_discount_amount = updateData.promo_discount_amount;
+      if (updateData.promo_discount_type !== undefined)
+        filteredData.promo_discount_type = updateData.promo_discount_type;
+      if (updateData.promo_description !== undefined)
+        filteredData.promo_description = updateData.promo_description;
+      if (updateData.promo_start_date !== undefined)
+        filteredData.promo_start_date = updateData.promo_start_date;
+      if (updateData.promo_end_date !== undefined)
+        filteredData.promo_end_date = updateData.promo_end_date;
+
       await db("menu_items")
         .where("id", id)
         .update({
@@ -600,6 +620,11 @@ class MenuItem {
         "selling_price",
         "tags",
         "image_url",
+        // Promo fields that affect pricing
+        "has_promo_discount",
+        "promo_discount_percentage",
+        "promo_discount_amount",
+        "promo_discount_type",
       ];
 
       const hasRelevantChanges = fieldsToSync.some(
@@ -676,22 +701,27 @@ class MenuItem {
         // Import ProductionInventory model
         const ProductionInventory = require("./ProductionInventory");
 
-        // Get recipe batch size for reorder point calculation
-        const recipe = await db("recipes")
-          .select("batch_size", "batch_unit")
-          .where("id", menuItem.recipe_id)
-          .first();
+        // Create production inventory entry using the new direct approval method
+        await ProductionInventory.createFromMenuApproval(id, userId);
 
-        const batchSize = recipe ? recipe.batch_size : 100; // Default batch size
-        // Use dynamic reorder point calculation (will be calculated based on actual stock)
-        const reorderPoint =
-          ProductionInventory.calculateDynamicReorderPoint(0); // Start with 0 stock
-
-        // Create production inventory with 0 initial stock
-        await ProductionInventory.create(id, userId, {
-          reorder_point: reorderPoint,
-          maximum_stock: batchSize * 2, // Set max stock to 2x batch size
-        });
+        // Safely resolve batch size for reporting purposes
+        let batchSize = 0;
+        try {
+          if (
+            menuItem.recipe_batch_size &&
+            Number(menuItem.recipe_batch_size) > 0
+          ) {
+            batchSize = Number(menuItem.recipe_batch_size);
+          } else if (menuItem.recipe_id) {
+            const recipe = await db("recipes")
+              .select("batch_size")
+              .where("id", menuItem.recipe_id)
+              .first();
+            batchSize = Number(recipe?.batch_size || 0);
+          }
+        } catch (_) {
+          batchSize = 0;
+        }
 
         // Log the approval action
         await AuditLogger.log({
@@ -705,7 +735,7 @@ class MenuItem {
             profit_margin: menuItem.profit_margin,
             initial_stock: 0, // Now starts with 0 stock
             reorder_point: ProductionInventory.calculateDynamicReorderPoint(0), // Dynamic reorder point
-            maximum_stock: batchSize * 2,
+            maximum_stock: batchSize > 0 ? batchSize * 2 : 0,
           },
           notes: `Menu item "${menuItem.menu_item_name}" approved for production - Production inventory created with 0 initial stock`,
         });
@@ -870,6 +900,153 @@ class MenuItem {
       console.error("Error fetching menu item stats:", error);
       throw new Error("Failed to retrieve menu item statistics");
     }
+  }
+
+  // Calculate promo discount information
+  static calculatePromoInfo(menuItem) {
+    if (!menuItem.has_promo_discount) {
+      return null;
+    }
+
+    const now = new Date();
+
+    // Parse dates using timezone utilities with safety checks
+    let startDate = null;
+    let endDate = null;
+
+    try {
+      if (menuItem.promo_start_date) {
+        startDate = parseFromDatabase(menuItem.promo_start_date);
+      }
+    } catch (error) {
+      console.warn("Error parsing promo start date:", error);
+      startDate = null;
+    }
+
+    try {
+      if (menuItem.promo_end_date) {
+        endDate = parseFromDatabase(menuItem.promo_end_date);
+      }
+    } catch (error) {
+      console.warn("Error parsing promo end date:", error);
+      endDate = null;
+    }
+
+    const isActive =
+      (!startDate || startDate <= now) && (!endDate || endDate >= now);
+
+    return {
+      is_active: isActive,
+      minimum_quantity: menuItem.promo_minimum_quantity,
+      discount_type: menuItem.promo_discount_type,
+      discount_percentage: menuItem.promo_discount_percentage,
+      discount_amount: menuItem.promo_discount_amount,
+      description: menuItem.promo_description,
+      start_date: menuItem.promo_start_date,
+      end_date: menuItem.promo_end_date,
+    };
+  }
+
+  // Calculate discounted price for a given quantity
+  static calculateDiscountedPrice(menuItem, quantity) {
+    const promoInfo = this.calculatePromoInfo(menuItem);
+
+    if (
+      !promoInfo ||
+      !promoInfo.is_active ||
+      quantity < promoInfo.minimum_quantity
+    ) {
+      return {
+        original_price: parseFloat(menuItem.selling_price),
+        discounted_price: parseFloat(menuItem.selling_price),
+        discount_amount: 0,
+        discount_percentage: 0,
+        total_savings: 0,
+      };
+    }
+
+    const originalPrice = parseFloat(menuItem.selling_price);
+    let discountAmount = 0;
+
+    if (promoInfo.discount_type === "percentage") {
+      discountAmount = originalPrice * (promoInfo.discount_percentage / 100);
+    } else if (promoInfo.discount_type === "fixed_amount") {
+      discountAmount = promoInfo.discount_amount;
+    }
+
+    const discountedPrice = Math.max(0, originalPrice - discountAmount);
+    const totalSavings = discountAmount * quantity;
+
+    return {
+      original_price: originalPrice,
+      discounted_price: discountedPrice,
+      discount_amount: discountAmount,
+      discount_percentage:
+        promoInfo.discount_type === "percentage"
+          ? promoInfo.discount_percentage
+          : 0,
+      total_savings: totalSavings,
+      promo_info: promoInfo,
+    };
+  }
+
+  // Toggle promo discount
+  static async togglePromoDiscount(id, promoData) {
+    const menuItem = await this.getById(id);
+    if (!menuItem) {
+      return null;
+    }
+
+    // Format dates using timezone utilities
+    const updateData = {
+      has_promo_discount: promoData.has_promo_discount || false,
+      promo_minimum_quantity: promoData.promo_minimum_quantity || null,
+      promo_discount_percentage: promoData.promo_discount_percentage || null,
+      promo_discount_amount: promoData.promo_discount_amount || null,
+      promo_discount_type: promoData.promo_discount_type || "percentage",
+      promo_description: promoData.promo_description || null,
+      promo_start_date: promoData.promo_start_date
+        ? formatForDatabaseWithTimezone(new Date(promoData.promo_start_date))
+        : null,
+      promo_end_date: promoData.promo_end_date
+        ? formatForDatabaseWithTimezone(new Date(promoData.promo_end_date))
+        : null,
+      updated_at: formatForDatabaseWithTimezone(new Date()),
+    };
+
+    const [updatedMenuItem] = await db("menu_items")
+      .where({ id })
+      .update(updateData)
+      .returning("*");
+
+    updatedMenuItem.promo_info = this.calculatePromoInfo(updatedMenuItem);
+    return updatedMenuItem;
+  }
+
+  // Get menu items with active promotions
+  static async getMenuItemsWithActivePromotions() {
+    const now = formatForDatabaseWithTimezone(new Date());
+    const menuItems = await db("menu_items")
+      .where({
+        has_promo_discount: true,
+        deleted_at: null,
+      })
+      .where(function () {
+        this.whereNull("promo_start_date").orWhere(
+          "promo_start_date",
+          "<=",
+          now
+        );
+      })
+      .where(function () {
+        this.whereNull("promo_end_date").orWhere("promo_end_date", ">=", now);
+      })
+      .orderBy("created_at", "desc");
+
+    return menuItems.map((menuItem) => {
+      menuItem.promo_info = this.calculatePromoInfo(menuItem);
+      return menuItem;
+    });
   }
 }
 

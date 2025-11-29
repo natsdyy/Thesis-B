@@ -48,8 +48,134 @@
   import BranchInventoryConsumptionModal from '../../components/branch/BranchInventoryConsumptionModal.vue';
   import BranchInventoryAdjustmentModal from '../../components/branch/BranchInventoryAdjustmentModal.vue';
   import BranchInventoryTransactionModal from '../../components/branch/BranchInventoryTransactionModal.vue';
-  import { apiConfig, formatImageUrl } from '../../config/api';
+  // Use centralized API helpers
+  import { formatImageUrl, getApiUrl } from '../../config/api.js';
   import { useRouter } from 'vue-router';
+  // TinyMCE (self-hosted) for Received By proof capture
+  import Editor from '@tinymce/tinymce-vue';
+  const TinyMCEEditor = Editor;
+  import { sanitizeHtml } from '../../utils/sanitizeHtml.js';
+  import tinymce from 'tinymce/tinymce';
+  import 'tinymce/tinymce';
+  import 'tinymce/icons/default';
+  import 'tinymce/themes/silver';
+  import 'tinymce/models/dom/model';
+  import 'tinymce/plugins/link';
+  import 'tinymce/plugins/lists';
+  import 'tinymce/plugins/image';
+  import 'tinymce/skins/ui/oxide/skin.min.css';
+  try {
+    tinymce?.EditorManager?.overrideDefaults?.({ license_key: 'gpl' });
+  } catch (_) {}
+
+  // TinyMCE configuration
+  const tinyMCEConfig = computed(() => ({
+    menubar: false,
+    height: 220,
+    plugins: 'link lists',
+    // Only show the explicit upload image button; remove overflow/ellipsis
+    toolbar: 'uploadimage',
+    toolbar_mode: 'wrap',
+    automatic_uploads: false, // Disable automatic uploads, use custom handler
+    images_upload_handler: async (blobInfo, progress) => {
+      return new Promise((resolve, reject) => {
+        const token = localStorage.getItem('token');
+        const formData = new FormData();
+        formData.append('file', blobInfo.blob(), blobInfo.filename());
+
+        fetch(getApiUrl('/uploads/proofs'), {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+          body: formData,
+        })
+          .then((response) => response.json())
+          .then((data) => {
+            if (data.location) {
+              resolve(formatImageUrl(data.location));
+            } else {
+              reject(data.message || 'Upload failed');
+            }
+          })
+          .catch((error) => {
+            reject(error.message || 'Upload failed');
+          });
+      });
+    },
+    file_picker_types: 'image',
+    // Make editor images responsive to avoid oversized previews
+    content_style:
+      'html,body{max-width:100%;} img{max-width:100%;height:auto;display:block;margin:6px 0;}',
+    valid_elements:
+      'p,b,i,u,strong,em,ul,ol,li,br,a[href|target|rel],img[src|alt|title|class|style],span[class|style],div[class|style]',
+    setup: (ed) => {
+      ed.ui.registry.addButton('uploadimage', {
+        text: 'Upload Image',
+        tooltip: 'Upload image',
+        onAction: () => {
+          pickAndUploadImage(
+            (url) => ed.insertContent(`<img src="${formatImageUrl(url)}" />`),
+            'auto'
+          );
+        },
+      });
+    },
+    branding: false,
+    skin: false,
+    content_css: false,
+    license_key: 'gpl',
+    ui_container: 'body',
+  }));
+
+  const pickAndUploadImage = (callback, modalId = 'auto') => {
+    try {
+      // Detect currently open dialog if auto
+      const activeModalId =
+        modalId === 'auto'
+          ? document.querySelector('dialog[open]')?.id ||
+            'distribution_acceptance_modal'
+          : modalId;
+      const modal = document.getElementById(activeModalId);
+      const wasOpen = !!modal?.open;
+      if (wasOpen)
+        try {
+          modal.close();
+        } catch (_) {}
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/png,image/jpeg';
+      input.onchange = async () => {
+        const file = input.files && input.files[0];
+        if (!file) return;
+        const fd = new FormData();
+        fd.append('file', file);
+        try {
+          const token = localStorage.getItem('token');
+          const res = await fetch(getApiUrl('/uploads/proofs'), {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+            body: fd,
+          });
+          const json = await res.json();
+          if (res.ok && json.location) {
+            callback(json.location);
+          } else {
+            alert(json.message || 'Upload failed');
+          }
+        } catch (e) {
+          alert('Upload failed');
+        }
+        if (wasOpen)
+          try {
+            modal.showModal();
+          } catch (_) {}
+      };
+      input.click();
+    } catch (_) {}
+  };
 
   const branchContextStore = useBranchContextStore();
   const branchDistributionStore = useBranchDistributionStore();
@@ -67,6 +193,8 @@
   const currentPage = ref(1);
   const itemsPerPage = ref(12);
   const loading = ref(false);
+  // Branch-provided proof for Received By
+  const receivedProofHtml = ref('');
 
   // Alerts tab state to mirror MainInventory
   const alertTab = ref('expiring');
@@ -168,7 +296,7 @@
   );
   const recentActivity = ref([]);
   const alerts = ref([]);
-  const reports = ref([]);
+  // const reports = ref([]); // Reports tab removed
 
   // Helper sets for acknowledging alerts (UI-only)
   const acknowledgedExpiring = ref(new Set());
@@ -561,11 +689,8 @@
 
   const formattedBranchInventory = computed(() => {
     return branchInventory.value.map((item) => {
-      if (
-        inventoryType.value === 'production' &&
-        item.image_url &&
-        item.image_url.startsWith('/uploads/')
-      ) {
+      // Format image URL for all items that have image_url, not just production items
+      if (item.image_url) {
         return { ...item, image_url: formatImageUrl(item.image_url) };
       }
       return item;
@@ -1195,6 +1320,9 @@
   const currentBranch = computed(() => branchContextStore.currentBranch);
   const userRole = computed(() => branchContextStore.userRole);
   const canEdit = computed(() => branchContextStore.canAccessInventory);
+  const isCook = computed(
+    () => (userRole.value || '').toLowerCase() === 'cook'
+  );
 
   const currentInventoryData = computed(() => {
     const source =
@@ -1436,12 +1564,13 @@
       const realAlerts = [];
       console.log('Branch inventory data for alerts:', branchInventory.value);
 
-      // Low stock alerts (exclude disposed items)
+      // Low stock alerts (exclude disposed items and Equipment category)
       const lowStockItems = branchInventory.value.filter(
         (item) =>
           item.status !== 'disposed' &&
           parseFloat(item.quantity) <= parseFloat(item.minimum_stock) &&
-          parseFloat(item.quantity) > 0
+          parseFloat(item.quantity) > 0 &&
+          item.category !== 'Equipment'
       );
 
       lowStockItems.forEach((item, index) => {
@@ -1457,9 +1586,12 @@
         });
       });
 
-      // Out of stock alerts (exclude disposed items)
+      // Out of stock alerts (exclude disposed items and Equipment category)
       const outOfStockItems = branchInventory.value.filter(
-        (item) => item.status !== 'disposed' && parseFloat(item.quantity) === 0
+        (item) =>
+          item.status !== 'disposed' &&
+          parseFloat(item.quantity) === 0 &&
+          item.category !== 'Equipment'
       );
       outOfStockItems.forEach((item, index) => {
         realAlerts.push({
@@ -1473,11 +1605,12 @@
         });
       });
 
-      // Expiring items alerts (exclude disposed)
+      // Expiring items alerts (exclude disposed and Equipment category)
       const expiringItems = branchInventory.value.filter(
         (item) =>
           item.status !== 'disposed' &&
           item.expiry_date &&
+          item.category !== 'Equipment' &&
           new Date(item.expiry_date) <=
             new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
       );
@@ -1504,110 +1637,7 @@
         (item) => parseFloat(item.quantity) <= parseFloat(item.minimum_stock)
       );
 
-      // Generate real reports from branch inventory data
-      const realReports = [];
-
-      // Current inventory summary report
-      const totalItems = branchInventory.value.length;
-      const totalValue = branchInventory.value.reduce(
-        (sum, item) => sum + parseFloat(item.total_value || 0),
-        0
-      );
-      const lowStockCount = branchInventory.value.filter(
-        (item) =>
-          parseFloat(item.quantity) <= parseFloat(item.minimum_stock) &&
-          parseFloat(item.quantity) > 0
-      ).length;
-      const outOfStockCount = branchInventory.value.filter(
-        (item) => parseFloat(item.quantity) === 0
-      ).length;
-
-      realReports.push({
-        id: 'current_summary',
-        title: 'Current Inventory Summary',
-        type: 'summary',
-        date: new Date().toISOString().split('T')[0],
-        status: 'completed',
-        data: {
-          totalItems,
-          totalValue,
-          lowStockCount,
-          outOfStockCount,
-          averageValue: totalItems > 0 ? totalValue / totalItems : 0,
-        },
-      });
-
-      // Low stock items report
-      if (lowStockCount > 0) {
-        realReports.push({
-          id: 'low_stock_report',
-          title: 'Low Stock Items Report',
-          type: 'low_stock',
-          date: new Date().toISOString().split('T')[0],
-          status: 'completed',
-          data: {
-            items: branchInventory.value.filter(
-              (item) =>
-                parseFloat(item.quantity) <= parseFloat(item.minimum_stock) &&
-                parseFloat(item.quantity) > 0
-            ),
-            count: lowStockCount,
-          },
-        });
-      }
-
-      // Out of stock items report
-      if (outOfStockCount > 0) {
-        realReports.push({
-          id: 'out_of_stock_report',
-          title: 'Out of Stock Items Report',
-          type: 'out_of_stock',
-          date: new Date().toISOString().split('T')[0],
-          status: 'completed',
-          data: {
-            items: branchInventory.value.filter(
-              (item) => parseFloat(item.quantity) === 0
-            ),
-            count: outOfStockCount,
-          },
-        });
-      }
-
-      // Inventory value analysis report
-      const scmItemsForReport = branchInventory.value.filter(
-        (item) => item.item_type === 'scm'
-      );
-      const productionItemsForReport = branchInventory.value.filter(
-        (item) => item.item_type === 'production'
-      );
-      const scmValue = scmItemsForReport.reduce(
-        (sum, item) => sum + parseFloat(item.total_value || 0),
-        0
-      );
-      const productionValue = productionItemsForReport.reduce(
-        (sum, item) => sum + parseFloat(item.total_value || 0),
-        0
-      );
-
-      realReports.push({
-        id: 'value_analysis',
-        title: 'Inventory Value Analysis',
-        type: 'analysis',
-        date: new Date().toISOString().split('T')[0],
-        status: 'completed',
-        data: {
-          scmItems: scmItems.length,
-          productionItems: productionItems.length,
-          scmValue,
-          productionValue,
-          totalValue,
-          scmPercentage: totalValue > 0 ? (scmValue / totalValue) * 100 : 0,
-          productionPercentage:
-            totalValue > 0 ? (productionValue / totalValue) * 100 : 0,
-        },
-      });
-
-      reports.value = realReports;
+      // Reports generation removed - Reports tab no longer available
     } catch (error) {
       console.error('Error loading branch inventory:', error);
     } finally {
@@ -1833,6 +1863,8 @@
   const openAcceptanceModal = (distribution) => {
     console.log('Opening acceptance modal for distribution:', distribution);
     selectedDistribution.value = distribution;
+    // Reset received proof input
+    receivedProofHtml.value = '';
     showAcceptanceModal.value = true;
     // Open the modal using DaisyUI's modal system
     document.getElementById('distribution_acceptance_modal')?.showModal();
@@ -1896,6 +1928,7 @@
       );
       await branchDistributionStore.completeDistribution(distribution.id, {
         completed_by: authStore.user?.name || 'Branch Manager',
+        received_proof_html: sanitizeHtml(receivedProofHtml.value),
       });
       console.log(
         'Distribution completed successfully and items added to branch inventory'
@@ -2023,7 +2056,7 @@
       await branchDistributionStore.rejectDistribution(distribution.id, {
         rejected_by: authStore.user?.name || 'Branch Manager',
         rejection_reason: rejectionForm.value.reason,
-        rejection_notes: rejectionForm.value.notes,
+        rejection_notes: sanitizeHtml(rejectionForm.value.notes),
       });
       console.log(
         'Distribution rejected successfully and quantities returned to main inventory'
@@ -2128,6 +2161,9 @@
             }
             return user?.name || 'Branch Manager';
           })(),
+        // Include proof fields to match MainInventory behavior
+        prepared_proof_html: full.prepared_proof_html || null,
+        received_proof_html: full.received_proof_html || null,
         items:
           (full.items || distribution.items || [])?.map((item) => ({
             item_name: item.name,
@@ -2172,7 +2208,19 @@
   onMounted(() => {
     // Data will be loaded by the watcher when currentBranch is available
     console.log('BranchInventory mounted, currentBranch:', currentBranch.value);
+    if (isCook.value) {
+      activeTab.value = 'inventory';
+    }
   });
+
+  // Ensure cooks stay on the Inventory List tab
+  watch(
+    isCook,
+    (val) => {
+      if (val) activeTab.value = 'inventory';
+    },
+    { immediate: false }
+  );
 </script>
 
 <template>
@@ -2200,6 +2248,7 @@
     <!-- Tabs -->
     <div class="tabs tabs-boxed mb-4 sm:mb-6 justify-center sm:justify-start">
       <button
+        v-if="!isCook"
         @click="activeTab = 'overview'"
         class="tab"
         :class="{ 'tab-active': activeTab === 'overview' }"
@@ -2216,6 +2265,7 @@
         Inventory List
       </button>
       <button
+        v-if="!isCook"
         @click="activeTab = 'alerts'"
         class="tab"
         :class="{ 'tab-active': activeTab === 'alerts' }"
@@ -2230,14 +2280,7 @@
         </span>
       </button>
       <button
-        @click="activeTab = 'reports'"
-        class="tab"
-        :class="{ 'tab-active': activeTab === 'reports' }"
-      >
-        <TrendingDown class="w-4 h-4 mr-1" />
-        Reports
-      </button>
-      <button
+        v-if="!isCook"
         @click="activeTab = 'pending_distributions'"
         class="tab"
         :class="{ 'tab-active': activeTab === 'pending_distributions' }"
@@ -2252,6 +2295,7 @@
         </span>
       </button>
       <button
+        v-if="!isCook"
         @click="activeTab = 'distribution_history'"
         class="tab"
         :class="{ 'tab-active': activeTab === 'distribution_history' }"
@@ -2260,6 +2304,7 @@
         Distribution History
       </button>
       <button
+        v-if="!isCook"
         @click="activeTab = 'request_supply'"
         class="tab"
         :class="{ 'tab-active': activeTab === 'request_supply' }"
@@ -2268,6 +2313,7 @@
         Supply Request
       </button>
       <button
+        v-if="!isCook"
         @click="activeTab = 'return_items'"
         class="tab"
         :class="{ 'tab-active': activeTab === 'return_items' }"
@@ -2283,7 +2329,7 @@
     >
       <div class="card-body p-3 sm:p-4 lg:p-6">
         <!-- Overview Tab -->
-        <div v-if="activeTab === 'overview'" class="space-y-6">
+        <div v-if="activeTab === 'overview' && !isCook" class="space-y-6">
           <div
             class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6"
           >
@@ -2315,53 +2361,6 @@
           <div
             class="stats shadow w-full mb-4 sm:mb-6 bg-accentColor border border-black/10 stats-vertical lg:stats-horizontal xl:stats-horizontal rounded-lg"
           >
-            <div
-              class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
-            >
-              <div class="stat-figure">
-                <Package
-                  class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-primaryColor"
-                />
-              </div>
-              <div class="stat-title text-black/50 !text-xs sm:text-sm">
-                Total Items
-              </div>
-              <div
-                class="stat-value text-primaryColor text-lg sm:text-xl lg:text-2xl xl:text-3xl"
-              >
-                {{ inventoryStats.totalItems + productionStats.totalItems }}
-              </div>
-              <div class="stat-desc text-black/50 !text-xs sm:text-sm">
-                Unique item types
-              </div>
-            </div>
-
-            <div
-              class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
-            >
-              <div class="stat-figure">
-                <CheckCircle
-                  class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-success"
-                />
-              </div>
-              <div class="stat-title text-black/50 text-xs sm:text-sm">
-                Available
-              </div>
-              <div
-                class="stat-value text-success text-lg sm:text-xl lg:text-2xl xl:text-3xl"
-              >
-                {{
-                  inventoryStats.totalItems +
-                  productionStats.totalItems -
-                  (inventoryStats.outOfStockItems +
-                    productionStats.outOfStockItems)
-                }}
-              </div>
-              <div class="stat-desc text-black/50 !text-xs sm:text-sm">
-                Stock entries
-              </div>
-            </div>
-
             <div
               class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
             >
@@ -2409,7 +2408,7 @@
           <div
             class="card bg-gradient-to-br from-base-100 to-base-50 border border-gray-200 shadow-lg"
           >
-            <div class="card-body p-6">
+            <div class="card-body p-6 bg-accentColor">
               <div class="flex justify-between items-center mb-6">
                 <div class="flex items-center gap-3">
                   <div
@@ -2664,7 +2663,7 @@
           </div>
 
           <!-- Inventory Type Toggle -->
-          <div class="flex justify-center mb-6 sm:mb-4 lg:mb-6">
+          <div class="flex justify-start mb-6 sm:mb-4 lg:mb-6">
             <div class="join gap-1">
               <button
                 @click="switchInventoryType('scm')"
@@ -2676,7 +2675,7 @@
                 "
               >
                 <Package class="w-4 h-4 mr-2" />
-                SCM Inventory
+                Inventory
               </button>
               <button
                 @click="switchInventoryType('production')"
@@ -2688,7 +2687,7 @@
                 "
               >
                 <Settings class="w-4 h-4 mr-2" />
-                Production Inventory
+                Menu Inventory
               </button>
             </div>
           </div>
@@ -2747,8 +2746,7 @@
             <div class="card-body">
               <h3 class="card-title text-primaryColor mb-4">
                 <Package class="w-5 h-5" />
-                {{ inventoryType === 'scm' ? 'SCM' : 'Production' }} Inventory
-                Items
+                {{ inventoryType === 'scm' ? 'Raw' : 'Menu' }} Inventory Items
               </h3>
 
               <!-- Loading State -->
@@ -2783,12 +2781,7 @@
                       <tr v-for="item in paginatedInventory" :key="item.id">
                         <td>
                           <div class="flex items-center gap-2">
-                            <div
-                              v-if="
-                                inventoryType === 'production' && item.image_url
-                              "
-                              class="avatar"
-                            >
+                            <div v-if="item.image_url" class="avatar">
                               <div class="w-6 rounded">
                                 <img :src="item.image_url" alt="item" />
                               </div>
@@ -2815,20 +2808,23 @@
                           </div>
                         </td>
                         <td>
-                          <div class="badge badge-xs">
+                          <div class="badge badge-sm">
                             {{ item.category }}
                           </div>
                         </td>
                         <td>
-                          <div class="font-medium">
+                          <div class="font-medium text-sm">
                             {{ item.quantity }} {{ item.unit }}
                           </div>
-                          <div class="text-sm text-gray-500">
+                          <div class="text-gray-500 text-xs">
                             Min: {{ item.minimum_stock }}
                           </div>
                         </td>
                         <td v-if="inventoryType === 'production'">
-                          <div class="font-medium" v-if="item.selling_price">
+                          <div
+                            class="font-medium text-sm"
+                            v-if="item.selling_price"
+                          >
                             ₱{{
                               parseFloat(item.selling_price).toLocaleString()
                             }}
@@ -2923,7 +2919,7 @@
         </div>
 
         <!-- Alerts Tab -->
-        <div v-if="activeTab === 'alerts'" class="space-y-6">
+        <div v-if="activeTab === 'alerts' && !isCook" class="space-y-6">
           <div
             class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4"
           >
@@ -2955,7 +2951,10 @@
           <div v-if="alertTab === 'expiring'" class="space-y-3">
             <div
               v-for="item in branchInventory.filter(
-                (i) => i.status !== 'disposed' && i.expiry_date
+                (i) =>
+                  i.status !== 'disposed' &&
+                  i.expiry_date &&
+                  i.category !== 'Equipment'
               )"
               :key="item.id"
               class="border border-gray-200 rounded-lg bg-base-100 p-3 flex items-start gap-3"
@@ -3047,7 +3046,10 @@
             <div
               v-if="
                 branchInventory.filter(
-                  (i) => i.status !== 'disposed' && i.expiry_date
+                  (i) =>
+                    i.status !== 'disposed' &&
+                    i.expiry_date &&
+                    i.category !== 'Equipment'
                 ).length === 0
               "
               class="text-center py-8"
@@ -3063,7 +3065,8 @@
               v-for="item in branchInventory.filter(
                 (i) =>
                   i.status !== 'disposed' &&
-                  parseFloat(i.quantity) <= parseFloat(i.minimum_stock)
+                  parseFloat(i.quantity) <= parseFloat(i.minimum_stock) &&
+                  i.category !== 'Equipment'
               )"
               :key="item.id"
               class="border border-gray-200 rounded-lg bg-base-100 p-3 flex items-start gap-3"
@@ -3172,61 +3175,11 @@
           </div>
         </div>
 
-        <!-- Reports Tab -->
-        <div v-if="activeTab === 'reports'" class="space-y-6">
-          <div
-            class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4"
-          >
-            <h2
-              class="card-title text-primaryColor text-lg sm:text-xl lg:text-2xl"
-            >
-              <FileText class="w-5 h-5 sm:w-6 sm:h-6" />
-              Inventory Reports
-            </h2>
-          </div>
-
-          <!-- Reports List -->
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div
-              v-for="report in reports"
-              :key="report.id"
-              class="card bg-white shadow-lg"
-            >
-              <div class="card-body">
-                <div class="flex items-start justify-between mb-4">
-                  <div>
-                    <h3 class="font-semibold text-gray-900">
-                      {{ report.title }}
-                    </h3>
-                    <p class="text-sm text-gray-600">{{ report.date }}</p>
-                  </div>
-                  <div
-                    class="badge badge-sm border-none font-medium"
-                    :class="
-                      report.status === 'completed'
-                        ? 'bg-success/20 text-success'
-                        : 'bg-warning/20 text-warning'
-                    "
-                  >
-                    {{ report.status }}
-                  </div>
-                </div>
-                <div class="flex items-center justify-between">
-                  <span class="text-sm text-gray-500">{{ report.type }}</span>
-                  <button
-                    class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10"
-                  >
-                    <Eye class="w-4 h-4 mr-1" />
-                    View
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
         <!-- Pending Distributions Tab -->
-        <div v-if="activeTab === 'pending_distributions'" class="space-y-6">
+        <div
+          v-if="activeTab === 'pending_distributions' && !isCook"
+          class="space-y-6"
+        >
           <div
             class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4"
           >
@@ -3454,7 +3407,10 @@
         </div>
 
         <!-- Distribution History -->
-        <div v-if="activeTab === 'distribution_history'" class="space-y-6">
+        <div
+          v-if="activeTab === 'distribution_history' && !isCook"
+          class="space-y-6"
+        >
           <div class="flex items-center justify-between">
             <h3 class="text-xl font-semibold text-primaryColor">
               Completed Distributions
@@ -3636,7 +3592,7 @@
         </div>
 
         <!-- Return Items Tab -->
-        <div v-if="activeTab === 'return_items'" class="space-y-6">
+        <div v-if="activeTab === 'return_items' && !isCook" class="space-y-6">
           <div
             class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4"
           >
@@ -3870,7 +3826,7 @@
         </div>
 
         <!-- Request Supply Tab -->
-        <div v-if="activeTab === 'request_supply'" class="space-y-6">
+        <div v-if="activeTab === 'request_supply' && !isCook" class="space-y-6">
           <BranchRequestSupply
             :inventory-type="inventoryType"
             @request-created="handleRequestCreated"
@@ -3887,7 +3843,7 @@
       :class="{ 'modal-open': showAcceptanceModal }"
       @click="(e) => e.target === e.currentTarget && closeAcceptanceModal()"
     >
-      <div class="modal-box w-11/12 max-w-4xl">
+      <div class="modal-box w-11/12 max-w-4xl max-h-[90vh] overflow-y-auto">
         <div class="flex justify-between items-center mb-6">
           <h3 class="font-bold text-xl text-primaryColor">
             <CheckCircle class="w-6 h-6 inline mr-2" />
@@ -3923,13 +3879,6 @@
                   </p>
                 </div>
                 <div class="text-right">
-                  <div class="text-2xl font-bold text-primaryColor">
-                    ₱{{
-                      parseFloat(
-                        selectedDistribution.total_amount
-                      ).toLocaleString()
-                    }}
-                  </div>
                   <div
                     class="badge badge-sm border-none font-medium bg-warning/20 text-warning"
                   >
@@ -4002,6 +3951,12 @@
                 {{ selectedDistribution.notes }}
               </p>
             </div>
+          </div>
+
+          <!-- Received By Proof (Branch) -->
+          <div>
+            <h4 class="font-semibold text-lg mb-2">Received By Proof</h4>
+            <TinyMCEEditor v-model="receivedProofHtml" :init="tinyMCEConfig" />
           </div>
 
           <!-- Confirmation Message -->
@@ -4128,11 +4083,10 @@
               <label class="label">
                 <span class="label-text font-medium">Additional Notes</span>
               </label>
-              <textarea
+              <TinyMCEEditor
                 v-model="rejectionForm.notes"
-                class="textarea textarea-bordered w-full h-24"
-                placeholder="Please provide additional details about the rejection..."
-              ></textarea>
+                :init="tinyMCEConfig"
+              />
             </div>
           </div>
 
@@ -4274,22 +4228,6 @@
         <h3 class="font-bold text-lg mb-2">
           Branch Returns Awaiting Acknowledgment
         </h3>
-        <div class="flex gap-2 mb-3">
-          <button
-            class="btn btn-xs"
-            :class="returnsTab === 'approved' ? 'btn-primary' : ''"
-            @click="returnsTab = 'approved'"
-          >
-            Approved
-          </button>
-          <button
-            class="btn btn-xs"
-            :class="returnsTab === 'rejected' ? 'btn-error' : ''"
-            @click="returnsTab = 'rejected'"
-          >
-            Rejected
-          </button>
-        </div>
         <div class="overflow-x-auto max-h-[60vh]">
           <table class="table table-zebra table-xs w-full custom-zebra">
             <thead>
@@ -4379,5 +4317,20 @@
   }
   .custom-zebra tbody tr:nth-child(odd) {
     background-color: rgba(0, 0, 0, 0.03);
+  }
+</style>
+
+<style>
+  /* Raise TinyMCE dialogs above DaisyUI modal in branch acceptance */
+  .tox,
+  .tox-tinymce-aux,
+  .tox-silver-sink,
+  .tox-dialog-wrap,
+  .tox-dialog {
+    z-index: 99999 !important;
+  }
+  /* Avoid stacking-context issues from transform animations in DaisyUI modal */
+  #distribution_acceptance_modal .modal-box {
+    transform: none !important;
   }
 </style>

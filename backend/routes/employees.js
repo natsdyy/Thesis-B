@@ -6,6 +6,8 @@ const path = require("path");
 const fs = require("fs");
 const { authenticateToken } = require("../middleware/rbac");
 const EmailService = require("../services/emailService");
+const SendGridService = require("../services/sendGridService");
+const { db } = require("../config/database");
 
 /**
  * @swagger
@@ -107,7 +109,6 @@ router.get("/me", authenticateToken, async (req, res) => {
     }
 
     // Get role information by joining with user_roles table
-    const { db } = require("../config/database");
     const employeeWithRole = await db("employees")
       .leftJoin("user_roles", "employees.role_id", "user_roles.role_id")
       .select(
@@ -438,6 +439,101 @@ router.get("/roles/:department", async (req, res) => {
  *       404:
  *         description: Employee not found
  */
+// Get employee documents (MUST come before /:id route)
+// Serve document file with proper inline headers (bypasses download managers)
+router.get("/:id/documents/:documentId/view", async (req, res) => {
+  try {
+    const { id, documentId } = req.params;
+
+    // Get document from database
+    const document = await db("employee_documents")
+      .where("id", documentId)
+      .where("employee_id", id)
+      .whereNull("deleted_at")
+      .first();
+
+    if (!document) {
+      return res.status(404).json({
+        success: false,
+        message: "Document not found",
+      });
+    }
+
+    // Construct file path
+    const filePath = require("path").join(
+      __dirname,
+      "..",
+      "uploads",
+      "employee-documents",
+      document.filename
+    );
+
+    // Check if file exists
+    if (!require("fs").existsSync(filePath)) {
+      return res.status(404).json({
+        success: false,
+        message: "File not found on server",
+      });
+    }
+
+    // Set headers to force inline display
+    res.setHeader("Content-Type", document.mime_type || "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `inline; filename="${document.original_filename}"`
+    );
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Cache-Control", "public, max-age=3600");
+
+    // Stream the file
+    res.sendFile(filePath);
+  } catch (error) {
+    console.error("Error serving document:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error serving document",
+      error: error.message,
+    });
+  }
+});
+
+router.get("/:id/documents", authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Verify employee exists
+    const employee = await db("employees")
+      .where("id", id)
+      .whereNull("deleted_at")
+      .first();
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: "Employee not found",
+      });
+    }
+
+    // Fetch all documents for this employee
+    const documents = await db("employee_documents")
+      .where("employee_id", id)
+      .whereNull("deleted_at")
+      .orderBy("uploaded_at", "desc")
+      .select("*");
+
+    res.json({
+      success: true,
+      data: documents,
+    });
+  } catch (error) {
+    console.error("Error fetching documents:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching documents",
+      error: error.message,
+    });
+  }
+});
+
 router.get("/:id", async (req, res) => {
   try {
     const { id } = req.params;
@@ -545,6 +641,7 @@ router.post("/", authenticateToken, async (req, res) => {
     const newEmployee = await Employee.create(employeeData, createdBy);
 
     // Send welcome email to employee if email is provided
+    let emailStatus = { sent: false, error: null };
     if (newEmployee.email) {
       try {
         const employeeName = `${newEmployee.first_name} ${newEmployee.last_name}`;
@@ -559,14 +656,24 @@ router.post("/", authenticateToken, async (req, res) => {
 
         if (emailResult.success) {
           console.log(`✅ Welcome email sent to ${newEmployee.email}`);
+          emailStatus.sent = true;
         } else {
           console.error(
             `❌ Failed to send welcome email to ${newEmployee.email}:`,
             emailResult.error
           );
+          emailStatus.error = emailResult.error;
+
+          // Check if it's a production warning (SMTP blocked)
+          if (emailResult.productionWarning) {
+            console.log(
+              `⚠️ [PRODUCTION] Email service unavailable - employee created successfully`
+            );
+          }
         }
       } catch (emailError) {
         console.error("❌ Error sending welcome email:", emailError);
+        emailStatus.error = emailError.message;
         // Don't fail the employee creation if email fails
       }
     }
@@ -575,6 +682,7 @@ router.post("/", authenticateToken, async (req, res) => {
       success: true,
       data: newEmployee,
       message: "Employee created successfully",
+      emailStatus: emailStatus, // Include email status in response
     });
   } catch (error) {
     console.error("Error creating employee:", error);
@@ -628,6 +736,51 @@ const upload = multer({
   },
 });
 
+// Document upload storage (for onboarding documents)
+const documentsDir = path.join(
+  __dirname,
+  "..",
+  "uploads",
+  "employee-documents"
+);
+if (!fs.existsSync(documentsDir)) {
+  fs.mkdirSync(documentsDir, { recursive: true });
+}
+
+const documentStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, documentsDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    const ext = path.extname(file.originalname) || ".pdf"; // Default to .pdf if no extension
+    // Preserve original extension, sanitize fieldname
+    const sanitizedFieldname = file.fieldname.replace(/[^a-zA-Z0-9_-]/g, "_");
+    const filename = `${sanitizedFieldname}-${uniqueSuffix}${ext}`;
+    console.log(
+      `Document upload: original='${file.originalname}', ext='${ext}', generated='${filename}'`
+    );
+    cb(null, filename);
+  },
+});
+
+const documentUpload = multer({
+  storage: documentStorage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+  fileFilter: (req, file, cb) => {
+    const allowedMimes = [
+      "application/pdf",
+      "image/jpeg",
+      "image/jpg",
+      "image/png",
+    ];
+    if (allowedMimes.includes(file.mimetype)) {
+      return cb(null, true);
+    }
+    return cb(new Error("Only PDF and image files are allowed"));
+  },
+});
+
 // Upload photo and create employee in one request
 router.post(
   "/upload",
@@ -648,6 +801,7 @@ router.post(
       );
 
       // Send welcome email to employee if email is provided
+      let emailStatus = { sent: false, error: null };
       if (employee.email) {
         try {
           const employeeName = `${employee.first_name} ${employee.last_name}`;
@@ -662,14 +816,24 @@ router.post(
 
           if (emailResult.success) {
             console.log(`✅ Welcome email sent to ${employee.email}`);
+            emailStatus.sent = true;
           } else {
             console.error(
               `❌ Failed to send welcome email to ${employee.email}:`,
               emailResult.error
             );
+            emailStatus.error = emailResult.error;
+
+            // Check if it's a production warning (SMTP blocked)
+            if (emailResult.productionWarning) {
+              console.log(
+                `⚠️ [PRODUCTION] Email service unavailable - employee created successfully`
+              );
+            }
           }
         } catch (emailError) {
           console.error("❌ Error sending welcome email:", emailError);
+          emailStatus.error = emailError.message;
           // Don't fail the employee creation if email fails
         }
       }
@@ -678,6 +842,7 @@ router.post(
         success: true,
         data: employee,
         message: "Employee created with photo successfully",
+        emailStatus: emailStatus, // Include email status in response
       });
     } catch (error) {
       console.error("Error uploading photo or creating employee:", error);
@@ -724,6 +889,15 @@ router.put("/:id", authenticateToken, async (req, res) => {
     // Get current user ID from request
     const updatedBy = req.user?.id || null;
 
+    // Get current employee data before update to check for branch changes
+    const currentEmployee = await Employee.getById(id);
+    if (!currentEmployee) {
+      return res.status(404).json({
+        success: false,
+        message: "Employee not found",
+      });
+    }
+
     const updatedEmployee = await Employee.update(id, employeeData, updatedBy);
 
     if (!updatedEmployee) {
@@ -731,6 +905,175 @@ router.put("/:id", authenticateToken, async (req, res) => {
         success: false,
         message: "Employee not found",
       });
+    }
+
+    // Check if branch_id, role, or department has changed and send email notification
+    const hasBranchChanged =
+      employeeData.branch_id !== undefined &&
+      currentEmployee.branch_id !== updatedEmployee.branch_id;
+
+    const hasRoleChanged =
+      employeeData.role_id !== undefined &&
+      currentEmployee.role_id !== updatedEmployee.role_id;
+
+    const hasDepartmentChanged =
+      employeeData.department !== undefined &&
+      currentEmployee.department !== updatedEmployee.department;
+
+    const shouldSendEmail =
+      (hasBranchChanged || hasRoleChanged || hasDepartmentChanged) &&
+      updatedEmployee.email;
+
+    if (shouldSendEmail) {
+      try {
+        // Get branch names from database (if branch changed)
+        let fromBranchName = "Unassigned";
+        let toBranchName = "Unassigned";
+
+        if (hasBranchChanged) {
+          const branches = await db("branches")
+            .whereIn("id", [
+              currentEmployee.branch_id,
+              updatedEmployee.branch_id,
+            ])
+            .whereNull("deleted_at")
+            .select("id", "name", "code");
+
+          const fromBranch = branches.find(
+            (b) => b.id === currentEmployee.branch_id
+          );
+          const toBranch = branches.find(
+            (b) => b.id === updatedEmployee.branch_id
+          );
+
+          fromBranchName = fromBranch ? fromBranch.name : "Unassigned";
+          toBranchName = toBranch ? toBranch.name : "Unassigned";
+        } else {
+          // If no branch change but role/department changed, keep current branch info
+          if (updatedEmployee.branch_id) {
+            const currentBranch = await db("branches")
+              .where("id", updatedEmployee.branch_id)
+              .whereNull("deleted_at")
+              .select("name", "code")
+              .first();
+
+            if (currentBranch) {
+              fromBranchName = toBranchName = currentBranch.name;
+            }
+          }
+        }
+
+        // Get role information (if role changed)
+        let fromRoleName = currentEmployee.role || "Current Role";
+        let toRoleName = updatedEmployee.role || "New Role";
+
+        if (hasRoleChanged) {
+          const roles = await db("user_roles")
+            .whereIn("role_id", [
+              currentEmployee.role_id,
+              updatedEmployee.role_id,
+            ])
+            .whereNull("deleted_at")
+            .select("role_id", "role");
+
+          const fromRole = roles.find(
+            (r) => r.role_id === currentEmployee.role_id
+          );
+          const toRole = roles.find(
+            (r) => r.role_id === updatedEmployee.role_id
+          );
+
+          fromRoleName = fromRole ? fromRole.role : fromRoleName;
+          toRoleName = toRole ? toRole.role : toRoleName;
+        }
+
+        // Get department names
+        const fromDeptName = currentEmployee.department || "Current Department";
+        const toDeptName = updatedEmployee.department || "New Department";
+
+        // Get manager name who made the change
+        const manager =
+          updatedBy &&
+          (await db("employees")
+            .where("id", updatedBy)
+            .select("first_name", "last_name")
+            .first());
+        const managerName = manager
+          ? `${manager.first_name} ${manager.last_name}`
+          : "System Administrator";
+
+        const employeeName = `${updatedEmployee.first_name} ${updatedEmployee.last_name}`;
+        const transferDate = new Date();
+
+        // Create a descriptive transfer message based on what changed
+        let transferSubject = "Employee Role/Department Update";
+        let transferMessage = "";
+
+        if (hasBranchChanged) {
+          transferSubject = "Branch Transfer Notification";
+          transferMessage = `Your branch assignment has been updated from ${fromBranchName} to ${toBranchName}.`;
+          if (hasRoleChanged || hasDepartmentChanged) {
+            transferMessage += ` Additionally, `;
+          }
+        }
+
+        if (hasDepartmentChanged) {
+          transferSubject = "Department Transfer Notification";
+          if (!transferMessage) {
+            transferMessage = `Your department assignment has been updated from ${fromDeptName} to ${toDeptName}.`;
+          } else {
+            transferMessage += `your department has been updated from ${fromDeptName} to ${toDeptName}.`;
+          }
+          if (hasRoleChanged) {
+            transferMessage += ` Additionally, `;
+          }
+        }
+
+        if (hasRoleChanged) {
+          if (!transferMessage) {
+            transferMessage = `Your role has been updated from ${fromRoleName} to ${toRoleName}.`;
+          } else {
+            transferMessage += `your role has been updated from ${fromRoleName} to ${toRoleName}.`;
+          }
+        }
+
+        // Send transfer notification email
+        const emailResult =
+          await SendGridService.sendEmployeeTransferNotification(
+            updatedEmployee.email,
+            employeeName,
+            fromBranchName,
+            toBranchName,
+            transferDate,
+            managerName,
+            transferMessage,
+            transferSubject,
+            {
+              hasBranchChanged,
+              hasDeptChanged: hasDepartmentChanged,
+              hasRoleChanged,
+              fromDept: fromDeptName,
+              toDept: toDeptName,
+            }
+          );
+
+        if (emailResult.success) {
+          console.log(
+            `✅ Transfer notification email sent to ${updatedEmployee.email}`
+          );
+        } else {
+          console.error(
+            `❌ Failed to send transfer notification email:`,
+            emailResult.error
+          );
+        }
+      } catch (emailError) {
+        console.error(
+          "❌ Error sending transfer notification email:",
+          emailError
+        );
+        // Don't fail the update if email fails
+      }
     }
 
     res.json({
@@ -1026,6 +1369,54 @@ router.post("/:id/terminate", authenticateToken, async (req, res) => {
       terminatedBy
     );
 
+    // Send termination notification email
+    if (result.employee && result.employee.email) {
+      try {
+        // Get the name of the person who terminated the employee
+        let terminatedByName = "HR Department";
+        if (terminatedBy) {
+          const terminator = await db("employees")
+            .where("id", terminatedBy)
+            .select("first_name", "last_name")
+            .first();
+          if (terminator) {
+            terminatedByName = `${terminator.first_name} ${terminator.last_name}`;
+          }
+        }
+
+        const employeeName = `${result.employee.first_name} ${result.employee.last_name}`;
+        const emailResult =
+          await SendGridService.sendEmployeeTerminationNotification(
+            result.employee.email,
+            employeeName,
+            terminationData.termination_reason,
+            terminationData.last_working_day,
+            terminationData.handover_notes || null,
+            terminationData.final_payroll_processed || false,
+            terminationData.system_access_revoked || false,
+            terminatedByName
+          );
+
+        if (emailResult.success) {
+          console.log(
+            `✅ Termination notification email sent to ${result.employee.email}`
+          );
+        } else if (!emailResult.skipEmail) {
+          console.error(
+            `❌ Failed to send termination notification email:`,
+            emailResult.error
+          );
+          // Don't fail the termination if email fails
+        }
+      } catch (emailError) {
+        console.error(
+          "❌ Error sending termination notification email:",
+          emailError
+        );
+        // Don't fail the termination if email fails
+      }
+    }
+
     res.json({
       success: true,
       data: result,
@@ -1237,6 +1628,103 @@ router.patch("/:id/restore-terminated", authenticateToken, async (req, res) => {
   }
 });
 
+// Upload employee documents (for onboarding)
+router.post(
+  "/:id/documents",
+  documentUpload.single("document"),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { document_type } = req.body;
+
+      if (!req.file) {
+        return res.status(400).json({
+          success: false,
+          message: "No document file uploaded",
+        });
+      }
+
+      if (!document_type) {
+        return res.status(400).json({
+          success: false,
+          message: "Document type is required",
+        });
+      }
+
+      // Verify employee exists
+      const employee = await db("employees")
+        .where("id", id)
+        .whereNull("deleted_at")
+        .first();
+      if (!employee) {
+        return res.status(404).json({
+          success: false,
+          message: "Employee not found",
+        });
+      }
+
+      const documentUrl = `/uploads/employee-documents/${req.file.filename}`;
+
+      // Check if a document of this type already exists for this employee
+      const existingDoc = await db("employee_documents")
+        .where("employee_id", id)
+        .where("document_type", document_type)
+        .whereNull("deleted_at")
+        .first();
+
+      let document;
+      if (existingDoc) {
+        // Update existing document
+        [document] = await db("employee_documents")
+          .where("id", existingDoc.id)
+          .update({
+            filename: req.file.filename,
+            original_filename: req.file.originalname,
+            file_path: documentUrl,
+            mime_type: req.file.mimetype,
+            file_size: req.file.size,
+            uploaded_at: new Date(),
+            deleted_at: null,
+          })
+          .returning("*");
+      } else {
+        // Create new document record
+        [document] = await db("employee_documents")
+          .insert({
+            employee_id: id,
+            document_type: document_type,
+            filename: req.file.filename,
+            original_filename: req.file.originalname,
+            file_path: documentUrl,
+            mime_type: req.file.mimetype,
+            file_size: req.file.size,
+            uploaded_at: new Date(),
+          })
+          .returning("*");
+      }
+
+      res.json({
+        success: true,
+        message: "Document uploaded successfully",
+        data: {
+          id: document.id,
+          document_type: document_type,
+          document_url: documentUrl,
+          filename: req.file.filename,
+          original_filename: req.file.originalname,
+        },
+      });
+    } catch (error) {
+      console.error("Error uploading document:", error);
+      res.status(500).json({
+        success: false,
+        message: "Error uploading document",
+        error: error.message,
+      });
+    }
+  }
+);
+
 // Upload profile picture endpoint
 router.post(
   "/me/upload-photo",
@@ -1256,7 +1744,6 @@ router.post(
       const photoUrl = `/uploads/employee-photos/${req.file.filename}`;
 
       // Update employee record with new photo URL
-      const { db } = require("../config/database");
       await db("employees").where("id", userId).update({
         photo_url: photoUrl,
         updated_at: new Date(),

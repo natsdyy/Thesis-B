@@ -1,9 +1,27 @@
 const express = require("express");
 const router = express.Router();
 const LeaveRequest = require("../models/LeaveRequest");
+const SILCredits = require("../models/SILCredits");
+const {
+  getCurrentPhilippineDate,
+  formatPhilippineTime,
+} = require("../utils/timezoneUtils");
+// Normalize YYYY-MM-DD in Asia/Manila
+function normalizePHDateString(input) {
+  if (!input) return input;
+  // If already in YYYY-MM-DD format, return as is
+  if (/^\d{4}-\d{2}-\d{2}$/.test(input)) return input;
+  const d = new Date(input);
+  // Fallback: if invalid date, return original
+  if (isNaN(d.getTime())) return input;
+  return formatPhilippineTime(d, "date").replace(/\//g, "-");
+}
 const { db } = require("../config/database");
 const { authenticateToken } = require("../middleware/rbac");
 const { requireAnyPermission } = require("../middleware/rbac");
+const NotificationService = require("../services/NotificationService");
+const SendGridService = require("../services/sendGridService");
+const Employee = require("../models/Employee");
 
 /**
  * @swagger
@@ -232,7 +250,8 @@ router.get("/my-requests", authenticateToken, async (req, res) => {
  */
 router.post("/", authenticateToken, async (req, res) => {
   try {
-    const { from_date, to_date, leave_type, reason } = req.body;
+    const { from_date, to_date, leave_type, reason, use_sil, sil_days } =
+      req.body;
     const employeeId = req.user.id;
     const createdBy = req.user.id;
 
@@ -244,26 +263,58 @@ router.post("/", authenticateToken, async (req, res) => {
       });
     }
 
-    // Validate date range
-    const fromDate = new Date(from_date);
-    const toDate = new Date(to_date);
-    if (fromDate > toDate) {
+    // Normalize to PH YYYY-MM-DD for storage
+    const normalizedFrom = normalizePHDateString(from_date);
+    const normalizedTo = normalizePHDateString(to_date);
+
+    // Validate date range (compare YYYY-MM-DD strings to avoid TZ issues)
+    if (normalizedFrom > normalizedTo) {
       return res.status(400).json({
         success: false,
         message: "From date cannot be later than To date",
       });
     }
 
+    // Handle SIL usage if requested
+    if (use_sil && sil_days > 0) {
+      try {
+        const currentYear = new Date().getFullYear();
+        await SILCredits.useCredits(employeeId, currentYear, sil_days);
+      } catch (silError) {
+        return res.status(400).json({
+          success: false,
+          message: silError.message,
+        });
+      }
+    }
+
     const leaveRequest = await LeaveRequest.create(
       {
         employee_id: employeeId,
-        from_date,
-        to_date,
+        from_date: normalizedFrom,
+        to_date: normalizedTo,
         leave_type,
         reason,
+        use_sil: use_sil || false,
+        sil_days: sil_days || 0,
       },
       createdBy
     );
+
+    // Create notification for HR managers
+    try {
+      await NotificationService.createOvertimeLeaveNotification(
+        leaveRequest.id,
+        "requested",
+        "leave"
+      );
+    } catch (notificationError) {
+      console.error(
+        "Error creating leave request notification:",
+        notificationError
+      );
+      // Don't fail the main request if notification fails
+    }
 
     res.status(201).json({
       success: true,
@@ -462,6 +513,8 @@ router.get(
         to_date: request.to_date,
         reason: request.reason,
         status: request.status,
+        use_sil: request.use_sil,
+        sil_days: request.sil_days,
         created_at: request.created_at,
         manager_approved_at: request.manager_approved_at,
         hr_approved_at: request.hr_approved_at,
@@ -492,6 +545,191 @@ router.get(
       res.status(500).json({
         success: false,
         message: "Error fetching leave history",
+        error: error.message,
+      });
+    }
+  }
+);
+
+/**
+ * @swagger
+ * /api/leave/sil-credits:
+ *   get:
+ *     summary: Get SIL credits for current employee
+ *     tags: [Leave Requests]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: SIL credits retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     year:
+ *                       type: integer
+ *                     total_credits:
+ *                       type: number
+ *                     used_credits:
+ *                       type: number
+ *                     available_credits:
+ *                       type: number
+ *                     last_accrual_date:
+ *                       type: string
+ *                       format: date
+ *       401:
+ *         description: Unauthorized
+ */
+router.get("/sil-credits", authenticateToken, async (req, res) => {
+  try {
+    const employeeId = req.user.id;
+    const silCredits = await SILCredits.getSummary(employeeId);
+
+    res.json({
+      success: true,
+      data: silCredits,
+    });
+  } catch (error) {
+    console.error("Error fetching SIL credits:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching SIL credits",
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * @swagger
+ * /api/leave/sil-credits/all:
+ *   get:
+ *     summary: Get all SIL credits (HR/Admin only)
+ *     tags: [Leave Requests]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: year
+ *         schema:
+ *           type: integer
+ *         description: Filter by year
+ *       - in: query
+ *         name: department
+ *         schema:
+ *           type: string
+ *         description: Filter by department
+ *       - in: query
+ *         name: branch_id
+ *         schema:
+ *           type: integer
+ *         description: Filter by branch ID
+ *     responses:
+ *       200:
+ *         description: All SIL credits retrieved successfully
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden
+ */
+router.get(
+  "/sil-credits/all",
+  authenticateToken,
+  requireAnyPermission([
+    "Manage Employee Leave",
+    "Manage Employees",
+    "View Leave Reports",
+  ]),
+  async (req, res) => {
+    try {
+      const { year, department, branch_id } = req.query;
+
+      const filters = {};
+      if (year) filters.year = parseInt(year);
+      if (department) filters.department = department;
+      if (branch_id) filters.branch_id = parseInt(branch_id);
+
+      const silCredits = await SILCredits.getAll(filters);
+
+      res.json({
+        success: true,
+        data: silCredits,
+      });
+    } catch (error) {
+      console.error("Error fetching all SIL credits:", error);
+      res.status(500).json({
+        success: false,
+        message: "Error fetching SIL credits",
+        error: error.message,
+      });
+    }
+  }
+);
+
+/**
+ * @swagger
+ * /api/leave/sil-credits/initialize:
+ *   post:
+ *     summary: Initialize SIL credits for all employees for a year
+ *     tags: [Leave Requests]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - year
+ *             properties:
+ *               year:
+ *                 type: integer
+ *                 description: Year to initialize SIL credits for
+ *     responses:
+ *       200:
+ *         description: SIL credits initialized successfully
+ *       400:
+ *         description: Bad request
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden
+ */
+router.post(
+  "/sil-credits/initialize",
+  authenticateToken,
+  requireAnyPermission(["Manage Employee Leave", "Manage Employees"]),
+  async (req, res) => {
+    try {
+      const { year } = req.body;
+
+      if (!year) {
+        return res.status(400).json({
+          success: false,
+          message: "Year is required",
+        });
+      }
+
+      const results = await SILCredits.initializeForAllEmployees(
+        parseInt(year)
+      );
+
+      res.json({
+        success: true,
+        data: results,
+        message: `SIL credits initialized for ${results.length} employees for year ${year}`,
+      });
+    } catch (error) {
+      console.error("Error initializing SIL credits:", error);
+      res.status(500).json({
+        success: false,
+        message: "Error initializing SIL credits",
         error: error.message,
       });
     }
@@ -586,8 +824,14 @@ router.post(
     const user = req.user || {};
     const roleName = (user.role || "").toLowerCase();
 
-    // Allow branch managers or HR to approve
-    if (roleName.includes("manager") || roleName.includes("hr")) {
+    // Allow branch managers, HR, or board members to approve
+    if (
+      roleName.includes("manager") ||
+      roleName.includes("hr") ||
+      user.user_type === "board_member" ||
+      user.board_id ||
+      user.position
+    ) {
       return next();
     }
 
@@ -605,6 +849,59 @@ router.post(
 
       const updated = await LeaveRequest.approveByManager(id, managerId, notes);
 
+      // Create notification for employee
+      try {
+        await NotificationService.createOvertimeLeaveNotification(
+          id,
+          "approved",
+          "leave"
+        );
+      } catch (notificationError) {
+        console.error(
+          "Error creating leave approval notification:",
+          notificationError
+        );
+        // Don't fail the main request if notification fails
+      }
+
+      // Send email notification
+      try {
+        // Get full leave request details with employee info
+        const leaveDetails = await LeaveRequest.getById(id);
+        if (leaveDetails) {
+          // Get employee details for email
+          const employee = await Employee.getById(leaveDetails.employee_id);
+          // Get manager details
+          const manager = await Employee.getById(managerId);
+
+          if (employee && employee.email) {
+            await SendGridService.sendLeaveApprovalNotification(
+              employee.email,
+              `${employee.first_name} ${employee.last_name}`,
+              {
+                leave_type: leaveDetails.leave_type,
+                from_date: leaveDetails.from_date,
+                to_date: leaveDetails.to_date,
+                reason: leaveDetails.reason,
+                use_sil: leaveDetails.use_sil,
+                sil_days: leaveDetails.sil_days,
+                days: SendGridService.calculateDays(
+                  leaveDetails.from_date,
+                  leaveDetails.to_date
+                ),
+              },
+              manager
+                ? `${manager.first_name} ${manager.last_name}`
+                : "Manager",
+              notes
+            );
+          }
+        }
+      } catch (emailError) {
+        console.error("Error sending leave approval email:", emailError);
+        // Don't fail the main request if email fails
+      }
+
       res.json({
         success: true,
         data: updated,
@@ -612,6 +909,16 @@ router.post(
       });
     } catch (error) {
       console.error("Error approving leave by manager:", error);
+
+      // Handle self-approval error specifically
+      if (error.message.includes("cannot approve your own leave request")) {
+        return res.status(403).json({
+          success: false,
+          message: error.message,
+          code: "SELF_APPROVAL_NOT_ALLOWED",
+        });
+      }
+
       res.status(500).json({
         success: false,
         message: "Error approving leave request",
@@ -670,6 +977,59 @@ router.post(
 
       const updated = await LeaveRequest.approveByHR(id, hrId, notes);
 
+      // Create notification for employee
+      try {
+        await NotificationService.createOvertimeLeaveNotification(
+          id,
+          "approved",
+          "leave"
+        );
+      } catch (notificationError) {
+        console.error(
+          "Error creating leave approval notification:",
+          notificationError
+        );
+        // Don't fail the main request if notification fails
+      }
+
+      // Send email notification
+      try {
+        // Get full leave request details with employee info
+        const leaveDetails = await LeaveRequest.getById(id);
+        if (leaveDetails) {
+          // Get employee details for email
+          const employee = await Employee.getById(leaveDetails.employee_id);
+          // Get HR details
+          const hrStaff = await Employee.getById(hrId);
+
+          if (employee && employee.email) {
+            await SendGridService.sendLeaveApprovalNotification(
+              employee.email,
+              `${employee.first_name} ${employee.last_name}`,
+              {
+                leave_type: leaveDetails.leave_type,
+                from_date: leaveDetails.from_date,
+                to_date: leaveDetails.to_date,
+                reason: leaveDetails.reason,
+                use_sil: leaveDetails.use_sil,
+                sil_days: leaveDetails.sil_days,
+                days: SendGridService.calculateDays(
+                  leaveDetails.from_date,
+                  leaveDetails.to_date
+                ),
+              },
+              hrStaff
+                ? `${hrStaff.first_name} ${hrStaff.last_name}`
+                : "HR Staff",
+              notes
+            );
+          }
+        }
+      } catch (emailError) {
+        console.error("Error sending leave approval email:", emailError);
+        // Don't fail the main request if email fails
+      }
+
       res.json({
         success: true,
         data: updated,
@@ -677,6 +1037,16 @@ router.post(
       });
     } catch (error) {
       console.error("Error approving leave by HR:", error);
+
+      // Handle self-approval error specifically
+      if (error.message.includes("cannot approve your own leave request")) {
+        return res.status(403).json({
+          success: false,
+          message: error.message,
+          code: "SELF_APPROVAL_NOT_ALLOWED",
+        });
+      }
+
       res.status(500).json({
         success: false,
         message: "Error approving leave request",
@@ -729,8 +1099,14 @@ router.post(
     const user = req.user || {};
     const roleName = (user.role || "").toLowerCase();
 
-    // Allow managers or HR to reject
-    if (roleName.includes("manager") || roleName.includes("hr")) {
+    // Allow managers, HR, or board members to reject
+    if (
+      roleName.includes("manager") ||
+      roleName.includes("hr") ||
+      user.user_type === "board_member" ||
+      user.board_id ||
+      user.position
+    ) {
       return next();
     }
 
@@ -759,6 +1135,59 @@ router.post(
         rejection_reason
       );
 
+      // Create notification for employee
+      try {
+        await NotificationService.createOvertimeLeaveNotification(
+          id,
+          "rejected",
+          "leave"
+        );
+      } catch (notificationError) {
+        console.error(
+          "Error creating leave rejection notification:",
+          notificationError
+        );
+        // Don't fail the main request if notification fails
+      }
+
+      // Send email notification
+      try {
+        // Get full leave request details with employee info
+        const leaveDetails = await LeaveRequest.getById(id);
+        if (leaveDetails) {
+          // Get employee details for email
+          const employee = await Employee.getById(leaveDetails.employee_id);
+          // Get rejector details
+          const rejector = await Employee.getById(rejectedById);
+
+          if (employee && employee.email) {
+            await SendGridService.sendLeaveRejectionNotification(
+              employee.email,
+              `${employee.first_name} ${employee.last_name}`,
+              {
+                leave_type: leaveDetails.leave_type,
+                from_date: leaveDetails.from_date,
+                to_date: leaveDetails.to_date,
+                reason: leaveDetails.reason,
+                use_sil: leaveDetails.use_sil,
+                sil_days: leaveDetails.sil_days,
+                days: SendGridService.calculateDays(
+                  leaveDetails.from_date,
+                  leaveDetails.to_date
+                ),
+              },
+              rejector
+                ? `${rejector.first_name} ${rejector.last_name}`
+                : "Manager",
+              rejection_reason
+            );
+          }
+        }
+      } catch (emailError) {
+        console.error("Error sending leave rejection email:", emailError);
+        // Don't fail the main request if email fails
+      }
+
       res.json({
         success: true,
         data: updated,
@@ -766,6 +1195,16 @@ router.post(
       });
     } catch (error) {
       console.error("Error rejecting leave request:", error);
+
+      // Handle self-rejection error specifically
+      if (error.message.includes("cannot reject your own leave request")) {
+        return res.status(403).json({
+          success: false,
+          message: error.message,
+          code: "SELF_REJECTION_NOT_ALLOWED",
+        });
+      }
+
       res.status(500).json({
         success: false,
         message: "Error rejecting leave request",
@@ -819,7 +1258,13 @@ router.post(
 router.put("/:id", authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const updateData = req.body;
+    const updateData = { ...req.body };
+    if (updateData.from_date) {
+      updateData.from_date = normalizePHDateString(updateData.from_date);
+    }
+    if (updateData.to_date) {
+      updateData.to_date = normalizePHDateString(updateData.to_date);
+    }
     const updatedBy = req.user.id;
 
     const updated = await LeaveRequest.update(id, updateData, updatedBy);
@@ -910,8 +1355,14 @@ router.get(
     const user = req.user || {};
     const roleName = (user.role || "").toLowerCase();
 
-    // Allow branch managers or HR to view
-    if (roleName.includes("manager") || roleName.includes("hr")) {
+    // Allow branch managers, HR, or board members to view
+    if (
+      roleName.includes("manager") ||
+      roleName.includes("hr") ||
+      user.user_type === "board_member" ||
+      user.board_id ||
+      user.position
+    ) {
       return next();
     }
 
@@ -1036,7 +1487,7 @@ router.get(
       });
 
       const requests = result.data || [];
-      const today = new Date().toISOString().split("T")[0];
+      const today = getCurrentPhilippineDate();
 
       const stats = {
         total: requests.length,
@@ -1047,10 +1498,15 @@ router.get(
         rejected: requests.filter((r) => r.status === "rejected").length,
         approved_today: requests.filter((r) => {
           if (r.status !== "approved_by_hr") return false;
+          if (!r.hr_approved_at && !r.manager_approved_at) return false;
           const approvedDate = new Date(
             r.hr_approved_at || r.manager_approved_at
           );
-          return approvedDate.toISOString().split("T")[0] === today;
+          const approvedDatePH = formatPhilippineTime(
+            approvedDate,
+            "date"
+          ).replace(/\//g, "-");
+          return approvedDatePH === today;
         }).length,
         by_leave_type: {},
         by_department: {},

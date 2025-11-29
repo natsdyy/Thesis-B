@@ -61,6 +61,10 @@ router.post("/orders", authenticateToken, async (req, res) => {
       change_amount: parseFloat(req.body.change_amount),
       items: req.body.items || [],
       notes: req.body.notes || null,
+      // PH SC/PWD fields (optional)
+      discount_type: req.body.discount_type || "NONE", // NONE | SC | PWD
+      beneficiary_name: req.body.beneficiary_name || null,
+      beneficiary_id_no: req.body.beneficiary_id_no || null,
     };
 
     // Validation
@@ -104,6 +108,9 @@ router.get("/orders", authenticateToken, async (req, res) => {
       order_type: req.query.order_type || null,
       date_from: req.query.date_from || null,
       date_to: req.query.date_to || null,
+      remittance_id: req.query.remittance_id
+        ? parseInt(req.query.remittance_id)
+        : null,
       limit: req.query.limit ? parseInt(req.query.limit) : 20,
       offset: req.query.offset ? parseInt(req.query.offset) : 0,
     };
@@ -150,11 +157,13 @@ router.get("/orders/:id", authenticateToken, async (req, res) => {
 router.get("/orders/public/:orderNumber", async (req, res) => {
   try {
     const orderNumber = req.params.orderNumber;
+    console.log("Fetching order details for order number:", orderNumber);
 
     // Get order by order number (not ID)
     const order = await POSOrder.getByOrderNumber(orderNumber);
 
     if (!order) {
+      console.log("Order not found:", orderNumber);
       return res.status(404).json({
         success: false,
         message: "Order not found",
@@ -180,6 +189,59 @@ router.get("/orders/public/:orderNumber", async (req, res) => {
     res.status(500).json({
       success: false,
       message: error.message || "Failed to fetch order details",
+    });
+  }
+});
+
+// GET /api/pos/queue - Public queue board (customers)
+// Query: branch_id (required), limit (optional, default 100)
+router.get("/queue", async (req, res) => {
+  try {
+    const branchId = req.query.branch_id ? parseInt(req.query.branch_id) : null;
+    const limit = req.query.limit ? parseInt(req.query.limit) : 100;
+
+    if (!branchId) {
+      return res.status(400).json({
+        success: false,
+        message: "branch_id is required",
+      });
+    }
+
+    // Only show today's orders to keep the queue small
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date();
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const { orders } = await POSOrder.getAll({
+      branch_id: branchId,
+      date_from: startOfDay.toISOString(),
+      date_to: endOfDay.toISOString(),
+      limit,
+      offset: 0,
+    });
+
+    const filtered = (orders || [])
+      .filter(
+        (o) =>
+          o.status === "pending" ||
+          o.status === "processing" ||
+          o.status === "completed"
+      )
+      .map((o) => ({
+        order_number: o.order_number,
+        status: o.status,
+        created_at: o.created_at,
+        completed_at: o.completed_at || null,
+      }))
+      .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
+    res.json({ success: true, data: filtered });
+  } catch (error) {
+    console.error("Error fetching public queue:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch public queue",
     });
   }
 });

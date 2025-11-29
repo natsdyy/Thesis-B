@@ -100,11 +100,8 @@
     );
   });
 
-  const requiresQuantityInput = computed(() => {
-    return ['set_quantity', 'add_quantity', 'reduce_quantity'].includes(
-      adjustmentForm.value.adjustment_type
-    );
-  });
+  // Quantity-based adjustments removed; only disposal may require cost
+  const requiresQuantityInput = computed(() => false);
 
   const requiresDateInput = computed(() => {
     return adjustmentForm.value.adjustment_type === 'set_expiry_date';
@@ -133,11 +130,8 @@
       return [{ value: 'disposal', label: 'Dispose Item' }];
     }
 
-    // For non-expired items, allow all adjustment types
+    // For non-expired items, keep only non-quantity actions
     return [
-      { value: 'set_quantity', label: 'Set Exact Quantity' },
-      { value: 'add_quantity', label: 'Add Quantity' },
-      { value: 'reduce_quantity', label: 'Reduce Quantity' },
       { value: 'mark_expired', label: 'Mark as Expired' },
       { value: 'mark_damaged', label: 'Mark as Damaged' },
       { value: 'set_expiry_date', label: 'Set Expiry Date' },
@@ -157,11 +151,6 @@
       adjustmentForm.value.notes;
 
     if (!basicValid) return false;
-
-    if (requiresQuantityInput.value) {
-      const qty = parseFloat(adjustmentForm.value.new_quantity);
-      return !isNaN(qty) && qty >= 0;
-    }
 
     if (requiresDateInput.value) {
       return !!adjustmentForm.value.expiry_date;
@@ -184,17 +173,6 @@
     let newQuantity = currentQty;
 
     switch (adjustmentForm.value.adjustment_type) {
-      case 'set_quantity':
-        newQuantity = parseFloat(adjustmentForm.value.new_quantity) || 0;
-        break;
-      case 'add_quantity':
-        newQuantity =
-          currentQty + (parseFloat(adjustmentForm.value.new_quantity) || 0);
-        break;
-      case 'reduce_quantity':
-        newQuantity =
-          currentQty - (parseFloat(adjustmentForm.value.new_quantity) || 0);
-        break;
       case 'mark_expired':
       case 'mark_damaged':
       case 'disposal':
@@ -235,12 +213,6 @@
 
   const getQuantityLabel = () => {
     switch (adjustmentForm.value.adjustment_type) {
-      case 'set_quantity':
-        return 'New Quantity';
-      case 'add_quantity':
-        return 'Quantity to Add';
-      case 'reduce_quantity':
-        return 'Quantity to Reduce';
       case 'disposal':
         return 'Disposal Cost';
       default:
@@ -249,54 +221,19 @@
   };
 
   const getQuantityPlaceholder = () => {
-    switch (adjustmentForm.value.adjustment_type) {
-      case 'set_quantity':
-        return 'Enter exact quantity';
-      case 'add_quantity':
-        return 'Enter quantity to add';
-      case 'reduce_quantity':
-        return 'Enter quantity to reduce';
-      default:
-        return '0.000';
-    }
+    return '0.000';
   };
 
   const getQuantityHint = () => {
     if (!selectedStock.value) return '';
-    const current = parseFloat(selectedStock.value.quantity);
-
-    switch (adjustmentForm.value.adjustment_type) {
-      case 'set_quantity':
-        return 'Will replace current quantity';
-      case 'add_quantity':
-        return 'Will be added to current quantity';
-      case 'reduce_quantity':
-        return `Max: ${current} ${selectedStock.value.unit_of_measure}`;
-      default:
-        return '';
-    }
+    return '';
   };
 
   const getMinQuantity = () => {
-    switch (adjustmentForm.value.adjustment_type) {
-      case 'set_quantity':
-        return 0;
-      case 'add_quantity':
-        return 0.001;
-      case 'reduce_quantity':
-        return 0.001;
-      default:
-        return 0;
-    }
+    return 0;
   };
 
   const getMaxQuantity = () => {
-    if (
-      adjustmentForm.value.adjustment_type === 'reduce_quantity' &&
-      selectedStock.value
-    ) {
-      return parseFloat(selectedStock.value.quantity);
-    }
     return 999999;
   };
 
@@ -348,6 +285,8 @@
   const onAdjustmentTypeChange = () => {
     adjustmentForm.value.new_quantity = '';
     adjustmentForm.value.disposal_cost = '';
+    // Reset reason when type changes to avoid stale, now-invalid selections
+    adjustmentForm.value.reason = '';
     if (adjustmentForm.value.adjustment_type !== 'set_expiry_date') {
       adjustmentForm.value.expiry_date = '';
     }
@@ -368,24 +307,45 @@
     };
   };
 
+  // Reason options filtered by adjustment type
+  const allReasonOptions = [
+    {
+      value: 'Physical Count Discrepancy',
+      label: 'Physical Count Discrepancy',
+    },
+    { value: 'Received Additional Stock', label: 'Received Additional Stock' },
+    { value: 'Theft/Loss', label: 'Theft/Loss' },
+    { value: 'Damage', label: 'Damage' },
+    { value: 'Expiry', label: 'Expiry' },
+    { value: 'Data Entry Error', label: 'Data Entry Error' },
+    {
+      value: 'Transfer to Another Location',
+      label: 'Transfer to Another Location',
+    },
+    { value: 'Quality Control Rejection', label: 'Quality Control Rejection' },
+    { value: 'Other', label: 'Other' },
+  ];
+
+  const availableReasons = computed(() => {
+    const type = adjustmentForm.value.adjustment_type;
+    // Mapping of adjustment type to allowed reasons
+    const allowListByType = {
+      set_expiry_date: ['Expiry', 'Data Entry Error', 'Other'],
+      mark_expired: ['Expiry', 'Other'],
+      mark_damaged: ['Damage', 'Quality Control Rejection', 'Other'],
+      disposal: ['Expiry', 'Damage', 'Quality Control Rejection', 'Other'],
+    };
+
+    const allowList = allowListByType[type];
+    if (!allowList) return allReasonOptions;
+    return allReasonOptions.filter((opt) => allowList.includes(opt.value));
+  });
+
   const handleSubmit = () => {
     if (!isFormValid.value) return;
 
     let finalQuantity;
     switch (adjustmentForm.value.adjustment_type) {
-      case 'set_quantity':
-        finalQuantity = parseFloat(adjustmentForm.value.new_quantity);
-        break;
-      case 'add_quantity':
-        finalQuantity =
-          parseFloat(selectedStock.value.quantity) +
-          parseFloat(adjustmentForm.value.new_quantity);
-        break;
-      case 'reduce_quantity':
-        finalQuantity =
-          parseFloat(selectedStock.value.quantity) -
-          parseFloat(adjustmentForm.value.new_quantity);
-        break;
       case 'mark_expired':
       case 'mark_damaged':
       case 'disposal':
@@ -399,13 +359,7 @@
       inventory_item_id: adjustmentForm.value.inventory_item_id,
       transaction_type: 'adjustment',
       quantity: finalQuantity,
-      new_quantity: [
-        'set_quantity',
-        'add_quantity',
-        'reduce_quantity',
-      ].includes(adjustmentForm.value.adjustment_type)
-        ? parseFloat(adjustmentForm.value.new_quantity)
-        : null,
+      new_quantity: null,
       reference_number: adjustmentForm.value.reference_number || null,
       reason: adjustmentForm.value.reason,
       notes: adjustmentForm.value.notes,
@@ -468,6 +422,7 @@
               class="select select-bordered w-full"
               required
               @change="onCategoryChange"
+              disabled
             >
               <option value="">Select Category</option>
               <option
@@ -486,6 +441,7 @@
               <span class="label-text-alt text-error">*</span>
             </label>
             <select
+              disabled
               v-model="adjustmentForm.item_type_id"
               class="select select-bordered w-full"
               required
@@ -529,7 +485,11 @@
         <!-- Current Stock Info -->
         <div
           v-if="selectedStock"
-          :class="isExpiredItem ? 'alert alert-error' : 'alert alert-success'"
+          :class="
+            isExpiredItem
+              ? 'alert bg-error/10 border-error'
+              : 'alert bg-success/10 border-success '
+          "
           class="mb-6 w-full"
         >
           <div class="flex items-center w-full">
@@ -558,18 +518,19 @@
                 </div>
 
                 <div class="flex justify-between text-sm overflow-x-auto">
-                  <span class="text-sm">Current Value:</span>
-                  <span
-                    >₱{{
-                      parseFloat(selectedStock.total_value).toLocaleString()
-                    }}</span
-                  >
-                </div>
+  <span class="text-sm">Current Value:</span>
+  <span>
+    ₱{{ 
+      Number(selectedStock.total_value || 0).toLocaleString('en-PH', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      }) 
+    }}
+  </span>
+</div>
 
-                <div class="flex justify-between text-sm overflow-x-auto">
-                  <span class="text-sm">Batch:</span>
-                  <span>{{ selectedStock.batch_number }}</span>
-                </div>
+
+
 
                 <div
                   v-if="isExpiredItem"
@@ -691,23 +652,13 @@
               required
             >
               <option value="">Select Reason</option>
-              <option value="Physical Count Discrepancy">
-                Physical Count Discrepancy
+              <option
+                v-for="r in availableReasons"
+                :key="r.value"
+                :value="r.value"
+              >
+                {{ r.label }}
               </option>
-              <option value="Received Additional Stock">
-                Received Additional Stock
-              </option>
-              <option value="Theft/Loss">Theft/Loss</option>
-              <option value="Damage">Damage</option>
-              <option value="Expiry">Expiry</option>
-              <option value="Data Entry Error">Data Entry Error</option>
-              <option value="Transfer to Another Location">
-                Transfer to Another Location
-              </option>
-              <option value="Quality Control Rejection">
-                Quality Control Rejection
-              </option>
-              <option value="Other">Other</option>
             </select>
           </div>
 
@@ -739,10 +690,7 @@
         </div>
 
         <!-- Preview Section -->
-        <div
-          v-if="adjustmentPreview"
-          class="alert bg-secondaryColor/20 mb-6 w-full"
-        >
+        <div v-if="adjustmentPreview" class="alert mb-6 w-full">
           <div class="flex items-center w-full">
             <!-- Make sure the container is responsive and has a min-width for smaller screens -->
             <div class="w-full min-w-[300px] sm:min-w-[550px]">

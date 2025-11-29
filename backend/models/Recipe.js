@@ -306,33 +306,39 @@ class Recipe {
 
       const scaleFactor = batchSize ? batchSize / recipe.batch_size : 1;
 
-      const availability = await Promise.all(
-        recipe.ingredients.map(async (ingredient) => {
-          const requiredQuantity =
-            parseFloat(ingredient.quantity_required) * scaleFactor;
-
-          // Get current inventory for this ingredient (excluding expired items)
-          const currentStock = await db("inventory_items as ii")
-            .select(db.raw("SUM(ii.quantity) as total_available"))
-            .where("ii.id", ingredient.inventory_item_id)
-            .where("ii.quantity", ">", 0)
-            .where("ii.status", "available") // Exclude expired items
-            .first();
-
-          const availableQuantity = parseFloat(
-            currentStock?.total_available || 0
-          );
-          const isAvailable = availableQuantity >= requiredQuantity;
-
-          return {
-            ...ingredient,
-            required_quantity: requiredQuantity,
-            available_quantity: availableQuantity,
-            is_available: isAvailable,
-            shortage: isAvailable ? 0 : requiredQuantity - availableQuantity,
-          };
-        })
+      // OPTIMIZATION: Get all inventory data in one query instead of N+1
+      const inventoryItemIds = recipe.ingredients.map(
+        (ing) => ing.inventory_item_id
       );
+      const inventoryData = await db("inventory_items as ii")
+        .select("ii.id", db.raw("SUM(ii.quantity) as total_available"))
+        .whereIn("ii.id", inventoryItemIds)
+        .where("ii.quantity", ">", 0)
+        .where("ii.status", "available") // Exclude expired items
+        .groupBy("ii.id");
+
+      // Create a map for O(1) lookup
+      const inventoryMap = new Map();
+      inventoryData.forEach((item) => {
+        inventoryMap.set(item.id, parseFloat(item.total_available || 0));
+      });
+
+      const availability = recipe.ingredients.map((ingredient) => {
+        const requiredQuantity =
+          parseFloat(ingredient.quantity_required) * scaleFactor;
+
+        const availableQuantity =
+          inventoryMap.get(ingredient.inventory_item_id) || 0;
+        const isAvailable = availableQuantity >= requiredQuantity;
+
+        return {
+          ...ingredient,
+          required_quantity: requiredQuantity,
+          available_quantity: availableQuantity,
+          is_available: isAvailable,
+          shortage: isAvailable ? 0 : requiredQuantity - availableQuantity,
+        };
+      });
 
       const allAvailable = availability.every((ing) => ing.is_available);
 

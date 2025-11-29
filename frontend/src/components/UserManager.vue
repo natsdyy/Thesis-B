@@ -267,7 +267,7 @@
         <div v-else :class="['overflow-x-auto transition-colors duration-300', themeStore.themeClasses.cardBg]">
           <table :class="[
             'table transition-colors duration-300',
-            themeStore.isDarkMode ? 'table-zebra-dark' : 'table-zebra',
+            'table-zebra',
             themeStore.themeClasses.textSecondary,
             'border',
             themeStore.themeClasses.border

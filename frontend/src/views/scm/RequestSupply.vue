@@ -1,14 +1,25 @@
 <script setup>
-  import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue';
+  import {
+    ref,
+    computed,
+    onMounted,
+    onBeforeUnmount,
+    watch,
+    nextTick,
+  } from 'vue';
   import { useSupplyRequestStore } from '../../stores/supplyRequestStore.js';
   import { useBudgetReleaseStore } from '../../stores/budgetReleaseStore.js';
   import { useBranchRequestStore } from '../../stores/branchRequestStore.js';
   import { useAuthStore } from '../../stores/authStore.js';
   import { useInventoryStore } from '../../stores/inventoryStore.js';
   import { useBranchStore } from '../../stores/branchStore.js';
+  import { useSupplierStore } from '../../stores/supplierStore.js';
+  import { useProductionStore } from '../../stores/productionStore.js';
   import cashRequestReceiptModal from '../../components/scm/cashRequestReceiptModal.vue';
   import PikaDay from 'pikaday';
   import 'pikaday/css/pikaday.css';
+  import axios from 'axios';
+  import { apiConfig } from '../../config/api.js';
   import {
     ReceiptText,
     CheckCircle,
@@ -17,7 +28,6 @@
     Clock,
     RefreshCcw,
     Plus,
-    EllipsisVertical,
     X,
     History,
     Send,
@@ -30,10 +40,18 @@
     DollarSign,
     FileCheck,
     Eye,
+    PartyPopper,
     TriangleAlert,
     PhilippinePeso,
   } from 'lucide-vue-next';
   import { useRouter } from 'vue-router';
+  import {
+    getCurrentPhilippineTime,
+    getCurrentPhilippineDate,
+    formatForDisplay,
+    formatTimeForDisplay,
+    parseFromAPI,
+  } from '../../utils/timezoneUtils.js';
 
   // Stores
   const supplyRequestStore = useSupplyRequestStore();
@@ -43,12 +61,14 @@
   const authStore = useAuthStore();
   const inventoryStore = useInventoryStore();
   const branchStore = useBranchStore();
+  const supplierStore = useSupplierStore();
+  const productionStore = useProductionStore();
 
   // Local state
   const loading = ref(false);
   const currentPage = ref(1);
   const requestsPerPage = ref(10);
-  const rowRequestModalPerPage = ref(5);
+  const rowRequestModalPerPage = ref(10);
   const requestModalCurrentPage = ref(1);
   const requestHistoryCurrentPage = ref(1);
   const requestHistoryPerPage = ref(10);
@@ -57,6 +77,132 @@
   const receiptData = ref(null);
   const showBranchRequestModal = ref(false);
   const selectedBranchRequest = ref(null);
+  // SCM availability helper modal state
+  const showAvailabilityModal = ref(false);
+  const isCheckingAvailability = ref(false);
+
+  const openAvailabilityModal = async () => {
+    try {
+      isCheckingAvailability.value = true;
+      const isProductionSource =
+        (selectedBranchRequest.value?.source_type || '')
+          .toString()
+          .toLowerCase() === 'production';
+
+      if (isProductionSource) {
+        if (
+          !Array.isArray(productionStore.productionInventory) ||
+          productionStore.productionInventory.length === 0
+        ) {
+          await productionStore.fetchProductionInventory();
+        }
+      } else {
+        if (
+          !Array.isArray(inventoryStore.currentInventory) ||
+          inventoryStore.currentInventory.length === 0
+        ) {
+          await inventoryStore.fetchCurrentInventory();
+        }
+      }
+      showAvailabilityModal.value = true;
+    } catch (_) {
+      showAvailabilityModal.value = true;
+    } finally {
+      isCheckingAvailability.value = false;
+    }
+  };
+
+  const closeAvailabilityModal = () => {
+    showAvailabilityModal.value = false;
+  };
+
+  const availabilityRows = computed(() => {
+    const request = selectedBranchRequest.value;
+    if (!request || !Array.isArray(request.items)) return [];
+
+    const isProductionSource =
+      (request.source_type || '').toString().toLowerCase() === 'production';
+
+    const scmInv = inventoryStore.currentInventory || [];
+    const prodInv = productionStore.productionInventory || [];
+
+    return request.items.map((it) => {
+      const neededQty = Number(it.item_quantity || 0);
+      const itemSource = (it.item_type || request.source_type || '')
+        .toString()
+        .toLowerCase();
+
+      if (itemSource === 'production' || isProductionSource) {
+        let match = null;
+        if (it.menu_item_id) {
+          match = prodInv.find((x) => x.menu_item_id == it.menu_item_id);
+        }
+        if (!match) {
+          match = prodInv.find(
+            (x) =>
+              (x.item_name || x.menu_item_name || '').toLowerCase() ===
+              (it.item_name || '').toLowerCase()
+          );
+        }
+        const availableQty = match ? Number(match.available_quantity || 0) : 0;
+        const status = match
+          ? availableQty >= neededQty
+            ? 'available'
+            : 'insufficient'
+          : 'missing';
+        return {
+          id: it.id,
+          name: it.item_name,
+          unit: it.item_unit || match?.unit_of_measure || 'servings',
+          needed: neededQty,
+          available: match ? availableQty : null,
+          category:
+            it.category || match?.category || match?.category_name || '-',
+          source: 'Production',
+          status,
+        };
+      }
+
+      let match = null;
+      if (it.inventory_item_id) {
+        match = scmInv.find((x) => x.id == it.inventory_item_id);
+      }
+      if (!match) {
+        if (it.item_type_id) {
+          match = scmInv.find((x) => x.item_type_id == it.item_type_id);
+        }
+        if (!match) {
+          match = scmInv.find(
+            (x) =>
+              (x.item_name || x.item_type_name || '').toLowerCase() ===
+              (it.item_name || '').toLowerCase()
+          );
+        }
+      }
+      const availableQty = match ? Number(match.quantity || 0) : 0;
+      const status = match
+        ? availableQty >= neededQty
+          ? 'available'
+          : 'insufficient'
+        : 'missing';
+      return {
+        id: it.id,
+        name: it.item_name,
+        unit: it.item_unit || match?.unit_of_measure || 'pieces',
+        needed: neededQty,
+        available: match ? availableQty : null,
+        category: it.category || match?.category_name || '-',
+        source: 'SCM',
+        status,
+      };
+    });
+  });
+
+  // Supplier integration state
+  const selectedSupplierId = ref('');
+  const supplierProducts = ref([]);
+  const productPromoInfo = ref({}); // Store promo info for each product
+  const forceDropdownUpdate = ref(0); // Force dropdown re-render
 
   // Tab system state
   const activeTab = ref('supply-requests');
@@ -70,18 +216,9 @@
     receiptData.value = null;
   }
 
-  // Philippine Time helper functions
-  const getPhilippineTime = () => {
-    // Always get the current time in Asia/Manila
-    const now = new Date();
-    // Convert to Asia/Manila by using toLocaleString and then new Date
-    return new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
-  };
-
-  const getPhilippineDateString = (date = null) => {
-    const targetDate = date || getPhilippineTime();
-    return targetDate.toISOString().split('T')[0];
-  };
+  // Philippine Time helper functions - now using centralized utilities
+  const getPhilippineTime = getCurrentPhilippineTime;
+  const getPhilippineDateString = getCurrentPhilippineDate;
 
   // Smart pagination helper
   const getPageRange = () => {
@@ -102,21 +239,17 @@
     return range;
   };
 
-  // Add helper functions for better date/time formatting
+  // Add helper functions for better date/time formatting - now using centralized utilities
   const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-PH', {
+    return formatForDisplay(dateString, 'en-PH', {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
-      timeZone: 'Asia/Manila',
     });
   };
 
   const formatTime = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleTimeString('en-PH', {
-      timeZone: 'Asia/Manila',
+    return formatTimeForDisplay(dateString, 'en-PH', {
       hour: '2-digit',
       minute: '2-digit',
     });
@@ -161,6 +294,7 @@
       menu_item_id: null,
       category: '',
       source: '',
+      supplier_product_id: null,
     });
   };
 
@@ -180,6 +314,8 @@
         item_quantity: r.item_quantity,
         item_unit: r.item_unit,
         item_type: r.item_type,
+        // preserve prefilled unit price when opening create modal
+        item_unit_price: r.item_unitPrice,
       }))
     );
   };
@@ -211,6 +347,43 @@
 
   // Add selected category for centralized inventory integration
   const selectedCategory = ref('');
+  // Lock category/type when arriving with preloaded items
+  const isPreloaded = ref(false);
+
+  // Watch for supplier products changes to ensure dropdown updates
+  watch(
+    supplierProducts,
+    (newProducts) => {
+      if (newProducts && newProducts.length > 0 && isPreloaded.value) {
+        rowRequest.value.forEach((row, index) => {
+          if (row.supplier_product_id) {
+            const product = newProducts.find(
+              (p) => String(p.id) === String(row.supplier_product_id)
+            );
+            if (product) {
+              // Product found and matched
+            }
+          }
+        });
+      }
+    },
+    { deep: true }
+  );
+
+  // Watch for rowRequest changes to ensure dropdown updates
+  watch(
+    rowRequest,
+    (newRows) => {
+      if (isPreloaded.value && newRows && newRows.length > 0) {
+        newRows.forEach((row, index) => {
+          if (row.supplier_product_id) {
+            // Row has supplier product ID
+          }
+        });
+      }
+    },
+    { deep: true }
+  );
 
   // Centralized inventory categories - computed from inventory store
   const requestCategories = computed(() => {
@@ -225,6 +398,34 @@
         .filter((item) => item.category_id === category.id && item.is_active)
         .map((item) => item.name),
     }));
+  });
+
+  // Supplier dropdown options
+  const supplierOptions = computed(() => supplierStore.activeSuppliers || []);
+  const isSupplierMode = computed(() => !!selectedSupplierId.value);
+
+  // Available promos for the selected supplier
+  const availablePromos = computed(() => {
+    if (!selectedSupplierId.value || !supplierProducts.value.length) return [];
+
+    return supplierProducts.value
+      .filter(
+        (product) =>
+          product.promo_info &&
+          product.promo_info.is_active &&
+          product.has_promo_discount
+      )
+      .map((product) => ({
+        id: product.id,
+        product_name: product.product_name,
+        discount_percentage: product.promo_info.discount_percentage,
+        minimum_quantity: product.promo_info.minimum_quantity,
+        unit: product.unit,
+        description: product.promo_info.description,
+        promo_info: product.promo_info,
+        promo_start_date: product.promo_start_date,
+        promo_end_date: product.promo_end_date,
+      }));
   });
 
   // Available item types based on selected category
@@ -255,6 +456,83 @@
     );
     if (category && category.types.length > 0) {
       requestForm.value.request_type = category.types[0];
+    }
+  };
+
+  // Calculate promo discount for a product and quantity
+  const calculateProductPromoDiscount = async (productId, quantity) => {
+    try {
+      const response = await axios.post(
+        `${apiConfig.baseURL}/supplier-products/${productId}/calculate-price`,
+        { quantity },
+        {
+          headers: {
+            Authorization: `Bearer ${authStore.token}`,
+          },
+        }
+      );
+
+      if (response.data.success) {
+        return response.data.data;
+      }
+      return null;
+    } catch (error) {
+      console.error('Failed to calculate promo discount:', error);
+      return null;
+    }
+  };
+
+  // Handle supplier selection -> fetch products and prefill rows
+  const onSupplierSelected = async (supplierId) => {
+    try {
+      supplierProducts.value = [];
+      productPromoInfo.value = {}; // Clear promo info when switching suppliers
+      if (!supplierId) {
+        resetItemRows();
+        return;
+      }
+
+      // Fetch supplier products
+      const response = await axios.get(
+        `${apiConfig.baseURL}/supplier-products`,
+        { params: { supplier_id: supplierId } }
+      );
+
+      const products = response.data?.data || [];
+      supplierProducts.value = products;
+
+      // Force dropdown update when products are loaded
+      forceDropdownUpdate.value++;
+
+      // Store promo info for products that have active promos
+      products.forEach((product) => {
+        if (product.promo_info && product.promo_info.is_active) {
+          productPromoInfo.value[product.id] = product.promo_info;
+        }
+      });
+
+      // Auto-set inventory category from supplier data if available
+      try {
+        const supplier = supplierOptions.value?.find(
+          (s) => String(s.id) === String(supplierId)
+        );
+        if (supplier?.category) {
+          selectedCategory.value = supplier.category;
+          // If no explicit request type yet, pick the first available for this category
+          const categoryMeta = requestCategories.value.find(
+            (c) => c.category === supplier.category
+          );
+          if (!requestForm.value.request_type && categoryMeta?.types?.length) {
+            requestForm.value.request_type = categoryMeta.types[0];
+          }
+        }
+      } catch (_) {}
+
+      // In supplier mode, start with one empty row and let user choose products per row
+      resetItemRows();
+    } catch (e) {
+      console.error('Failed to load supplier products', e);
+      showToast('error', 'Failed to load supplier products');
     }
   };
 
@@ -367,13 +645,11 @@
   };
 
   const formatPhilippineDate = (dateString) => {
-    const date = new Date(dateString + 'T00:00:00');
-    return date.toLocaleDateString('en-PH', {
+    return formatForDisplay(dateString + 'T00:00:00', 'en-PH', {
       weekday: 'long',
       year: 'numeric',
       month: 'long',
       day: 'numeric',
-      timeZone: 'Asia/Manila',
     });
   };
 
@@ -383,10 +659,9 @@
 
     if (isFirstDayOfMonth) {
       // Display as month and year
-      return date.toLocaleDateString('en-PH', {
+      return formatForDisplay(dateString + 'T00:00:00', 'en-PH', {
         year: 'numeric',
         month: 'long',
-        timeZone: 'Asia/Manila',
       });
     } else {
       // Display as full date
@@ -410,19 +685,32 @@
   // Quick date filter buttons
   const getQuickDateOptions = () => {
     const today = getPhilippineTime();
-    const yesterday = new Date(today);
-    yesterday.setDate(today.getDate() - 1);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(today.getDate() + 1);
 
-    // Use toLocaleDateString with 'en-CA' and Asia/Manila to get YYYY-MM-DD
+    // Helper function to get start of week (Monday)
+    const getStartOfWeek = (date) => {
+      const d = new Date(date);
+      const day = d.getDay();
+      const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Monday as first day
+      return new Date(d.setDate(diff));
+    };
+
+    // Helper function to get start of month
+    const getStartOfMonth = (date) => {
+      return new Date(date.getFullYear(), date.getMonth(), 1);
+    };
+
+    // Use centralized timezone utility to get YYYY-MM-DD format
     const toYMD = (date) =>
-      date.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+      formatForDisplay(date, 'en-CA', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).replace(/\//g, '-');
 
     return [
-      { label: 'Yesterday', date: toYMD(yesterday), count: 0 },
       { label: 'Today', date: toYMD(today), count: 0 },
-      { label: 'Tomorrow', date: toYMD(tomorrow), count: 0 },
+      { label: 'This Week', date: toYMD(getStartOfWeek(today)), count: 0 },
+      { label: 'This Month', date: toYMD(getStartOfMonth(today)), count: 0 },
     ];
   };
 
@@ -458,21 +746,61 @@
 
   // Update quick date options with counts
   const updateQuickDateCounts = () => {
+    const today = getPhilippineTime();
+
+    // Helper functions for date ranges
+    const getStartOfWeek = (date) => {
+      const d = new Date(date);
+      const day = d.getDay();
+      const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Monday as first day
+      return new Date(d.setDate(diff));
+    };
+
+    const getStartOfMonth = (date) => {
+      return new Date(date.getFullYear(), date.getMonth(), 1);
+    };
+
+    const isDateInRange = (date, startDate, endDate) => {
+      const requestDate = new Date(date);
+      return requestDate >= startDate && requestDate <= endDate;
+    };
+
     quickDateOptions.value.forEach((option) => {
       option.count = allRequests.value.filter((request) => {
-        // Simple approach: convert to Philippine time using Intl.DateTimeFormat
         const requestDate = new Date(request.request_date);
-        const philippineDate = new Intl.DateTimeFormat('en-CA', {
-          timeZone: 'Asia/Manila',
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit',
-        }).format(requestDate);
 
-        return (
-          philippineDate === option.date &&
-          request.request_status !== 'Cancelled'
-        );
+        // Skip cancelled requests
+        if (request.request_status === 'Cancelled') return false;
+
+        switch (option.label) {
+          case 'Today':
+            const todayStart = new Date(today);
+            todayStart.setHours(0, 0, 0, 0);
+            const todayEnd = new Date(today);
+            todayEnd.setHours(23, 59, 59, 999);
+            return isDateInRange(requestDate, todayStart, todayEnd);
+
+          case 'This Week':
+            const weekStart = getStartOfWeek(today);
+            weekStart.setHours(0, 0, 0, 0);
+            const weekEnd = new Date(today);
+            weekEnd.setHours(23, 59, 59, 999);
+            return isDateInRange(requestDate, weekStart, weekEnd);
+
+          case 'This Month':
+            const monthStart = getStartOfMonth(today);
+            monthStart.setHours(0, 0, 0, 0);
+            const monthEnd = new Date(
+              today.getFullYear(),
+              today.getMonth() + 1,
+              0
+            );
+            monthEnd.setHours(23, 59, 59, 999);
+            return isDateInRange(requestDate, monthStart, monthEnd);
+
+          default:
+            return false;
+        }
       }).length;
     });
   };
@@ -488,58 +816,71 @@
       );
     }
 
+    const today = getPhilippineTime();
+    const selectedDateObj = new Date(selectedDate + 'T00:00:00');
+
+    // Helper functions for date ranges
+    const getStartOfWeek = (date) => {
+      const d = new Date(date);
+      const day = d.getDay();
+      const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Monday as first day
+      return new Date(d.setDate(diff));
+    };
+
+    const getStartOfMonth = (date) => {
+      return new Date(date.getFullYear(), date.getMonth(), 1);
+    };
+
+    const isDateInRange = (date, startDate, endDate) => {
+      const requestDate = new Date(date);
+      return requestDate >= startDate && requestDate <= endDate;
+    };
+
     return allRequests.value.filter((request) => {
       const requestDate = new Date(request.request_date);
 
+      // Skip cancelled requests
+      if (request.request_status === 'Cancelled') return false;
+
       // Check if we're filtering by month (when selectedDate is first day of month)
-      const selectedDateObj = new Date(selectedDate + 'T00:00:00');
       const isFirstDayOfMonth = selectedDateObj.getDate() === 1;
 
-      if (isFirstDayOfMonth) {
-        // Filter by month and year using Philippine timezone
-        const requestYear = new Intl.DateTimeFormat('en-CA', {
-          timeZone: 'Asia/Manila',
-          year: 'numeric',
-        }).format(requestDate);
+      // Check if we're filtering by week (when selectedDate is Monday)
+      const isMonday = selectedDateObj.getDay() === 1;
 
-        const requestMonth = new Intl.DateTimeFormat('en-CA', {
-          timeZone: 'Asia/Manila',
-          month: '2-digit',
-        }).format(requestDate);
+      // Check if we're filtering by today (when selectedDate is today)
+      const isToday = selectedDateObj.toDateString() === today.toDateString();
 
-        const selectedYear = selectedDateObj.getFullYear().toString();
-        const selectedMonth = (selectedDateObj.getMonth() + 1)
-          .toString()
-          .padStart(2, '0');
-
-        console.log('Month Filter Debug:', {
-          requestYear,
-          requestMonth,
-          selectedYear,
-          selectedMonth,
-          requestDate: requestDate.toISOString(),
-          selectedDate: selectedDate,
-          selectedDateObj: selectedDateObj.toISOString(),
-        });
-
-        return (
-          requestYear === selectedYear &&
-          requestMonth === selectedMonth &&
-          request.request_status !== 'Cancelled'
-        );
+      if (isToday) {
+        // Filter by today
+        const todayStart = new Date(today);
+        todayStart.setHours(0, 0, 0, 0);
+        const todayEnd = new Date(today);
+        todayEnd.setHours(23, 59, 59, 999);
+        return isDateInRange(requestDate, todayStart, todayEnd);
+      } else if (isMonday) {
+        // Filter by this week (Monday to Sunday)
+        const weekStart = getStartOfWeek(today);
+        weekStart.setHours(0, 0, 0, 0);
+        const weekEnd = new Date(today);
+        weekEnd.setHours(23, 59, 59, 999);
+        return isDateInRange(requestDate, weekStart, weekEnd);
+      } else if (isFirstDayOfMonth) {
+        // Filter by this month
+        const monthStart = getStartOfMonth(today);
+        monthStart.setHours(0, 0, 0, 0);
+        const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+        monthEnd.setHours(23, 59, 59, 999);
+        return isDateInRange(requestDate, monthStart, monthEnd);
       } else {
         // Filter by exact date (original behavior)
-        const philippineDate = new Intl.DateTimeFormat('en-CA', {
-          timeZone: 'Asia/Manila',
+        const philippineDate = formatForDisplay(requestDate, 'en-CA', {
           year: 'numeric',
           month: '2-digit',
           day: '2-digit',
-        }).format(requestDate);
+        }).replace(/\//g, '-');
 
-        return (
-          philippineDate === selectedDate &&
-          request.request_status !== 'Cancelled'
-        );
+        return philippineDate === selectedDate;
       }
     });
   });
@@ -911,14 +1252,21 @@
         return;
       }
 
-      const validItems = rowRequest.value.filter(
-        (row) =>
-          row.item_name.trim() &&
-          row.item_quantity > 0 &&
-          row.item_unitPrice > 0 &&
-          // For dynamic-unit categories (Other Materials, Beverages), ensure unit is selected
-          (!isUnitSelectionRequired(row) || row.item_unit.trim())
-      );
+      const validItems = rowRequest.value
+        .filter(
+          (row) =>
+            row.item_name.trim() &&
+            row.item_quantity > 0 &&
+            row.item_unitPrice > 0 &&
+            // For dynamic-unit categories (Other Materials, Beverages), ensure unit is selected
+            (!isUnitSelectionRequired(row) || row.item_unit.trim())
+        )
+        .map((row) => ({
+          ...row,
+          // ensure supplier_id is present per item when supplier mode/preload is used
+          supplier_id:
+            Number(selectedSupplierId.value || 0) || row.supplier_id || null,
+        }));
 
       if (validItems.length === 0) {
         showToast(
@@ -946,6 +1294,10 @@
           authStore.user?.full_name ||
           authStore.user?.name ||
           requestForm.value.requested_by,
+        // Persist supplier if preselected or inferred from rows
+        supplier_id:
+          Number(selectedSupplierId.value || 0) ||
+          (rowRequest.value.find((r) => r.supplier_id)?.supplier_id ?? null),
       };
 
       await supplyRequestStore.createRequest(requestData, validItems);
@@ -979,14 +1331,20 @@
         return;
       }
 
-      const validItems = rowRequest.value.filter(
-        (row) =>
-          row.item_name.trim() &&
-          row.item_quantity > 0 &&
-          row.item_unitPrice > 0 &&
-          // For dynamic-unit categories (Other Materials, Beverages), ensure unit is selected
-          (!isUnitSelectionRequired(row) || row.item_unit.trim())
-      );
+      const validItems = rowRequest.value
+        .filter(
+          (row) =>
+            row.item_name.trim() &&
+            row.item_quantity > 0 &&
+            row.item_unitPrice > 0 &&
+            // For dynamic-unit categories (Other Materials, Beverages), ensure unit is selected
+            (!isUnitSelectionRequired(row) || row.item_unit.trim())
+        )
+        .map((row) => ({
+          ...row,
+          supplier_id:
+            Number(selectedSupplierId.value || 0) || row.supplier_id || null,
+        }));
 
       if (validItems.length === 0) {
         showToast(
@@ -1017,7 +1375,13 @@
 
       await supplyRequestStore.updateRequest(
         request.id,
-        requestData,
+        {
+          ...requestData,
+          // persist supplier on updates too
+          supplier_id:
+            Number(selectedSupplierId.value || 0) ||
+            (rowRequest.value.find((r) => r.supplier_id)?.supplier_id ?? null),
+        },
         validItems
       );
 
@@ -1353,6 +1717,29 @@
     return total.toFixed(2);
   });
 
+  const totalSavings = computed(() => {
+    const savings = rowRequest.value.reduce((acc, row) => {
+      if (row.promo_applied && row.original_price) {
+        const originalTotal =
+          (Number(row.item_quantity) || 0) * row.original_price;
+        const discountedTotal =
+          (Number(row.item_quantity) || 0) * (Number(row.item_unitPrice) || 0);
+        return acc + (originalTotal - discountedTotal);
+      }
+      return acc;
+    }, 0);
+    return savings.toFixed(2);
+  });
+
+  const originalTotalAmount = computed(() => {
+    const total = rowRequest.value.reduce((acc, row) => {
+      const price = row.original_price || Number(row.item_unitPrice) || 0;
+      const quantity = Number(row.item_quantity) || 0;
+      return acc + price * quantity;
+    }, 0);
+    return total.toFixed(2);
+  });
+
   // Enhanced confirmation modal state
   const confirmModal = ref({
     show: false,
@@ -1402,6 +1789,22 @@
         confirmText: 'Delete',
         confirmClass: 'btn-error',
         onConfirm: () => handleDeleteRequest(data.request_id),
+      },
+      confirm_receipt: {
+        title: 'Confirm Receipt',
+        message:
+          'Finance has released the budget for this request. Confirm receipt to complete the process.',
+        confirmText: 'Confirm Receipt',
+        confirmClass: 'btn-success',
+        onConfirm: () => confirmReceipt(data.request_id),
+      },
+      acknowledge_branch: {
+        title: 'Acknowledge Branch Request',
+        message:
+          'Are you sure you want to acknowledge this branch request? The branch will be notified.',
+        confirmText: 'Acknowledge',
+        confirmClass: 'btn-primary bg-primaryColor',
+        onConfirm: () => acknowledgeBranchRequest(data.request_id),
       },
     };
 
@@ -1489,18 +1892,18 @@
         );
 
         // Initialize form with full data including items
-        initializeRequestForm(fullRequest);
+        await initializeRequestForm(fullRequest);
         modal.value.request = fullRequest;
       } catch (error) {
         console.error('Error fetching request details:', error);
         showToast('error', 'Failed to load request details');
         // Fallback to basic initialization
-        initializeRequestForm(request);
+        await initializeRequestForm(request);
       } finally {
         loading.value = false;
       }
     } else {
-      initializeRequestForm(request);
+      await initializeRequestForm(request);
     }
 
     if (type === 'create' || type === 'edit') {
@@ -1544,7 +1947,7 @@
   };
 
   // Initialize request form
-  const initializeRequestForm = (request = null) => {
+  const initializeRequestForm = async (request = null) => {
     if (request) {
       // Editing existing request
       requestForm.value = {
@@ -1566,6 +1969,15 @@
           'Current User',
         items: request.items || [],
       };
+
+      // If the request is supplier-sourced, preselect supplier to enable supplier mode
+      try {
+        selectedSupplierId.value = request.supplier_id || '';
+        if (selectedSupplierId.value) {
+          // Load supplier products so the item name dropdown shows selected values
+          await onSupplierSelected(selectedSupplierId.value);
+        }
+      } catch (_) {}
 
       // Update rowRequest with existing items
       if (
@@ -1592,6 +2004,12 @@
           menu_item_id: item.menu_item_id || null,
           category: item.category || '',
           source: item.source || item.item_type || '',
+          supplier_id:
+            item.supplier_id ||
+            request.supplier_id ||
+            selectedSupplierId.value ||
+            null,
+          supplier_product_id: item.supplier_product_id || null,
         }));
 
         // Set the selected category based on the first item's type
@@ -1644,6 +2062,7 @@
         menu_item_id: null,
         category: '',
         source: '',
+        supplier_product_id: null,
       },
     ];
   };
@@ -1653,9 +2072,164 @@
     item.item_amount = (item.item_quantity || 0) * (item.item_unitPrice || 0);
   };
 
+  // Recalculate promo discount when quantity changes
+  const updatePromoDiscount = (row) => {
+    if (!row.supplier_product_id || !row.promo_info) return;
+
+    const promoInfo = row.promo_info;
+    const quantity = Number(row.item_quantity || 0);
+    const originalPrice = Number(row.original_price || 0);
+
+    // Check if quantity meets minimum requirement for promo
+    if (quantity >= Number(promoInfo.minimum_quantity)) {
+      // Apply promo discount
+      let discountedPrice = originalPrice;
+      if (promoInfo.discount_type === 'percentage') {
+        discountedPrice =
+          originalPrice * (1 - Number(promoInfo.discount_percentage) / 100);
+      } else if (promoInfo.discount_type === 'fixed_amount') {
+        discountedPrice = Math.max(
+          0,
+          originalPrice - Number(promoInfo.discount_amount)
+        );
+      }
+      row.item_unitPrice = discountedPrice;
+      row.promo_applied = true;
+      showToast(
+        'success',
+        `Promo discount applied! ${promoInfo.discount_percentage}% OFF`
+      );
+    } else {
+      // Remove promo discount
+      row.item_unitPrice = originalPrice;
+      row.promo_applied = false;
+    }
+
+    updateItemAmount(row);
+  };
+
+  // When a supplier product is chosen from dropdown, auto-fill the row
+  const onSupplierProductSelected = async (row) => {
+    const product = supplierProducts.value.find(
+      (p) => String(p.id) === String(row.supplier_product_id)
+    );
+    if (!product) return;
+
+    const itemType = inventoryStore.itemTypes?.find(
+      (t) => t.id === product.item_type_id
+    );
+    const categoryObj = itemType
+      ? inventoryStore.categories?.find((c) => c.id === itemType.category_id)
+      : null;
+
+    row.item_name = product.product_name || '';
+    row.item_quantity = Number(product.minimum_order_quantity || 1);
+    row.item_unit = product.unit || '';
+    row.item_type = itemType?.name || '';
+
+    // Set original unit price
+    const originalPrice = Number(product.unit_price || 0);
+    row.item_unitPrice = originalPrice;
+
+    // Check for promo discount
+    const promoInfo = productPromoInfo.value[product.id];
+    if (
+      promoInfo &&
+      promoInfo.is_active &&
+      row.item_quantity >= Number(promoInfo.minimum_quantity)
+    ) {
+      // Apply promo discount
+      let discountedPrice = originalPrice;
+      if (promoInfo.discount_type === 'percentage') {
+        discountedPrice =
+          originalPrice * (1 - Number(promoInfo.discount_percentage) / 100);
+      } else if (promoInfo.discount_type === 'fixed_amount') {
+        discountedPrice = Math.max(
+          0,
+          originalPrice - Number(promoInfo.discount_amount)
+        );
+      }
+      row.item_unitPrice = discountedPrice;
+      row.promo_applied = true;
+      row.original_price = originalPrice;
+      row.promo_info = promoInfo;
+      showToast(
+        'success',
+        `Promo discount applied! ${promoInfo.discount_percentage}% OFF`
+      );
+    } else {
+      row.promo_applied = false;
+      row.original_price = originalPrice;
+      row.promo_info = promoInfo; // Store promo info even if not applied
+    }
+
+    updateItemAmount(row);
+    row.source = 'supplier';
+    row.category = categoryObj?.name || '';
+    // Link back to the chosen supplier for reporting
+    row.supplier_id = Number(selectedSupplierId.value) || null;
+    row.item_sku = product.sku || null;
+
+    if (categoryObj?.name) selectedCategory.value = categoryObj.name;
+    if (itemType?.name) requestForm.value.request_type = itemType.name;
+  };
+
+  // Helper: get supplier display name from store
+  const getSupplierName = (id) => {
+    if (!id) return null;
+    // First check active suppliers
+    const activeList = supplierOptions.value || [];
+    const activeFound = activeList.find((s) => Number(s.id) === Number(id));
+    if (activeFound) return activeFound.name;
+
+    // If not found in active suppliers, check all suppliers
+    const allList = supplierStore.suppliers || [];
+    const allFound = allList.find((s) => Number(s.id) === Number(id));
+    if (allFound) return allFound.name;
+
+    // Fallback
+    return `Supplier #${id}`;
+  };
+
   // Date filter methods
   const selectQuickDate = (dateOption) => {
-    requestListFilter.value.selectedDate = dateOption.date;
+    const today = getPhilippineTime();
+
+    // Helper functions for date ranges
+    const getStartOfWeek = (date) => {
+      const d = new Date(date);
+      const day = d.getDay();
+      const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Monday as first day
+      return new Date(d.setDate(diff));
+    };
+
+    const getStartOfMonth = (date) => {
+      return new Date(date.getFullYear(), date.getMonth(), 1);
+    };
+
+    // Use centralized timezone utility to get YYYY-MM-DD format
+    const toYMD = (date) =>
+      formatForDisplay(date, 'en-CA', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).replace(/\//g, '-');
+
+    // Set the appropriate date based on the option
+    switch (dateOption.label) {
+      case 'Today':
+        requestListFilter.value.selectedDate = toYMD(today);
+        break;
+      case 'This Week':
+        requestListFilter.value.selectedDate = toYMD(getStartOfWeek(today));
+        break;
+      case 'This Month':
+        requestListFilter.value.selectedDate = toYMD(getStartOfMonth(today));
+        break;
+      default:
+        requestListFilter.value.selectedDate = dateOption.date;
+    }
+
     currentPage.value = 1;
     requestListFilter.value.showDatePicker = false;
     showDateDropdown.value = false; // Close dropdown after selection
@@ -1703,12 +2277,11 @@
     );
 
     // Convert to Philippine timezone format
-    const philippineDate = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Asia/Manila',
+    const philippineDate = formatForDisplay(selectedDate, 'en-CA', {
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
-    }).format(selectedDate);
+    }).replace(/\//g, '-');
 
     requestListFilter.value.selectedDate = philippineDate;
     currentPage.value = 1;
@@ -1848,6 +2421,12 @@
     } catch (e) {
       console.error('Failed to load branches:', e);
     }
+    // Load active suppliers for dropdown
+    try {
+      await supplierStore.fetchActiveSuppliers();
+    } catch (e) {
+      console.error('Failed to load suppliers:', e);
+    }
 
     // Setup date picker
     requestDatePicker = new PikaDay({
@@ -1872,8 +2451,36 @@
 
     // Preload items from navigation state (e.g., from Inventory Alerts)
     try {
-      const state = router.options?.history?.state || {};
-      const preload = state.preloadSupplyRequest;
+      // Try different ways to access router state
+      const state1 = router.options?.history?.state || {};
+      const state2 = window.history.state || {};
+      const state3 = router.currentRoute?.value?.state || {};
+
+      console.log('RequestSupply mounted - checking for preload data:', {
+        state1,
+        state2,
+        state3,
+        currentRoute: router.currentRoute?.value,
+      });
+
+      const state = state1 || state2 || state3;
+      let preload = state.preloadSupplyRequest;
+
+      // Fallback: check sessionStorage if router state is not available
+      if (!preload) {
+        try {
+          const sessionData = sessionStorage.getItem('preloadSupplyRequest');
+          if (sessionData) {
+            preload = JSON.parse(sessionData);
+            console.log('Preload data found in sessionStorage:', preload);
+            // Clear sessionStorage after reading
+            sessionStorage.removeItem('preloadSupplyRequest');
+          }
+        } catch (e) {
+          console.error('Error reading preload data from sessionStorage:', e);
+        }
+      }
+
       if (preload && Array.isArray(preload.items) && preload.items.length) {
         // Fill requested_by with the real employee name from auth store
         try {
@@ -1886,27 +2493,172 @@
             u.email ||
             'System';
         } catch (_) {}
+        // Set category and determine request type
         selectedCategory.value = preload.category || '';
-        requestForm.value.request_type = '';
-        rowRequest.value = preload.items.map((it, idx) => ({
-          id: idx + 1,
-          item_name: it.name,
-          item_quantity: it.quantity || 0,
-          item_unit: it.unit || '',
-          item_type:
-            preload.item_type_name ||
-            inventoryStore.itemTypes?.find((t) => t.id === preload.item_type_id)
-              ?.name ||
-            requestForm.value.request_type,
-          item_unitPrice: it.unit_price || 0,
-          item_amount: (it.unit_price || 0) * (it.quantity || 0),
-          inventory_item_id: null,
-          menu_item_id: null,
-          category: preload.category || '',
-          source: preload.source || 'scm',
-        }));
+        // Determine request_type from preload (prefer explicit item_type),
+        // otherwise auto-pick the first available type for the selected category
+        const preloadTypeName =
+          preload.item_type_name ||
+          inventoryStore.itemTypes?.find((t) => t.id === preload.item_type_id)
+            ?.name ||
+          '';
+
+        if (preloadTypeName) {
+          requestForm.value.request_type = preloadTypeName;
+        } else {
+          const category = requestCategories.value.find(
+            (cat) => cat.category === selectedCategory.value
+          );
+          if (category && category.types.length > 0) {
+            requestForm.value.request_type = category.types[0];
+          } else {
+            requestForm.value.request_type = '';
+          }
+        }
+
+        // Set supplier information if provided in preload
+        if (preload.supplier_id && preload.supplier_name) {
+          // Ensure suppliers are loaded first
+          try {
+            await supplierStore.fetchActiveSuppliers();
+          } catch (e) {
+            console.error('Failed to load suppliers for preload:', e);
+          }
+
+          // Check if the supplier exists in the active suppliers list
+          const supplierExists = supplierOptions.value?.some(
+            (s) => String(s.id) === String(preload.supplier_id)
+          );
+
+          if (supplierExists) {
+            selectedSupplierId.value = String(preload.supplier_id);
+            // Trigger supplier selection to load supplier products
+            await onSupplierSelected(preload.supplier_id);
+          } else {
+            // Try to fetch all suppliers to see if the supplier exists but is not active
+            try {
+              await supplierStore.fetchSuppliers();
+              const allSuppliers = supplierStore.suppliers || [];
+              const supplierInAll = allSuppliers.find(
+                (s) => String(s.id) === String(preload.supplier_id)
+              );
+
+              if (supplierInAll) {
+                // Even though supplier is not active, we can still use it for the request
+                selectedSupplierId.value = String(preload.supplier_id);
+                await onSupplierSelected(preload.supplier_id);
+              } else {
+                // Still try to set it as a fallback
+                selectedSupplierId.value = String(preload.supplier_id);
+                await onSupplierSelected(preload.supplier_id);
+              }
+            } catch (e) {
+              console.error('Failed to fetch all suppliers:', e);
+              // Still try to set it as a fallback
+              selectedSupplierId.value = String(preload.supplier_id);
+              await onSupplierSelected(preload.supplier_id);
+            }
+          }
+        }
+
+        // Build rows from preload - wait for supplier products to be loaded
+        rowRequest.value = preload.items.map((it, idx) => {
+          // Try to find matching supplier product by name similarity first, then by item_type_id
+          let matchingProduct = supplierProducts.value?.find(
+            (product) =>
+              product.product_name
+                .toLowerCase()
+                .includes(it.name.toLowerCase()) ||
+              it.name.toLowerCase().includes(product.product_name.toLowerCase())
+          );
+
+          // If no name match, fall back to item_type_id matching
+          if (!matchingProduct) {
+            matchingProduct = supplierProducts.value?.find(
+              (product) =>
+                product.item_type_id &&
+                it.item_type_id &&
+                String(product.item_type_id) === String(it.item_type_id)
+            );
+          }
+
+          // Ensure we have a proper item name
+          const itemName = it.name || it.item_name || 'Unknown Item';
+
+          return {
+            id: idx + 1,
+            item_name: matchingProduct?.product_name || itemName,
+            item_quantity: it.quantity || 0,
+            item_unit: it.unit || '',
+            item_type: requestForm.value.request_type,
+            item_unitPrice: it.unit_price || 0,
+            item_amount: (it.unit_price || 0) * (it.quantity || 0),
+            inventory_item_id: null,
+            menu_item_id: null,
+            category: preload.category || '',
+            source: preload.source || 'scm',
+            // Add supplier product mapping - this is crucial for the dropdown to work
+            supplier_product_id: matchingProduct?.id || null,
+            supplier_id: preload.supplier_id || null,
+            // Mark as preloaded to prevent manual changes
+            isPreloaded: true,
+          };
+        });
+
         // Open the create modal immediately
         openCreateTab();
+        // Lock category/type so user doesn't accidentally change them for preloaded drafts
+        isPreloaded.value = true;
+
+        // Force a reactive update to ensure the form displays the preloaded data
+        await nextTick();
+
+        // Add a small delay to ensure supplier products are fully loaded
+        setTimeout(async () => {
+          // Force update the supplier product selection for each row
+          rowRequest.value.forEach((row, index) => {
+            // Re-match the product now that supplier products are loaded
+            const preloadItem = preload.items[index];
+            if (preloadItem) {
+              // Try to find matching supplier product by name similarity first
+              let matchingProduct = supplierProducts.value?.find(
+                (product) =>
+                  product.product_name
+                    .toLowerCase()
+                    .includes(preloadItem.name.toLowerCase()) ||
+                  preloadItem.name
+                    .toLowerCase()
+                    .includes(product.product_name.toLowerCase())
+              );
+
+              // If no name match, fall back to item_type_id matching
+              if (!matchingProduct) {
+                matchingProduct = supplierProducts.value?.find(
+                  (product) =>
+                    product.item_type_id &&
+                    preloadItem.item_type_id &&
+                    String(product.item_type_id) ===
+                      String(preloadItem.item_type_id)
+                );
+              }
+
+              if (matchingProduct) {
+                // Update the row with the correct supplier product
+                const updatedRow = {
+                  ...row,
+                  supplier_product_id: matchingProduct.id,
+                  item_name: matchingProduct.product_name,
+                  isPreloaded: true,
+                };
+                rowRequest.value[index] = updatedRow;
+              }
+            }
+          });
+
+          // Force a complete re-render of the component
+          forceDropdownUpdate.value++;
+          await nextTick();
+        }, 200);
         // Clear state so reloads don't re-add
         try {
           const newState = { ...state };
@@ -2072,6 +2824,11 @@
 
   // Branch request computed properties
   const allBranchRequests = computed(() => branchRequestStore.requests || []);
+
+  const acknowledgedBranchRequestsCount = computed(
+    () =>
+      allBranchRequests.value.filter((r) => r.status === 'Acknowledged').length
+  );
 
   const filteredBranchRequests = computed(() => {
     let filtered = allBranchRequests.value;
@@ -2255,10 +3012,91 @@
       'Request cancelled by SCM'
     );
   };
+
+  // Get summary of applied promos across all rows
+  const getAppliedPromosSummary = () => {
+    const promoMap = new Map();
+
+    rowRequest.value.forEach((row) => {
+      if (row.promo_applied && row.promo_info) {
+        const key = row.item_name;
+        const savings =
+          (row.item_quantity || 0) * (row.original_price - row.item_unitPrice);
+
+        if (promoMap.has(key)) {
+          const existing = promoMap.get(key);
+          existing.total_savings += savings;
+          existing.quantity += row.item_quantity || 0;
+        } else {
+          promoMap.set(key, {
+            product_name: row.item_name,
+            discount_percentage: row.promo_info.discount_percentage,
+            quantity: row.item_quantity || 0,
+            total_savings: savings,
+          });
+        }
+      }
+    });
+
+    return Array.from(promoMap.values());
+  };
+
+  // Get total savings from all applied promos
+  const getTotalPromoSavings = () => {
+    return getAppliedPromosSummary().reduce(
+      (sum, promo) => sum + promo.total_savings,
+      0
+    );
+  };
+
+  // Format promo date for display
+  const formatPromoDate = (dateString) => {
+    if (!dateString) return 'N/A';
+
+    try {
+      const date = new Date(dateString);
+
+      // Check if the date is valid
+      if (isNaN(date.getTime())) {
+        console.warn('Invalid date string:', dateString);
+        return 'N/A';
+      }
+
+      return date.toLocaleDateString('en-PH', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        timeZone: 'Asia/Manila',
+      });
+    } catch (error) {
+      console.error('Error formatting date:', dateString, error);
+      return 'N/A';
+    }
+  };
+
+  // Check if promo is expiring within 24 hours
+  const isPromoExpiringSoon = (promo) => {
+    const endDate = promo.promo_info?.end_date || promo.promo_end_date;
+    if (!endDate) return false;
+    const endDateObj = new Date(endDate);
+    const now = new Date();
+    const hoursUntilExpiry = (endDateObj - now) / (1000 * 60 * 60);
+    return hoursUntilExpiry <= 24 && hoursUntilExpiry > 0;
+  };
+
+  // Get promo end date for a specific product
+  const getPromoEndDate = (productName) => {
+    const promo = availablePromos.value.find(
+      (p) => p.product_name === productName
+    );
+    return promo ? promo.promo_info?.end_date || promo.promo_end_date : null;
+  };
 </script>
 
 <template>
-  <div class="container mx-auto p-6 max-w-6xl">
+  <div class="mx-auto p-6">
     <!-- Header -->
     <div class="text-center mb-8">
       <h1 class="text-4xl font-bold text-primaryColor mb-2 text-shadow-xs">
@@ -2277,25 +3115,10 @@
         class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
       >
         <div class="stat-figure">
-          <ReceiptText class="w-8 h-8 text-primaryColor" />
-        </div>
-        <div class="stat-title text-black/50">Total Requests</div>
-        <div class="stat-value text-primaryColor">
-          {{ requestStats.total_requests || allRequests.length }}
-        </div>
-        <div class="stat-desc text-black/50">
-          {{ hasRequests ? 'Requests configured' : 'No requests yet' }}
-        </div>
-      </div>
-
-      <div
-        class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
-      >
-        <div class="stat-figure">
-          <Send class="w-8 h-8 text-info" />
+          <Send class="w-8 h-8 text-gray-500" />
         </div>
         <div class="stat-title text-black/50">To Request</div>
-        <div class="stat-value text-info">
+        <div class="stat-value text-gray-600">
           {{
             requestStats.to_request ||
             allRequests.filter((r) => r.request_status === 'To Request').length
@@ -2303,28 +3126,6 @@
         </div>
         <div class="stat-desc text-black/50">
           {{ hasRequests ? 'Requests configured' : 'No requests yet' }}
-        </div>
-      </div>
-
-      <div
-        class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
-      >
-        <div class="stat-figure">
-          <CheckCircle class="w-8 h-8 text-success" />
-        </div>
-        <div class="stat-title text-black/50">Total Approved Requests</div>
-        <div class="stat-value text-success">
-          {{
-            requestStats.approved ||
-            allRequests.filter((r) => r.request_status === 'Approved').length
-          }}
-        </div>
-        <div class="stat-desc text-black/50">
-          {{
-            hasApprovedRequests
-              ? 'Approved requests configured'
-              : 'No approved requests yet'
-          }}
         </div>
       </div>
 
@@ -2351,28 +3152,6 @@
       </div>
 
       <div
-        class="stat sm:!border sm:!border-l-0 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
-      >
-        <div class="stat-figure">
-          <XCircle class="w-8 h-8 text-error" />
-        </div>
-        <div class="stat-title text-black/50">Total Rejected Requests</div>
-        <div class="stat-value text-error">
-          {{
-            requestStats.rejected ||
-            allRequests.filter((r) => r.request_status === 'Rejected').length
-          }}
-        </div>
-        <div class="stat-desc text-black/50">
-          {{
-            hasRejectedRequests
-              ? 'Rejected requests configured'
-              : 'No rejected requests yet'
-          }}
-        </div>
-      </div>
-
-      <div
         class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
       >
         <div class="stat-figure">
@@ -2389,10 +3168,10 @@
         class="stat sm:!border sm:!border-l-0 sm:!border-r-0 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
       >
         <div class="stat-figure">
-          <Send class="w-8 h-8 text-primary" />
+          <Send class="w-8 h-8 text-gray-600" />
         </div>
         <div class="stat-title text-black/50">Branch Requests</div>
-        <div class="stat-value text-primary">
+        <div class="stat-value text-gray-600">
           {{ pendingBranchRequests.length }}
         </div>
         <div class="stat-desc text-black/50">Awaiting acknowledgment</div>
@@ -2418,7 +3197,7 @@
           </div>
         </div>
 
-        <div class="alert alert-info mb-4">
+        <div class="alert bg-success/10 border-success/20 text-success mb-4">
           <Info class="w-6 h-6 mr-2" />
           <span
             >Finance has released the budget for the following requests. Please
@@ -2428,11 +3207,10 @@
 
         <div class="overflow-x-auto">
           <table
-            class="table table-zebra text-black/50 border border-success/20 custom-zebra"
+            class="table table-zebra text-black/50 border border-success/10 custom-zebra"
           >
-            <thead class="text-accentColor">
-              <tr class="bg-success text-accentColor">
-                <th>Request ID</th>
+            <thead class="">
+              <tr class="">
                 <th>Description</th>
                 <th>Released Amount</th>
                 <th>Released Date</th>
@@ -2446,17 +3224,19 @@
                 :key="release.request_id"
                 class="hover:bg-success/10"
               >
-                <td class="font-mono font-medium text-success">
-                  {{ release.request_id }}
-                </td>
                 <td class="text-wrap">{{ release.request_description }}</td>
                 <td class="font-semibold text-success">
-                  ₱{{
-                    release.released_amount.toLocaleString('en-PH', {
+                  <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                  {{
+                    Number(
+                      String(release.released_amount).replace(/,/g, '')
+                    ).toLocaleString('en-PH', {
                       minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
                     })
                   }}
                 </td>
+
                 <td>
                   <div>
                     <span>{{ formatManilaDate(release.released_at) }}</span>
@@ -2464,15 +3244,27 @@
                     <!-- <span class="text-xs text-black/50">{{ formatManilaTime(release.released_at) }}</span> -->
                   </div>
                 </td>
-                <td>{{ release.released_by }}</td>
+                <td>{{ release.released_by_name || release.released_by }}</td>
                 <td>
                   <button
                     class="btn btn-sm bg-success text-white font-thin border-none hover:bg-success/80"
-                    @click="confirmReceipt(release.request_id)"
+                    @click="
+                      openConfirmModal('confirm_receipt', {
+                        request_id: release.request_id,
+                      })
+                    "
                     :disabled="loading"
                   >
-                    <FileCheck class="w-4 h-4 mr-1" />
-                    {{ loading ? 'Confirming...' : 'Confirm Receipt' }}
+                    <span
+                      class="loading loading-spinner loading-xs mr-2"
+                      v-if="loading && confirmModal.type === 'confirm_receipt'"
+                    ></span>
+                    <FileCheck v-else class="w-4 h-4 mr-1" />
+                    {{
+                      loading && confirmModal.type === 'confirm_receipt'
+                        ? 'Confirming...'
+                        : 'Confirm Receipt'
+                    }}
                   </button>
                 </td>
               </tr>
@@ -2514,13 +3306,13 @@
           >
             <thead class="text-black/50">
               <tr class="text-black/50">
-                <th>Request ID</th>
                 <th>Branch</th>
                 <th>Description</th>
                 <th>Type</th>
-                <th>Priority</th>
+
                 <th>Sent Date</th>
                 <th>Requested By</th>
+                <th>Priority</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -2530,16 +3322,20 @@
                 :key="request.request_id"
                 class="hover:bg-primary/10"
               >
-                <td class="font-mono font-medium text-primary">
-                  {{ request.request_id }}
-                </td>
                 <td class="font-semibold">{{ request.branch_name }}</td>
                 <td class="text-wrap">{{ request.request_description }}</td>
                 <td>
-                  <div class="badge badge-outline badge-sm">
+                  <div class="text-xs">
                     {{ request.request_type }}
                   </div>
                 </td>
+
+                <td>
+                  <div>
+                    <span>{{ formatManilaDate(request.created_at) }}</span>
+                  </div>
+                </td>
+                <td>{{ request.requested_by }}</td>
                 <td>
                   <div
                     class="badge badge-sm"
@@ -2557,12 +3353,6 @@
                   </div>
                 </td>
                 <td>
-                  <div>
-                    <span>{{ formatManilaDate(request.created_at) }}</span>
-                  </div>
-                </td>
-                <td>{{ request.requested_by }}</td>
-                <td>
                   <div class="flex gap-2">
                     <button
                       class="btn btn-sm bg-gray-200 text-black/50 font-thin border-none hover:bg-gray-300"
@@ -2573,11 +3363,25 @@
                     </button>
                     <button
                       class="btn btn-sm bg-primaryColor text-white font-thin border-none hover:bg-primaryColor/80"
-                      @click="acknowledgeBranchRequest(request.request_id)"
+                      @click="
+                        openConfirmModal('acknowledge_branch', {
+                          request_id: request.request_id,
+                        })
+                      "
                       :disabled="loading"
                     >
-                      <CheckCircle class="w-4 h-4 mr-1" />
-                      {{ loading ? 'Acknowledging...' : 'Acknowledge' }}
+                      <span
+                        class="loading loading-spinner loading-xs mr-2"
+                        v-if="
+                          loading && confirmModal.type === 'acknowledge_branch'
+                        "
+                      ></span>
+                      <CheckCircle v-else class="w-4 h-4 mr-1" />
+                      {{
+                        loading && confirmModal.type === 'acknowledge_branch'
+                          ? 'Acknowledging...'
+                          : 'Acknowledge'
+                      }}
                     </button>
                   </div>
                 </td>
@@ -2632,7 +3436,7 @@
             <span
               class="badge badge-sm ml-2 bg-secondaryColor text-primaryColor"
             >
-              {{ allBranchRequests.length }}
+              {{ acknowledgedBranchRequestsCount }}
             </span>
           </button>
           <button
@@ -2655,15 +3459,12 @@
             <h2 class="card-title text-primaryColor">Supply Request List</h2>
             <div class="flex gap-2 md:flex-row flex-col">
               <button
-                class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10 font-thin hover:border-none hover:shadow-none"
+                class="btn btn-sm"
                 @click="fetchAllData"
                 :class="{ loading: loading }"
                 :disabled="loading"
               >
-                <RefreshCcw
-                  v-if="!loading"
-                  class="w-4 h-4 mr-2 text-primaryColor"
-                />
+                <RefreshCcw v-if="!loading" class="w-4 h-4 mr-2" />
                 <span
                   class="loading loading-spinner loading-xs"
                   v-if="loading"
@@ -2875,9 +3676,8 @@
             <table
               class="table table-zebra text-black/50 border border-black/10 custom-zebra"
             >
-              <thead class="text-secondaryColor">
-                <tr class="bg-primaryColor text-accentColor">
-                  <th>Request ID</th>
+              <thead class="">
+                <tr class="">
                   <th>Request Date</th>
                   <th class="w-1/4">Request Description</th>
                   <th>Total Amount</th>
@@ -2893,9 +3693,6 @@
                   :key="request.request_id"
                   class="hover:bg-secondaryColor/10"
                 >
-                  <td class="font-mono font-medium">
-                    {{ request.request_id }}
-                  </td>
                   <td>
                     <div class="flex flex-col">
                       <span>{{ formatManilaDate(request.request_date) }}</span>
@@ -2910,7 +3707,8 @@
                   </td>
                   <!-- Add total amount column -->
                   <td class="font-semibold text-primaryColor">
-                    ₱{{
+                    <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                    {{
                       parseFloat(request.total_amount || 0).toLocaleString(
                         'en-PH',
                         {
@@ -2921,27 +3719,16 @@
                   </td>
                   <!-- Add item count -->
                   <td class="text-center">
-                    <span
-                      class="badge badge-sm bg-primaryColor/10 text-primaryColor"
-                    >
+                    <span class="text-sm font-medium text-black/70">
                       {{ request.item_count }} item{{
                         request.item_count !== '1' ? 's' : ''
                       }}
                     </span>
                   </td>
+
                   <!-- Add priority -->
                   <td>
-                    <div
-                      class="badge badge-sm border-none"
-                      :class="{
-                        'bg-error/10 text-error': request.priority === 'Urgent',
-                        'bg-warning/10 text-warning':
-                          request.priority === 'High',
-                        'bg-info/10 text-info': request.priority === 'Normal',
-                        'bg-success/10 text-success':
-                          request.priority === 'Low',
-                      }"
-                    >
+                    <div class="text-xs">
                       {{ request.priority }}
                     </div>
                   </td>
@@ -2949,13 +3736,15 @@
                     <div
                       class="badge badge-sm badge-soft border-none"
                       :class="{
-                        'bg-info/10 text-info':
+                        '!bg-primaryColor/10 !text-primaryColor':
+                          request.request_status === 'Completed',
+                        '!bg-info/10 !text-info':
                           request.request_status === 'To Request',
-                        'bg-success/10 text-success':
+                        '!bg-success/10 !text-success':
                           request.request_status === 'Approved',
-                        'bg-error/10 text-error':
+                        '!bg-error/10 !text-error':
                           request.request_status === 'Rejected',
-                        'bg-warning/10 text-warning':
+                        '!bg-warning/10 !text-warning':
                           request.request_status === 'Pending',
                       }"
                     >
@@ -2963,66 +3752,55 @@
                     </div>
                   </td>
                   <td>
-                    <div class="dropdown dropdown-left">
-                      <label
-                        tabindex="0"
-                        class="btn btn-ghost btn-xs hover:outline-none hover:bg-white/10 hover:text-black/50 hover:border-none hover:shadow-none"
+                    <div class="flex gap-1">
+                      <button
+                        title="View Request"
+                        @click="confirmViewRequest(request)"
+                        class="btn btn-ghost btn-xs hover:bg-white/10 hover:text-black/50"
                       >
-                        <EllipsisVertical class="w-4 h-4" />
-                      </label>
-                      <ul
-                        tabindex="0"
-                        class="dropdown-content z-[1] menu p-2 shadow bg-accentColor rounded-box w-52 border border-black/10"
+                        <font-awesome-icon icon="fa-solid fa-eye" />
+                      </button>
+                      <button
+                        title="Edit Request"
+                        v-if="
+                          request.request_status === 'To Request' ||
+                          request.request_status === 'Sent Back'
+                        "
+                        @click="editRequest(request)"
+                        class="btn btn-ghost btn-xs hover:bg-white/10 hover:text-warning"
                       >
-                        <li class="hover:bg-black/10">
-                          <a
-                            @click="confirmViewRequest(request)"
-                            class="text-primary"
-                            >View Request</a
-                          >
-                        </li>
-                        <li
-                          class="hover:bg-black/10"
-                          v-if="
-                            request.request_status === 'To Request' ||
-                            request.request_status === 'Sent Back'
-                          "
-                        >
-                          <a @click="editRequest(request)" class="text-warning"
-                            >Edit</a
-                          >
-                        </li>
-                        <li
-                          class="hover:bg-black/10"
-                          v-if="
-                            request.request_status === 'To Request' ||
-                            request.request_status === 'Sent Back'
-                          "
-                        >
-                          <a @click="confirmSend(request)" class="text-success"
-                            >Send Request</a
-                          >
-                        </li>
-                        <li
-                          class="hover:bg-black/10"
-                          v-if="request.request_status === 'Pending'"
-                        >
-                          <a @click="confirmCancel(request)" class="text-error"
-                            >Cancel Request</a
-                          >
-                        </li>
-                        <li
-                          class="hover:bg-black/10"
-                          v-if="
-                            request.request_status === 'To Request' ||
-                            request.request_status === 'Sent Back'
-                          "
-                        >
-                          <a @click="confirmDelete(request)" class="text-error"
-                            >Delete Request</a
-                          >
-                        </li>
-                      </ul>
+                        <font-awesome-icon icon="fa-solid fa-pen" />
+                      </button>
+                      <button
+                        title="Send Request"
+                        v-if="
+                          request.request_status === 'To Request' ||
+                          request.request_status === 'Sent Back'
+                        "
+                        @click="confirmSend(request)"
+                        class="btn btn-ghost btn-xs hover:bg-white/10 hover:text-success"
+                      >
+                        <font-awesome-icon icon="fa-solid fa-paper-plane" />
+                      </button>
+                      <button
+                        title="Cancel Request"
+                        v-if="request.request_status === 'Pending'"
+                        @click="confirmCancel(request)"
+                        class="btn btn-ghost btn-xs hover:bg-white/10 hover:text-error"
+                      >
+                        <font-awesome-icon icon="fa-solid fa-times-circle" />
+                      </button>
+                      <button
+                        title="Delete Request"
+                        v-if="
+                          request.request_status === 'To Request' ||
+                          request.request_status === 'Sent Back'
+                        "
+                        @click="confirmDelete(request)"
+                        class="btn btn-ghost btn-xs hover:bg-white/10 hover:text-error"
+                      >
+                        <font-awesome-icon icon="fa-solid fa-trash" />
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -3146,14 +3924,14 @@
               <table class="table w-full table-xs table-zebra">
                 <thead>
                   <tr>
-                    <th>Request ID</th>
                     <th>Branch</th>
                     <th>Type</th>
                     <th>Description</th>
-                    <th>Priority</th>
-                    <th>Status</th>
+
                     <th>Requested By</th>
                     <th>Date</th>
+                    <th>Priority</th>
+                    <th>Status</th>
                     <th>Actions</th>
                   </tr>
                 </thead>
@@ -3163,21 +3941,28 @@
                     :key="request.id"
                   >
                     <td>
-                      <div class="font-semibold">{{ request.request_id }}</div>
-                    </td>
-                    <td>
                       <div class="">
                         {{ request.branch_name || 'Unknown Branch' }}
                       </div>
                     </td>
                     <td>
-                      <div class="badge badge-outline badge-sm">
+                      <div class="">
                         {{ request.request_type }}
                       </div>
                     </td>
                     <td>
                       <div class="max-w-xs truncate">
                         {{ request.request_description }}
+                      </div>
+                    </td>
+
+                    <td>{{ request.requested_by }}</td>
+                    <td class="w-40 text-right whitespace-nowrap">
+                      <div class="text-sm font-medium text-gray-900">
+                        {{ formatDate(request.request_date) }}
+                      </div>
+                      <div class="text-xs text-gray-500">
+                        {{ formatTime(request.created_at) }}
                       </div>
                     </td>
                     <td>
@@ -3195,7 +3980,7 @@
                     </td>
                     <td>
                       <div
-                        class="badge"
+                        class="badge badge-sm"
                         :class="
                           getBranchRequestStatusBadge(request.status).class
                         "
@@ -3203,92 +3988,34 @@
                         {{ getBranchRequestStatusBadge(request.status).text }}
                       </div>
                     </td>
-                    <td>{{ request.requested_by }}</td>
-                    <td class="w-40 text-right whitespace-nowrap">
-                      <div class="text-sm font-medium text-gray-900">
-                        {{ formatDate(request.request_date) }}
-                      </div>
-                      <div class="text-xs text-gray-500">
-                        {{ formatTime(request.created_at) }}
-                      </div>
-                    </td>
-
                     <td>
-                      <div class="dropdown dropdown-left">
-                        <label
-                          tabindex="0"
-                          class="btn btn-ghost btn-xs hover:outline-none hover:bg-white/10 hover:text-black/50 hover:border-none hover:shadow-none"
+                      <div class="flex gap-1">
+                        <button
+                          title="View Request"
+                          @click="viewBranchRequestModal(request)"
+                          class="btn btn-ghost btn-xs hover:bg-white/10 hover:text-black/50"
                         >
-                          <EllipsisVertical class="w-4 h-4" />
-                        </label>
-                        <ul
-                          tabindex="0"
-                          class="dropdown-content z-[1] menu p-2 shadow bg-accentColor rounded-box w-52 border border-black/10"
+                          <font-awesome-icon icon="fa-solid fa-eye" />
+                        </button>
+                        <button
+                          title="Process Request"
+                          v-if="
+                            request.status === 'Sent' ||
+                            request.status === 'Acknowledged'
+                          "
+                          @click="processBranchRequest(request)"
+                          class="btn btn-ghost btn-xs hover:bg-white/10 hover:text-success"
                         >
-                          <li class="hover:bg-black/10">
-                            <a
-                              @click="viewBranchRequestModal(request)"
-                              class="text-primary"
-                              >View Request</a
-                            >
-                          </li>
-                          <li
-                            class="hover:bg-black/10"
-                            v-if="request.status === 'Sent'"
-                          >
-                            <a
-                              @click="processBranchRequest(request)"
-                              class="text-success"
-                              >Process</a
-                            >
-                          </li>
-                          <li
-                            class="hover:bg-black/10"
-                            v-if="request.status === 'Acknowledged'"
-                          >
-                            <a
-                              @click="processBranchRequest(request)"
-                              class="text-success"
-                              >Process</a
-                            >
-                          </li>
-                          <li
-                            class="hover:bg-black/10"
-                            v-if="request.status === 'Acknowledged'"
-                          >
-                            <a
-                              @click="
-                                markBranchRequestInProgress(request.request_id)
-                              "
-                              class="text-warning"
-                              >Mark In Progress</a
-                            >
-                          </li>
-                          <li
-                            class="hover:bg-black/10"
-                            v-if="request.status === 'In Progress'"
-                          >
-                            <a
-                              @click="completeBranchRequest(request.request_id)"
-                              class="text-success"
-                              >Complete</a
-                            >
-                          </li>
-                          <li
-                            class="hover:bg-black/10"
-                            v-if="
-                              ['Sent', 'Acknowledged', 'In Progress'].includes(
-                                request.status
-                              )
-                            "
-                          >
-                            <a
-                              @click="cancelBranchRequest(request.request_id)"
-                              class="text-error"
-                              >Cancel</a
-                            >
-                          </li>
-                        </ul>
+                          <font-awesome-icon icon="fa-solid fa-cog" />
+                        </button>
+                        <button
+                          title="Complete Request"
+                          v-if="request.status === 'In Progress'"
+                          @click="completeBranchRequest(request.request_id)"
+                          class="btn btn-ghost btn-xs hover:bg-white/10 hover:text-success"
+                        >
+                          <font-awesome-icon icon="fa-solid fa-check" />
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -3435,6 +4162,7 @@
 
                 <div class="flex gap-2 mt-4 lg:mt-0">
                   <button
+                    title="Export to CSV"
                     class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
                     @click="exportToCSV"
                   >
@@ -3462,6 +4190,7 @@
 
                   <div class="flex gap-2">
                     <button
+                      title="Sort by"
                       class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10"
                       @click="toggleSortOrder"
                       :title="`Sort ${requestHistoryFilter.sortOrder === 'asc' ? 'Descending' : 'Ascending'}`"
@@ -3546,6 +4275,7 @@
                       <div class="flex items-center gap-2">
                         <div class="relative">
                           <button
+                            title="Custom month"
                             class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
                             @click="toggleCustomMonthPicker"
                           >
@@ -3708,10 +4438,9 @@
                 <table
                   class="table table-sm table-zebra text-black/50 border border-black/10 custom-zebra"
                 >
-                  <thead class="text-secondaryColor">
-                    <tr class="bg-primaryColor text-accentColor">
+                  <thead class="bg-accentColor/50">
+                    <tr class="">
                       <th class="w-16">No.</th>
-                      <th class="w-32">Request ID</th>
                       <th class="min-w-64">Description</th>
                       <th class="w-28">Date</th>
                       <th class="w-24">Status</th>
@@ -3760,14 +4489,6 @@
                           index +
                           1
                         }}
-                      </td>
-
-                      <td>
-                        <div
-                          class="font-mono text-sm font-medium text-primaryColor"
-                        >
-                          {{ request.request_id }}
-                        </div>
                       </td>
 
                       <td class="max-w-xs">
@@ -3970,28 +4691,6 @@
       <div class="py-4">
         <p class="mb-4">{{ confirmModal.message }}</p>
 
-        <!-- Show additional details for certain actions -->
-        <div
-          v-if="
-            confirmModal.data &&
-            (confirmModal.type === 'send' ||
-              confirmModal.type === 'cancel' ||
-              confirmModal.type === 'delete')
-          "
-          class="bg-white/10 p-3 rounded mt-3"
-        >
-          <p class="text-sm">
-            <strong>Description:</strong>
-            {{ confirmModal.data.request_description }}
-          </p>
-          <p class="text-sm">
-            <strong>Status:</strong> {{ confirmModal.data.request_status }}
-          </p>
-          <p class="text-sm">
-            <strong>Date:</strong> {{ confirmModal.data.request_date }}
-          </p>
-        </div>
-
         <!-- Show warning for destructive actions -->
         <div
           v-if="
@@ -4037,7 +4736,28 @@
     <div class="modal-box bg-accentColor text-black/50 shadow-lg max-w-6xl">
       <!-- View Request Modal Content -->
       <template v-if="modal.type === 'viewRequest'">
-        <h3 class="text-lg font-bold mb-4 text-black">Request Details</h3>
+        <h3 class="text-lg font-bold mb-2 text-black">Request Details</h3>
+        <!-- Summary (plain text) -->
+        <div class="mb-4 text-sm text-black/80 space-y-1 grid grid-cols-2">
+          <div>
+            <span>{{
+              modal.request?.supplier_id
+                ? getSupplierName(modal.request.supplier_id)
+                : '-'
+            }}</span>
+          </div>
+          <div class="text-right">
+            <span>
+              {{ formatManilaDate(modal.request?.created_at) }}
+              {{ formatManilaTime(modal.request?.created_at) }}
+            </span>
+          </div>
+          <div>
+            <span class="text-black/50">{{
+              modal.request?.request_type || '-'
+            }}</span>
+          </div>
+        </div>
         <div class="overflow-x-auto">
           <table class="table table-xs text-black">
             <thead class="text-black">
@@ -4074,7 +4794,15 @@
                   {{ row.item_unitPrice }}
                 </td>
                 <td class="text-black border border-black/50">
-                  {{ row.item_amount }}
+                  <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                  {{
+                    Number(
+                      String(row.item_amount).replace(/,/g, '')
+                    ).toLocaleString('en-PH', {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })
+                  }}
                 </td>
               </tr>
               <tr class="text-black border border-black/50">
@@ -4084,15 +4812,19 @@
                 >
                   Total
                 </td>
-                <td class="font-semibold">₱ {{ totalAmount }}</td>
+                <td class="font-semibold">
+                  <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                  {{
+                    modal.request
+                      ? modal.request.total_amount.toLocaleString('en-PH', {
+                          minimumFractionDigits: 2,
+                        })
+                      : '0.00'
+                  }}
+                </td>
               </tr>
             </tbody>
           </table>
-          <div class="mt-4">
-            <p class="text-sm text-black/50">
-              Description: {{ modal.request?.request_description }}
-            </p>
-          </div>
         </div>
         <div class="modal-action">
           <button
@@ -4278,6 +5010,12 @@
               >
                 <p class="text-sm text-black">₱</p>
                 <p class="text-sm text-black">{{ totalAmount }}</p>
+                <span
+                  v-if="Number(totalSavings) > 0"
+                  class="text-xs text-green-600 ml-2"
+                >
+                  (Save ₱{{ totalSavings }})
+                </span>
               </div>
             </div>
           </div>
@@ -4417,8 +5155,37 @@
 
       <!-- Request Information Form with Centralized Categories -->
       <div
-        class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-start mb-6 p-4 bg-white/5 rounded-lg"
+        class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6 items-start mb-6 p-2 sm:p-4 bg-white/5 rounded-lg"
       >
+        <!-- Supplier Selection (optional) -->
+        <div class="form-control">
+          <label class="label">
+            <span class="label-text text-black/70 font-medium">Supplier</span>
+          </label>
+          <select
+            v-model="selectedSupplierId"
+            @change="onSupplierSelected($event.target.value)"
+            class="select select-bordered bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
+          >
+            <option value="">Manual entry</option>
+            <option v-for="s in supplierOptions" :key="s.id" :value="s.id">
+              {{ s.name }}
+            </option>
+            <!-- Custom option for suppliers not in active list but selected from preload -->
+            <option
+              v-if="
+                selectedSupplierId &&
+                !supplierOptions.some(
+                  (s) => String(s.id) === String(selectedSupplierId)
+                )
+              "
+              :key="`custom-${selectedSupplierId}`"
+              :value="selectedSupplierId"
+            >
+              {{ getSupplierName(selectedSupplierId) }}
+            </option>
+          </select>
+        </div>
         <!-- Inventory Category Selection -->
         <div class="form-control">
           <label class="label">
@@ -4431,6 +5198,7 @@
             @change="onCategoryChange($event.target.value)"
             class="select select-bordered bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
             required
+            :disabled="isPreloaded || isSupplierMode || !!selectedSupplierId"
           >
             <option value="" disabled>Select Inventory Category</option>
             <option
@@ -4564,15 +5332,156 @@
         ></textarea>
       </div>
 
+      <!-- Available Promos Section -->
+      <div v-if="selectedSupplierId && availablePromos.length > 0" class="mb-6">
+        <div
+          class="alert bg-primaryColor/10 border-primaryColor text-primaryColor flex items-start gap-4"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+            class="stroke-current shrink-0 w-6 h-6"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+            ></path>
+          </svg>
+          <div class="w-full">
+            <h3 class="font-bold">
+              <PartyPopper class="w-5 h-5 inline-block mr-2" />
+              Available Promotions!
+            </h3>
+            <div class="text-sm">
+              <p class="mb-2">This supplier has active promotions:</p>
+              <ul class="list-disc list-inside space-y-2">
+                <li
+                  v-for="promo in availablePromos"
+                  :key="promo.id"
+                  class="font-medium"
+                >
+                  <div class="flex flex-col">
+                    <div>
+                      <strong>{{ promo.product_name }}</strong> -
+                      {{ promo.discount_percentage }}% OFF (Min.
+                      {{ promo.minimum_quantity }} {{ promo.unit }})
+                    </div>
+                    <div class="text-xs text-primaryColor/70 mt-1 ml-4">
+                      <font-awesome-icon
+                        icon="fa-solid fa-calendar-days"
+                        class="mr-1"
+                      />
+                      Valid:
+                      {{
+                        formatPromoDate(
+                          promo.promo_info?.start_date || promo.promo_start_date
+                        )
+                      }}
+                      -
+                      {{
+                        formatPromoDate(
+                          promo.promo_info?.end_date || promo.promo_end_date
+                        )
+                      }}
+                      <span
+                        v-if="isPromoExpiringSoon(promo)"
+                        class="ml-2 text-orange-500 font-semibold"
+                      >
+                        <font-awesome-icon
+                          icon="fa-solid fa-clock"
+                          class="mr-1"
+                        />
+                        Expires Soon!
+                      </span>
+                    </div>
+                  </div>
+                </li>
+              </ul>
+            </div>
+
+            <!-- Applied Promos Summary -->
+            <div
+              v-if="getAppliedPromosSummary().length > 0"
+              class="mt-4 pt-3 border-t border-primaryColor/20"
+            >
+              <h4 class="font-semibold text-primaryColor mb-2">
+                <font-awesome-icon icon="fa-solid fa-check" />
+                Applied Promotions
+              </h4>
+              <div class="space-y-2">
+                <div
+                  v-for="appliedPromo in getAppliedPromosSummary()"
+                  :key="appliedPromo.product_name"
+                  class="bg-primaryColor/10 rounded-lg p-3"
+                >
+                  <div class="flex justify-between items-start">
+                    <div class="flex-1">
+                      <div class="flex items-center gap-2">
+                        <span class="font-medium text-primaryColor">{{
+                          appliedPromo.product_name
+                        }}</span>
+                        <span class="text-primaryColor/80 text-sm"
+                          >{{ appliedPromo.discount_percentage }}% OFF</span
+                        >
+                      </div>
+                      <div class="text-xs text-primaryColor/60 mt-1">
+                        <font-awesome-icon
+                          icon="fa-solid fa-calendar-check"
+                          class="mr-1"
+                        />
+                        Valid until:
+                        {{
+                          formatPromoDate(
+                            getPromoEndDate(appliedPromo.product_name)
+                          )
+                        }}
+                      </div>
+                    </div>
+                    <div class="text-primaryColor font-semibold">
+                      <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                      {{
+                        Number(appliedPromo.total_savings).toLocaleString(
+                          'en-PH',
+                          {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          }
+                        )
+                      }}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="mt-3 pt-2 border-t border-primaryColor/20">
+                <div
+                  class="flex justify-between items-center font-semibold text-primaryColor"
+                >
+                  <span>Total Savings:</span>
+                  <span>
+                    <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                    {{
+                      Number(getTotalPromoSavings()).toLocaleString('en-PH', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })
+                    }}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Items Section with Centralized Categories -->
       <div class="mb-6">
         <div class="flex justify-between items-center mb-4">
           <h4 class="text-lg font-semibold text-primaryColor">Request Items</h4>
           <div class="flex gap-2">
-            <button
-              class="btn btn-sm bg-primaryColor text-white font-thin border-none hover:bg-primaryColor/80"
-              @click="addRowRequest"
-            >
+            <button class="btn btn-sm border font-thin" @click="addRowRequest">
               <Plus class="w-4 h-4 mr-1" />
               Add Item
             </button>
@@ -4601,14 +5510,54 @@
                 :key="row.id"
                 class="hover:bg-primaryColor/5"
               >
-                <td class="text-center font-medium">{{ row.id }}</td>
+                <td class="text-left font-medium">{{ row.id }}</td>
 
                 <td>
+                  <!-- When supplier is selected, show a dropdown of supplier products -->
+                  <select
+                    v-if="isSupplierMode && supplierProducts.length > 0"
+                    v-model="row.supplier_product_id"
+                    @change="onSupplierProductSelected(row)"
+                    :disabled="row.isPreloaded"
+                    :class="[
+                      'select select-xs w-full border-primaryColor/30 focus:border-primaryColor',
+                      row.isPreloaded
+                        ? 'bg-gray-100 cursor-not-allowed'
+                        : 'bg-white',
+                    ]"
+                    :key="`supplier-product-${row.id}-${row.supplier_product_id}-${supplierProducts.length}-${forceDropdownUpdate}`"
+                    :data-row-id="row.id"
+                    ref="supplierProductSelect"
+                  >
+                    <option value="" disabled>Select product...</option>
+                    <option
+                      v-for="p in supplierProducts"
+                      :key="p.id"
+                      :value="p.id"
+                      :title="`${p.product_name} — ₱${Number(p.unit_price || 0).toFixed(2)} / ${p.unit}`"
+                    >
+                      {{ p.product_name }}
+                    </option>
+                  </select>
+                  <!-- Loading state when supplier products are loading -->
+                  <div
+                    v-else-if="isSupplierMode && supplierProducts.length === 0"
+                    class="input input-xs w-full bg-gray-100 text-gray-500"
+                  >
+                    Loading products...
+                  </div>
+
+                  <!-- Manual entry when no supplier selected -->
                   <input
+                    v-else
+                    :readonly="isPreloaded"
                     type="text"
                     v-model="row.item_name"
                     placeholder="Enter item name..."
-                    class="input input-xs w-full bg-white border-primaryColor/30 focus:border-primaryColor focus:bg-white"
+                    :class="[
+                      'input input-xs w-full border-primaryColor/30 focus:border-primaryColor focus:bg-white',
+                      isPreloaded ? 'bg-gray-100' : 'bg-white',
+                    ]"
                     @blur="updateItemAmount(row)"
                   />
                 </td>
@@ -4621,7 +5570,10 @@
                     min="0"
                     step="1"
                     class="input input-xs w-full bg-white border-primaryColor/30 focus:border-primaryColor focus:bg-white"
-                    @input="updateItemAmount(row)"
+                    @input="
+                      updateItemAmount(row);
+                      updatePromoDiscount(row);
+                    "
                   />
                 </td>
 
@@ -4658,6 +5610,7 @@
                     v-model="row.item_type"
                     @change="onItemTypeChange(row)"
                     class="select select-xs w-full bg-white border-primaryColor/30 focus:border-primaryColor"
+                    :disabled="isPreloaded || isSupplierMode"
                   >
                     <option value="" disabled>Type</option>
                     <option
@@ -4671,24 +5624,62 @@
                 </td>
 
                 <td>
-                  <input
-                    type="number"
-                    v-model.number="row.item_unitPrice"
-                    placeholder="0.00"
-                    min="0"
-                    step="0.01"
-                    class="input input-xs w-full bg-white border-primaryColor/30 focus:border-primaryColor focus:bg-white"
-                    @input="updateItemAmount(row)"
-                  />
+                  <div class="space-y-1">
+                    <input
+                      type="number"
+                      v-model.number="row.item_unitPrice"
+                      placeholder="0.00"
+                      min="0"
+                      step="0.01"
+                      class="input input-xs w-full bg-white border-primaryColor/30 focus:border-primaryColor focus:bg-white"
+                      @input="updateItemAmount(row)"
+                      :readonly="isSupplierMode"
+                      :disabled="isSupplierMode"
+                    />
+                  </div>
                 </td>
 
                 <td>
-                  <div class="text-right font-medium">
-                    ₱{{
-                      (
-                        (row.item_quantity || 0) * (row.item_unitPrice || 0)
-                      ).toFixed(2)
-                    }}
+                  <div class="text-right font-medium space-y-1">
+                    <div>
+                      <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                      {{
+                        (
+                          (row.item_quantity || 0) * (row.item_unitPrice || 0)
+                        ).toLocaleString('en-PH', {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })
+                      }}
+                    </div>
+                    <!-- Show savings when promo is applied -->
+                    <div
+                      v-if="row.promo_applied && row.original_price"
+                      class="text-xs text-priumaryColor text-right"
+                    >
+                      <span class="line-through text-gray-400">
+                        ₱{{
+                          (
+                            (row.item_quantity || 0) * row.original_price
+                          ).toLocaleString('en-PH', {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })
+                        }}
+                      </span>
+                      <br />
+                      <span class="font-semibold">
+                        Save ₱{{
+                          (
+                            (row.item_quantity || 0) *
+                            (row.original_price - row.item_unitPrice)
+                          ).toLocaleString('en-PH', {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })
+                        }}
+                      </span>
+                    </div>
                   </div>
                 </td>
 
@@ -4704,9 +5695,59 @@
               </tr>
             </tbody>
             <tfoot>
+              <!-- Original Total (if there are promos) -->
+              <tr v-if="Number(totalSavings) > 0" class="text-sm">
+                <td colspan="6" class="text-right text-gray-500">
+                  Original Total:
+                </td>
+                <td class="text-right text-gray-400">
+                  <span class="line-through">
+                    <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                    {{
+                      Number(originalTotalAmount).toLocaleString('en-PH', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })
+                    }}
+                  </span>
+                </td>
+                <td></td>
+              </tr>
+
+              <!-- Total Savings (if there are promos) -->
+              <tr v-if="Number(totalSavings) > 0" class="text-sm">
+                <td colspan="6" class="text-right text-green-600">
+                  Total Savings:
+                </td>
+                <td class="text-right text-green-600 font-semibold">
+                  <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                  {{
+                    Number(totalSavings).toLocaleString('en-PH', {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })
+                  }}
+                </td>
+                <td></td>
+              </tr>
+
+              <!-- Final Total -->
               <tr class="font-semibold">
-                <td colspan="6" class="text-right text-black">Total Amount:</td>
-                <td class="text-right text-primaryColor">₱{{ totalAmount }}</td>
+                <td colspan="6" class="text-right text-black/50">
+                  {{
+                    Number(totalSavings) > 0 ? 'Final Total:' : 'Total Amount:'
+                  }}
+                </td>
+                <td class="text-right text-primaryColor">
+                  <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                  {{
+                    Number(totalAmount).toLocaleString('en-PH', {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })
+                  }}
+                </td>
+
                 <td></td>
               </tr>
             </tfoot>
@@ -4825,7 +5866,7 @@
         </div>
         <div>
           <p class="text-sm text-gray-600">Type</p>
-          <div class="badge badge-outline badge-sm">
+          <div class="">
             {{ selectedBranchRequest.request_type }}
           </div>
         </div>
@@ -4866,18 +5907,32 @@
 
       <!-- Requested Items -->
       <div class="mb-6">
-        <h4 class="text-lg font-semibold mb-4">Requested Items</h4>
+        <div class="flex items-center justify-between mb-4">
+          <h4 class="text-lg font-semibold">Requested Items</h4>
+          <button
+            class="btn btn-xs btn-ghost text-primaryColor"
+            @click="openAvailabilityModal"
+            :disabled="isCheckingAvailability"
+            title="Check availability"
+          >
+            <span
+              v-if="isCheckingAvailability"
+              class="loading loading-spinner loading-xs mr-2"
+            ></span>
+            <Info v-else class="w-4 h-4 mr-1" />
+            <span class="hidden sm:inline">Check Availability</span>
+          </button>
+        </div>
         <div class="overflow-x-auto">
-          <table class="table table-sm">
+          <table class="table table-sm table-zebra">
             <thead>
-              <tr class="bg-primaryColor text-accentColor">
+              <tr class="">
                 <th class="!font-thin">Item Name</th>
                 <th class="!font-thin text-right">Quantity</th>
                 <th class="!font-thin">Unit</th>
                 <th class="!font-thin text-right">Unit Price</th>
                 <th class="!font-thin">Category</th>
                 <th class="!font-thin">Source</th>
-                <th class="!font-thin text-right">Amount</th>
               </tr>
             </thead>
             <tbody>
@@ -4900,39 +5955,9 @@
                     item.item_type || selectedBranchRequest.source_type || '-'
                   }}
                 </td>
-                <td class="text-right">
-                  {{
-                    item.unit_price != null
-                      ? (
-                          Number(item.unit_price) *
-                          Number(item.item_quantity || 0)
-                        ).toFixed(2)
-                      : '-'
-                  }}
-                </td>
               </tr>
             </tbody>
           </table>
-          <div
-            class="mt-3 text-right text-sm text-gray-700"
-            v-if="selectedBranchRequest && selectedBranchRequest.items"
-          >
-            <span class="font-medium mr-2">Total Amount:</span>
-            <span>
-              {{
-                selectedBranchRequest.items
-                  .reduce(
-                    (s, it) =>
-                      s +
-                      (it.unit_price
-                        ? Number(it.unit_price) * Number(it.item_quantity || 0)
-                        : 0),
-                    0
-                  )
-                  .toFixed(2)
-              }}
-            </span>
-          </div>
         </div>
       </div>
 
@@ -4958,6 +5983,69 @@
       </div>
     </div>
     <div class="modal-backdrop" @click="closeBranchRequestModal"></div>
+  </div>
+
+  <!-- SCM Availability Helper Modal -->
+  <div v-if="showAvailabilityModal" class="modal modal-open z-[10000]">
+    <div class="modal-box bg-accentColor text-black/50 shadow-lg max-w-3xl">
+      <h3 class="text-lg font-bold mb-4 text-black">Checking Availability</h3>
+      <div class="overflow-x-auto">
+        <table class="table table-sm table-zebra">
+          <thead>
+            <tr>
+              <th class="!font-thin">Item</th>
+              <th class="!font-thin">Category</th>
+              <th class="!font-thin">Source</th>
+              <th class="!font-thin text-right">Needed</th>
+              <th class="!font-thin text-right">Available</th>
+              <th class="!font-thin">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="r in availabilityRows" :key="r.id">
+              <td class="font-medium">{{ r.name }}</td>
+              <td>{{ r.category }}</td>
+              <td>{{ r.source }}</td>
+              <td class="text-right">{{ r.needed }} {{ r.unit }}</td>
+              <td class="text-right">
+                <span v-if="r.available != null"
+                  >{{ r.available }} {{ r.unit }}</span
+                >
+                <span v-else class="text-gray-400">-</span>
+              </td>
+              <td>
+                <span
+                  class="badge badge-sm"
+                  :class="{
+                    'bg-success/10 text-success': r.status === 'available',
+                    'bg-warning/10 text-warning': r.status === 'insufficient',
+                    'bg-error/10 text-error': r.status === 'missing',
+                  }"
+                >
+                  {{
+                    r.status === 'available'
+                      ? 'Available'
+                      : r.status === 'insufficient'
+                        ? 'Insufficient'
+                        : 'Not in SCM'
+                  }}
+                </span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="modal-action">
+        <button
+          class="btn btn-sm font-thin bg-gray-200 text-black/50 border-none hover:bg-gray-300 shadow-none"
+          @click="closeAvailabilityModal"
+        >
+          Close
+        </button>
+      </div>
+    </div>
+    <div class="modal-backdrop" @click="closeAvailabilityModal"></div>
   </div>
 </template>
 

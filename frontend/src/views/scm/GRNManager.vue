@@ -1,5 +1,5 @@
 <template>
-  <div class="container mx-auto p-6 max-w-6xl">
+  <div class="mx-auto p-6">
     <!-- Header -->
     <div class="text-center mb-8">
       <h1 class="text-4xl font-bold text-primaryColor mb-2">
@@ -105,53 +105,74 @@
           <div
             class="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center"
           >
-            <!-- Date Filter Buttons -->
-            <div class="flex gap-2 md:flex-row flex-col">
+            <!-- Date Filter Dropdown -->
+            <div class="relative" @click.stop>
               <button
-                v-for="option in quickDateOptions"
-                :key="option.label"
-                class="btn btn-sm font-thin border border-primaryColor/30 hover:border-primaryColor shadow-none"
-                :class="{
-                  'bg-primaryColor text-white':
-                    grnFilterType ===
-                    (option.label === 'Today'
-                      ? 'today'
-                      : option.label === 'This Week'
-                        ? 'week'
-                        : option.label === 'This Month'
-                          ? 'month'
-                          : ''),
-                  'bg-white text-primaryColor hover:bg-primaryColor/10':
-                    grnFilterType !==
-                    (option.label === 'Today'
-                      ? 'today'
-                      : option.label === 'This Week'
-                        ? 'week'
-                        : option.label === 'This Month'
-                          ? 'month'
-                          : ''),
-                }"
-                @click="selectQuickDate(option)"
+                class="btn btn-sm font-thin border border-primaryColor/30 hover:border-primaryColor shadow-none w-full sm:w-auto"
+                @click="toggleDateDropdown"
               >
-                {{ option.label }}
+                <Filter class="w-4 h-4 mr-1" />
+                <span class="truncate">{{ getCurrentGrnFilterLabel() }}</span>
                 <span
-                  class="badge badge-xs ml-1 bg-secondaryColor border-none"
-                  :class="
-                    grnFilterType ===
-                    (option.label === 'Today'
-                      ? 'today'
-                      : option.label === 'This Week'
-                        ? 'week'
-                        : option.label === 'This Month'
-                          ? 'month'
-                          : '')
-                      ? 'badge-ghost'
-                      : 'badge-primaryColor/10 text-primaryColor'
-                  "
+                  class="badge badge-xs ml-1 bg-secondaryColor border-none flex-shrink-0"
                 >
-                  {{ option.count }}
+                  {{ getCurrentGrnFilterCount() }}
                 </span>
               </button>
+
+              <!-- Dropdown Menu -->
+              <div
+                v-if="showDateDropdown"
+                class="absolute top-full left-0 right-0 sm:right-auto mt-1 w-full sm:w-48 bg-white border border-gray-200 rounded-md shadow-lg z-50"
+              >
+                <div class="py-1">
+                  <button
+                    v-for="option in quickDateOptions"
+                    :key="option.label"
+                    class="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center justify-between cursor-pointer"
+                    :class="{
+                      'bg-primaryColor/10 text-primaryColor font-medium':
+                        grnFilterType ===
+                        (option.label === 'Today'
+                          ? 'today'
+                          : option.label === 'This Week'
+                            ? 'week'
+                            : option.label === 'This Month'
+                              ? 'month'
+                              : ''),
+                      'text-gray-700':
+                        grnFilterType !==
+                        (option.label === 'Today'
+                          ? 'today'
+                          : option.label === 'This Week'
+                            ? 'week'
+                            : option.label === 'This Month'
+                              ? 'month'
+                              : ''),
+                    }"
+                    @click="selectQuickDate(option)"
+                  >
+                    <span>{{ option.label }}</span>
+                    <span
+                      class="badge badge-xs bg-secondaryColor border-none"
+                      :class="
+                        grnFilterType ===
+                        (option.label === 'Today'
+                          ? 'today'
+                          : option.label === 'This Week'
+                            ? 'week'
+                            : option.label === 'This Month'
+                              ? 'month'
+                              : '')
+                          ? 'badge-ghost'
+                          : 'badge-primaryColor/10 text-primaryColor'
+                      "
+                    >
+                      {{ option.count }}
+                    </span>
+                  </button>
+                </div>
+              </div>
             </div>
 
             <!-- Custom Month Picker -->
@@ -281,8 +302,6 @@
           <table class="table table-zebra">
             <thead>
               <tr>
-                <th>GRN Number</th>
-                <th>PO Number</th>
                 <th>Supplier</th>
                 <th>Received By</th>
                 <th>Status</th>
@@ -292,10 +311,6 @@
             </thead>
             <tbody>
               <tr v-for="grn in paginatedGrns" :key="grn.id">
-                <td>
-                  <div class="font-bold">{{ grn.grn_number || 'N/A' }}</div>
-                </td>
-                <td>{{ grn.po_number || 'N/A' }}</td>
                 <td>{{ grn.supplier_name || 'N/A' }}</td>
                 <td>{{ grn.received_by_name || 'N/A' }}</td>
                 <td>
@@ -529,8 +544,24 @@
                     </td>
                     <td>{{ item.ordered_quantity || 0 }} /</td>
                     <td>{{ item.received_quantity || 0 }}</td>
-                    <td>₱{{ (item.unit_cost || 0).toLocaleString() }}</td>
-                    <td>₱{{ (item.total_value || 0).toLocaleString() }}</td>
+                    <td class="">
+                      <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                      {{
+                        Number(item.unit_cost || 0).toLocaleString('en-PH', {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })
+                      }}
+                    </td>
+                    <td>
+                      ₱
+                      {{
+                        Number(item.total_value || 0).toLocaleString('en-PH', {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })
+                      }}
+                    </td>
                     <td>
                       <span
                         :class="getQualityStatusBadgeClass(item.quality_status)"
@@ -959,6 +990,7 @@
     GitPullRequestDraft,
     ClockFading,
     Plus,
+    Filter,
   } from 'lucide-vue-next';
 
   const router = useRouter();
@@ -978,6 +1010,7 @@
 
   // Date filtering with client-side count calculation
   const grnFilterType = ref('today');
+  const showDateDropdown = ref(false);
 
   // Quick date options with calculated counts
   const quickDateOptions = computed(() => {
@@ -1110,6 +1143,41 @@
       grnFilterType.value = 'month';
     }
     showCustomMonthPicker.value = false;
+    showDateDropdown.value = false;
+  };
+
+  const toggleDateDropdown = () => {
+    showDateDropdown.value = !showDateDropdown.value;
+  };
+
+  const getCurrentGrnFilterLabel = () => {
+    const currentOption = quickDateOptions.value.find((option) => {
+      const optionType =
+        option.label === 'Today'
+          ? 'today'
+          : option.label === 'This Week'
+            ? 'week'
+            : option.label === 'This Month'
+              ? 'month'
+              : '';
+      return grnFilterType.value === optionType;
+    });
+    return currentOption ? currentOption.label : 'Today';
+  };
+
+  const getCurrentGrnFilterCount = () => {
+    const currentOption = quickDateOptions.value.find((option) => {
+      const optionType =
+        option.label === 'Today'
+          ? 'today'
+          : option.label === 'This Week'
+            ? 'week'
+            : option.label === 'This Month'
+              ? 'month'
+              : '';
+      return grnFilterType.value === optionType;
+    });
+    return currentOption ? currentOption.count : 0;
   };
 
   const toggleCustomMonthPicker = () => {

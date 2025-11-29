@@ -1,18 +1,24 @@
-const API_BASE_URL = process.env.VUE_APP_API_URL || '';
+const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
 class CustomerService {
   // Get all customers with filters
   async getCustomers(filters = {}) {
     try {
       const params = new URLSearchParams();
-      
-      Object.keys(filters).forEach(key => {
-        if (filters[key] !== null && filters[key] !== undefined && filters[key] !== '') {
+
+      Object.keys(filters).forEach((key) => {
+        if (
+          filters[key] !== null &&
+          filters[key] !== undefined &&
+          filters[key] !== ''
+        ) {
           params.append(key, filters[key]);
         }
       });
 
-      const response = await fetch(`${API_BASE_URL}/api/customers?${params.toString()}`);
+      const response = await fetch(
+        `${API_BASE_URL}/api/customers?${params.toString()}`
+      );
       const data = await response.json();
 
       if (!response.ok) {
@@ -46,7 +52,9 @@ class CustomerService {
   // Get customer with feedback and ratings
   async getCustomerDetails(id) {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/customers/${id}/details`);
+      const response = await fetch(
+        `${API_BASE_URL}/api/customers/${id}/details`
+      );
       const data = await response.json();
 
       if (!response.ok) {
@@ -148,7 +156,9 @@ class CustomerService {
   // Get top customers by spending
   async getTopCustomers(limit = 10) {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/customers/top?limit=${limit}`);
+      const response = await fetch(
+        `${API_BASE_URL}/api/customers/top?limit=${limit}`
+      );
       const data = await response.json();
 
       if (!response.ok) {
@@ -169,11 +179,15 @@ class CustomerService {
       if (city) params.append('city', city);
       if (province) params.append('province', province);
 
-      const response = await fetch(`${API_BASE_URL}/api/customers/location?${params.toString()}`);
+      const response = await fetch(
+        `${API_BASE_URL}/api/customers/location?${params.toString()}`
+      );
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.message || 'Failed to fetch customers by location');
+        throw new Error(
+          data.message || 'Failed to fetch customers by location'
+        );
       }
 
       return data;
@@ -186,9 +200,12 @@ class CustomerService {
   // Update customer statistics
   async updateCustomerStats(id) {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/customers/${id}/update-stats`, {
-        method: 'POST',
-      });
+      const response = await fetch(
+        `${API_BASE_URL}/api/customers/${id}/update-stats`,
+        {
+          method: 'POST',
+        }
+      );
 
       const data = await response.json();
 
@@ -207,9 +224,9 @@ class CustomerService {
   async findOrCreateCustomer(customerData) {
     try {
       // First try to find existing customer by email
-      const existingCustomers = await this.getCustomers({ 
+      const existingCustomers = await this.getCustomers({
         search: customerData.email,
-        limit: 1 
+        limit: 1,
       });
 
       if (existingCustomers.data && existingCustomers.data.length > 0) {

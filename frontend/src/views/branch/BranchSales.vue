@@ -15,6 +15,8 @@
     AlertCircle,
     PhilippinePeso,
     Trash2,
+    Receipt,
+    Printer,
   } from 'lucide-vue-next';
   import { useBranchContextStore } from '../../stores/branchContextStore';
   import { usePOSStore } from '../../stores/posStore';
@@ -23,6 +25,8 @@
   import BranchSalesTransactionsModal from '../../components/branch/BranchSalesTransactionsModal.vue';
   import BranchRemitSalesModal from '../../components/branch/BranchRemitSalesModal.vue';
   import SalesTrendsChart from '../../components/branch/SalesTrendsChart.vue';
+  import QRCodeGenerator from '../../components/common/QRCodeGenerator.vue';
+  import { convertUTCToPhilippine } from '../../utils/timezoneUtils.js';
 
   const branchContextStore = useBranchContextStore();
   const posStore = usePOSStore();
@@ -49,7 +53,10 @@
   const showCompleteModal = ref(false);
   const showTransactionsModal = ref(false);
   const showRemitModal = ref(false);
+  const showReceiptModal = ref(false);
   const selectedOrder = ref(null);
+  const selectedReceiptOrder = ref(null);
+  const receiptQRData = ref('');
   const voidReason = ref('');
   const selectedVoidReason = ref('');
   const customReason = ref('');
@@ -170,14 +177,17 @@
       return [];
     }
 
+    // Filter out items with 0 sales first
+    const soldItems = topSellingItems.value.filter((item) => item.quantity > 0);
+
     if (showLeastSelling.value) {
       // Return items sorted by quantity ascending (least selling first)
-      return [...topSellingItems.value]
+      return [...soldItems]
         .sort((a, b) => a.quantity - b.quantity)
         .slice(0, 10);
     } else {
       // Return items sorted by quantity descending (top selling first)
-      return [...topSellingItems.value]
+      return [...soldItems]
         .sort((a, b) => b.quantity - a.quantity)
         .slice(0, 10);
     }
@@ -378,7 +388,14 @@
       });
 
       if (response && response.data && response.data.length > 0) {
-        recentTransactions.value = response.data.map((order) => {
+        // Ensure time is computed and (optionally) sorted using Philippine timezone
+        const sorted = [...response.data].sort((a, b) => {
+          const aPH = convertUTCToPhilippine(a.created_at).getTime();
+          const bPH = convertUTCToPhilippine(b.created_at).getTime();
+          return bPH - aPH; // newest first
+        });
+
+        recentTransactions.value = sorted.map((order) => {
           const isRefunded =
             order.status === 'void' &&
             [
@@ -424,12 +441,19 @@
           const finalIsLoss =
             isLoss || (order.status === 'void' && !isRefunded);
 
+          const createdPH = convertUTCToPhilippine(order.created_at);
+
           return {
             id: order.id,
             order_number: order.order_number,
-            time: new Date(order.created_at).toLocaleTimeString('en-US', {
+            time: createdPH.toLocaleString('en-PH', {
+              month: 'short',
+              day: '2-digit',
+              year: 'numeric',
               hour: '2-digit',
               minute: '2-digit',
+              hour12: true,
+              timeZone: 'Asia/Manila',
             }),
             amount: parseFloat(order.total_amount) || 0,
             amount_paid: parseFloat(order.amount_paid) || 0,
@@ -448,10 +472,12 @@
             status: order.status,
             order_type: order.order_type,
             created_at: order.created_at,
+            // Disable void/refund if already remitted (linked to a remittance)
             canVoid:
-              order.status === 'pending' ||
-              order.status === 'processing' ||
-              order.status === 'completed',
+              (order.status === 'pending' ||
+                order.status === 'processing' ||
+                order.status === 'completed') &&
+              !order.remittance_id,
             isRefunded: finalIsRefunded,
             isLoss: finalIsLoss,
             void_reason: order.void_reason,
@@ -515,6 +541,10 @@
     showTransactionsModal.value = false;
   };
 
+  const reopenTransactionsModal = () => {
+    showTransactionsModal.value = true;
+  };
+
   const showRemitSales = async () => {
     remitLoading.value = true;
     try {
@@ -531,6 +561,480 @@
 
   const closeRemitModal = () => {
     showRemitModal.value = false;
+  };
+
+  // Function to get the correct base URL for QR codes
+  const getQRBaseUrl = () => {
+    // In development, use the network IP so phones can access it
+    if (
+      window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1'
+    ) {
+      // For local development, use the network IP so phones can access it
+      return `http://192.168.18.5:8080`;
+    }
+    // In production, use the current origin
+    return window.location.origin;
+  };
+
+  // Receipt functionality
+  const showReceipt = (order) => {
+    selectedReceiptOrder.value = order;
+    // Generate QR data for rating the order
+    receiptQRData.value = `${getQRBaseUrl()}/rate-order?order=${encodeURIComponent(order.order_number)}`;
+    showReceiptModal.value = true;
+  };
+
+  const closeReceiptModal = () => {
+    showReceiptModal.value = false;
+    selectedReceiptOrder.value = null;
+    receiptQRData.value = '';
+  };
+
+  const printReceipt = async (order) => {
+    // Create a new window for printing
+    const printWindow = window.open('', '_blank');
+
+    // Get the receipt content with QR code
+    const receiptContent = await generateReceiptHTMLWithQR(order);
+
+    printWindow.document.write(receiptContent);
+    printWindow.document.close();
+
+    // Wait for content to load then print
+    printWindow.onload = () => {
+      printWindow.print();
+      printWindow.close();
+    };
+  };
+
+  const generateReceiptHTML = (order) => {
+    const branchName = currentBranch.value?.name || 'Branch';
+    const currentDate = new Date().toLocaleString('en-PH', {
+      timeZone: 'Asia/Manila',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+
+    // Generate QR data for the order
+    const qrData = `${getQRBaseUrl()}/rate-order?order=${encodeURIComponent(order.order_number)}`;
+
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Receipt - ${order.order_number}</title>
+        <style>
+          body {
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            line-height: 1.4;
+            margin: 0;
+            padding: 20px;
+            max-width: 300px;
+            margin: 0 auto;
+          }
+          .header {
+            text-align: center;
+            border-bottom: 1px dashed #000;
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+          }
+          .company-name {
+            font-weight: bold;
+            font-size: 16px;
+            margin-bottom: 5px;
+          }
+          .branch-name {
+            font-size: 14px;
+            margin-bottom: 5px;
+          }
+          .order-info {
+            margin-bottom: 15px;
+          }
+          .order-info div {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 3px;
+          }
+          .items {
+            border-bottom: 1px dashed #000;
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+          }
+          .item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+          }
+          .item-name {
+            flex: 1;
+          }
+          .item-qty {
+            margin: 0 10px;
+          }
+          .item-price {
+            text-align: right;
+            min-width: 60px;
+          }
+          .totals {
+            text-align: right;
+          }
+          .total-line {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+          }
+          .grand-total {
+            border-top: 1px solid #000;
+            padding-top: 5px;
+            font-weight: bold;
+            font-size: 14px;
+          }
+          .footer {
+            text-align: center;
+            margin-top: 20px;
+            border-top: 1px dashed #000;
+            padding-top: 10px;
+            font-size: 10px;
+          }
+          .qr-section {
+            text-align: center;
+            margin-top: 15px;
+            padding-top: 10px;
+            border-top: 1px dashed #000;
+          }
+          .qr-text {
+            font-size: 9px;
+            margin-bottom: 5px;
+            color: #666;
+          }
+          .qr-placeholder {
+            width: 80px;
+            height: 80px;
+            border: 1px dashed #ccc;
+            margin: 0 auto 5px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 8px;
+            color: #999;
+          }
+          @media print {
+            body { margin: 0; padding: 10px; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div class="company-name">Countryside Steakhouse</div>
+          <div class="branch-name">${branchName}</div>
+          <div>Receipt</div>
+        </div>
+        
+        <div class="order-info">
+          <div>
+            <span>Order #:</span>
+            <span>${order.order_number}</span>
+          </div>
+          <div>
+            <span>Date:</span>
+            <span>${currentDate}</span>
+          </div>
+          <div>
+            <span>Cashier:</span>
+            <span>${order.cashier}</span>
+          </div>
+          <div>
+            <span>Status:</span>
+            <span style="color: ${order.status === 'void' ? '#dc2626' : '#000'}; font-weight: ${order.status === 'void' ? 'bold' : 'normal'};">${order.status}</span>
+          </div>
+          ${
+            order.status === 'void' && order.void_reason
+              ? `
+          <div>
+            <span>Reason:</span>
+            <span style="color: #dc2626; font-weight: bold; font-size: 11px;">${order.void_reason}</span>
+          </div>
+          `
+              : ''
+          }
+        </div>
+        
+        <div class="items">
+          ${
+            order.items
+              ? order.items
+                  .map(
+                    (item) => `
+            <div class="item">
+              <div class="item-name">${item.menu_item_name || item.item_name}</div>
+              <div class="item-qty">${item.quantity}x</div>
+              <div class="item-price">₱${(parseFloat(item.unit_price ?? item.price) || 0).toFixed(2)}</div>
+            </div>
+           `
+                  )
+                  .join('')
+              : '<div>No items</div>'
+          }
+        </div>
+        
+        <div class="totals">
+          <div class="total-line">
+            <span>Subtotal:</span>
+            <span>₱${(order.amount || 0).toFixed(2)}</span>
+          </div>
+          <div class="total-line">
+            <span>Amount Paid:</span>
+            <span>₱${(order.amount_paid || 0).toFixed(2)}</span>
+          </div>
+          <div class="total-line">
+            <span>Change:</span>
+            <span>₱${(order.change_amount || 0).toFixed(2)}</span>
+          </div>
+          <div class="total-line grand-total">
+            <span>Total:</span>
+            <span>₱${(order.amount || 0).toFixed(2)}</span>
+          </div>
+        </div>
+        
+        <div class="footer">
+          <div>Thank you for your business!</div>
+          <div>Generated on ${currentDate}</div>
+        </div>
+        
+        <div class="qr-section">
+          <div class="qr-text">Rate your experience</div>
+          <div class="qr-placeholder">QR Code</div>
+          <div class="qr-text">Scan to rate your order</div>
+        </div>
+      </body>
+      </html>
+    `;
+  };
+
+  const generateReceiptHTMLWithQR = async (order) => {
+    const branchName = currentBranch.value?.name || 'Branch';
+    const currentDate = new Date().toLocaleString('en-PH', {
+      timeZone: 'Asia/Manila',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+
+    // Generate QR data for the order
+    const qrData = `${getQRBaseUrl()}/rate-order?order=${encodeURIComponent(order.order_number)}`;
+
+    // Generate QR code as data URL
+    let qrCodeDataURL = '';
+    try {
+      const QRCode = await import('qrcode');
+      qrCodeDataURL = await QRCode.toDataURL(qrData, {
+        width: 80,
+        margin: 1,
+        color: {
+          dark: '#000000',
+          light: '#FFFFFF',
+        },
+      });
+    } catch (error) {
+      console.error('Error generating QR code for print:', error);
+    }
+
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Receipt - ${order.order_number}</title>
+        <style>
+          body {
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            line-height: 1.4;
+            margin: 0;
+            padding: 20px;
+            max-width: 300px;
+            margin: 0 auto;
+          }
+          .header {
+            text-align: center;
+            border-bottom: 1px dashed #000;
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+          }
+          .company-name {
+            font-weight: bold;
+            font-size: 16px;
+            margin-bottom: 5px;
+          }
+          .branch-name {
+            font-size: 14px;
+            margin-bottom: 5px;
+          }
+          .order-info {
+            margin-bottom: 15px;
+          }
+          .order-info div {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 3px;
+          }
+          .items {
+            border-bottom: 1px dashed #000;
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+          }
+          .item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+          }
+          .item-name {
+            flex: 1;
+          }
+          .item-qty {
+            margin: 0 10px;
+          }
+          .item-price {
+            text-align: right;
+            min-width: 60px;
+          }
+          .totals {
+            text-align: right;
+          }
+          .total-line {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+          }
+          .grand-total {
+            border-top: 1px solid #000;
+            padding-top: 5px;
+            font-weight: bold;
+            font-size: 14px;
+          }
+          .footer {
+            text-align: center;
+            margin-top: 20px;
+            border-top: 1px dashed #000;
+            padding-top: 10px;
+            font-size: 10px;
+          }
+          .qr-section {
+            text-align: center;
+            margin-top: 15px;
+            padding-top: 10px;
+            border-top: 1px dashed #000;
+          }
+          .qr-text {
+            font-size: 9px;
+            margin-bottom: 5px;
+            color: #666;
+          }
+          .qr-code {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 5px;
+            display: block;
+          }
+          @media print {
+            body { margin: 0; padding: 10px; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div class="company-name">Countryside Steakhouse</div>
+          <div class="branch-name">${branchName}</div>
+          <div>Receipt</div>
+        </div>
+        
+        <div class="order-info">
+          <div>
+            <span>Order #:</span>
+            <span>${order.order_number}</span>
+          </div>
+          <div>
+            <span>Date:</span>
+            <span>${currentDate}</span>
+          </div>
+          <div>
+            <span>Cashier:</span>
+            <span>${order.cashier}</span>
+          </div>
+          <div>
+            <span>Status:</span>
+            <span style="color: ${order.status === 'void' ? '#dc2626' : '#000'}; font-weight: ${order.status === 'void' ? 'bold' : 'normal'};">${order.status}</span>
+          </div>
+          ${
+            order.status === 'void' && order.void_reason
+              ? `
+          <div>
+            <span>Reason:</span>
+            <span style="color: #dc2626; font-weight: bold; font-size: 11px;">${order.void_reason}</span>
+          </div>
+          `
+              : ''
+          }
+        </div>
+        
+        <div class="items">
+          ${
+            order.items
+              ? order.items
+                  .map(
+                    (item) => `
+            <div class="item">
+              <div class="item-name">${item.menu_item_name || item.item_name}</div>
+              <div class="item-qty">${item.quantity}x</div>
+            <div class="item-price">₱${(parseFloat(item.unit_price ?? item.price) || 0).toFixed(2)}</div>
+            </div>
+           `
+                  )
+                  .join('')
+              : '<div>No items</div>'
+          }
+        </div>
+        
+        <div class="totals">
+          <div class="total-line">
+            <span>Subtotal:</span>
+            <span>₱${(order.amount || 0).toFixed(2)}</span>
+          </div>
+          <div class="total-line">
+            <span>Amount Paid:</span>
+            <span>₱${(order.amount_paid || 0).toFixed(2)}</span>
+          </div>
+          <div class="total-line">
+            <span>Change:</span>
+            <span>₱${(order.change_amount || 0).toFixed(2)}</span>
+          </div>
+          <div class="total-line grand-total">
+            <span>Total:</span>
+            <span>₱${(order.amount || 0).toFixed(2)}</span>
+          </div>
+        </div>
+        
+        <div class="footer">
+          <div>Thank you for your business!</div>
+          <div>Generated on ${currentDate}</div>
+        </div>
+        
+        <div class="qr-section">
+          <div class="qr-text">Rate your experience</div>
+          ${qrCodeDataURL ? `<img src="${qrCodeDataURL}" alt="QR Code" class="qr-code" />` : '<div class="qr-placeholder">QR Code</div>'}
+          <div class="qr-text">Scan to rate your order</div>
+        </div>
+      </body>
+      </html>
+    `;
   };
 
   // Void order functionality
@@ -724,9 +1228,11 @@
       const dt = new Date(dateTo);
 
       const toYmd = (d) => {
-        const y = d.getFullYear();
-        const m = String(d.getMonth() + 1).padStart(2, '0');
-        const day = String(d.getDate()).padStart(2, '0');
+        // Ensure date is interpreted in Philippine time
+        const ph = convertUTCToPhilippine(d);
+        const y = ph.getFullYear();
+        const m = String(ph.getMonth() + 1).padStart(2, '0');
+        const day = String(ph.getDate()).padStart(2, '0');
         return `${y}-${m}-${day}`;
       };
 
@@ -751,19 +1257,14 @@
 
       // Assign orders to buckets
       orders.forEach((o) => {
-        const created = new Date(o.created_at);
+        // Convert timestamps to Philippine time before bucketing
+        const created = convertUTCToPhilippine(o.created_at);
         let key;
         if (period === 'today') {
           const hour = created.getHours();
           key = `${String(hour).padStart(2, '0')}:00`;
         } else {
-          key = toYmd(
-            new Date(
-              created.getFullYear(),
-              created.getMonth(),
-              created.getDate()
-            )
-          );
+          key = toYmd(created);
         }
         if (buckets.has(key)) {
           buckets.get(key).push(o);
@@ -861,8 +1362,10 @@
             }, 0);
         }
         if (metric === 'totalDisposed') {
-          // Number of voided orders in the bucket
-          return list.filter((o) => o.status === 'void').length;
+          // Number of voided orders that were completed first (actual disposals)
+          // Orders cancelled before completion should not be counted as disposed
+          return list.filter((o) => o.status === 'void' && o.completed_at)
+            .length;
         }
         return 0;
       });
@@ -1182,7 +1685,9 @@
                 </div>
 
                 <!-- Top/Least Selling Items -->
-                <div class="card bg-white shadow-l">
+                <div
+                  class="card bg-white shadow-l w-full lg:w-[400px] xl:w-[450px] flex-shrink-0"
+                >
                   <div class="card-body">
                     <div class="flex items-center justify-between mb-4">
                       <h2 class="card-title text-primaryColor">
@@ -1235,21 +1740,11 @@
                             <p class="font-medium text-gray-900">
                               {{ item.name }}
                             </p>
-                            <p class="text-sm text-gray-600">
-                              {{ item.quantity }} sold
-                            </p>
                           </div>
                         </div>
                         <div class="text-right">
-                          <p
-                            class="font-thin text-primaryColor"
-                            :class="{
-                              'text-warning': showLeastSelling,
-                            }"
-                          >
-                            <font-awesome-icon icon="fa-solid fa-peso-sign" />{{
-                              parseFloat(item.revenue).toFixed(2)
-                            }}
+                          <p class="text-sm text-gray-600">
+                            {{ item.quantity }} sold
                           </p>
                         </div>
                       </div>
@@ -1304,7 +1799,7 @@
         </div>
       </div>
 
-      <div class="overflow-x-auto -mx-4 sm:mx-0">
+      <div class="overflow-x-auto mx-4 sm:mx-0">
         <div class="min-w-full px-4 sm:px-0">
           <table class="table w-full table-zebra">
             <thead>
@@ -1318,6 +1813,7 @@
                 <th class="text-xs sm:text-sm hidden lg:table-cell">Cashier</th>
                 <th class="text-xs sm:text-sm hidden lg:table-cell">Type</th>
                 <th class="text-xs sm:text-sm">Status</th>
+                <th class="text-xs sm:text-sm">Receipt</th>
                 <th class="text-xs sm:text-sm">Actions</th>
               </tr>
             </thead>
@@ -1360,7 +1856,7 @@
                   </div>
                 </td>
                 <td>
-                  <div class="text-xs sm:text-sm">
+                  <div class="!text-xs sm:text-sm">
                     {{ transaction.time }}
                   </div>
                 </td>
@@ -1453,6 +1949,21 @@
                 <td>
                   <div class="flex space-x-1">
                     <button
+                      @click="showReceipt(transaction)"
+                      class="btn btn-xs sm:btn-sm btn-info text-info font-thin bg-info/20 shadow-none border-none"
+                      title="View Receipt"
+                    >
+                      <font-awesome-icon
+                        icon="fa-solid fa-receipt"
+                        class="w-3 h-3"
+                      />
+                    </button>
+                  </div>
+                </td>
+
+                <td>
+                  <div class="flex space-x-1">
+                    <button
                       v-if="transaction.status === 'processing'"
                       @click="showCompleteOrder(transaction)"
                       class="btn btn-xs sm:btn-sm btn-success text-success font-thin bg-success/20 shadow-none border-none"
@@ -1501,7 +2012,7 @@
       <div class="text-center mt-4">
         <button
           @click="showAllTransactions"
-          class="btn btn-outline btn-sm text-primaryColor border-primaryColor hover:bg-primaryColor hover:text-white"
+          class="btn btn-outline btn-sm text-primaryColor border-primaryColor hover:bg-primaryColor hover:text-white font-thin"
         >
           <Eye class="w-4 h-4 mr-1" />
           View All Transactions
@@ -1575,7 +2086,7 @@
                 required
               >
                 <option value="">Select a reason...</option>
-                <optgroup label="Refund Reasons (No inventory deduction)">
+                <optgroup label="Refund Reasons">
                   <option
                     v-for="reason in voidReasons.filter(
                       (r) => r.type === 'refund'
@@ -1587,7 +2098,8 @@
                   </option>
                 </optgroup>
                 <optgroup
-                  label="Loss Reasons (Inventory deduction + Loss profit)"
+                  v-if="selectedOrder?.status !== 'processing'"
+                  label="Loss Reasons"
                 >
                   <option
                     v-for="reason in voidReasons.filter(
@@ -1660,7 +2172,9 @@
                   {{
                     voidReasons.find((r) => r.value === selectedVoidReason)
                       ?.type === 'refund'
-                      ? ' No inventory deduction • No loss profit recorded'
+                      ? selectedOrder?.status === 'completed'
+                        ? 'Inventory stays deducted • Loss profit will be recorded'
+                        : 'No inventory deduction • No loss profit recorded'
                       : 'Inventory will be deducted • Loss profit will be recorded'
                   }}
                 </p>
@@ -1864,10 +2378,185 @@
     <BranchSalesTransactionsModal
       :show="showTransactionsModal"
       @close="closeTransactionsModal"
+      @reopen="reopenTransactionsModal"
     />
 
     <!-- Remit Sales Modal -->
     <BranchRemitSalesModal :show="showRemitModal" @close="closeRemitModal" />
+
+    <!-- Receipt Modal -->
+    <div
+      v-if="showReceiptModal"
+      class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-2 sm:p-4 backdrop-blur-sm"
+    >
+      <div
+        class="bg-white rounded-lg shadow-xl w-full max-w-md mx-auto transform transition-all p-3 sm:p-4 lg:p-6 max-h-[95vh] overflow-y-auto"
+      >
+        <!-- Receipt Content -->
+        <div class="receipt-content bg-gray-50 rounded-lg p-4 mb-4">
+          <div
+            class="text-center border-b border-dashed border-gray-400 pb-3 mb-4"
+          >
+            <div class="font-bold text-lg mb-1">Countryside Steakhouse</div>
+            <div class="text-sm text-gray-600">{{ currentBranch?.name }}</div>
+            <div class="text-xs text-gray-500">Receipt</div>
+          </div>
+
+          <div class="space-y-2 mb-4 text-sm">
+            <div class="flex justify-between">
+              <span class="text-gray-600">Order #:</span>
+              <span class="font-mono">{{
+                selectedReceiptOrder?.order_number
+              }}</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-gray-600">Date:</span>
+              <span>{{ selectedReceiptOrder?.time }}</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-gray-600">Cashier:</span>
+              <span>{{ selectedReceiptOrder?.cashier }}</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-gray-600">Status:</span>
+              <span
+                class="capitalize font-medium"
+                :class="{
+                  'text-red-600': selectedReceiptOrder?.status === 'void',
+                  'text-gray-900': selectedReceiptOrder?.status !== 'void',
+                }"
+              >
+                {{ selectedReceiptOrder?.status }}
+              </span>
+            </div>
+            <div
+              v-if="
+                selectedReceiptOrder?.status === 'void' &&
+                selectedReceiptOrder?.void_reason
+              "
+              class="flex justify-between"
+            >
+              <span class="text-gray-600">Reason:</span>
+              <span class="text-red-600 font-medium text-sm">
+                {{ selectedReceiptOrder.void_reason }}
+              </span>
+            </div>
+          </div>
+
+          <div class="border-b border-dashed border-gray-400 pb-3 mb-4">
+            <div class="text-sm font-medium mb-2">Items:</div>
+            <div
+              v-if="
+                selectedReceiptOrder?.items &&
+                selectedReceiptOrder.items.length > 0
+              "
+              class="space-y-1"
+            >
+              <div
+                v-for="item in selectedReceiptOrder.items"
+                :key="item.id || item.menu_item_id"
+                class="flex justify-between text-sm"
+              >
+                <div class="flex-1">
+                  <span>{{ item.menu_item_name || item.item_name }}</span>
+                  <span class="text-gray-500 ml-2">x{{ item.quantity }}</span>
+                </div>
+                <div class="text-right">
+                  ₱{{
+                    (parseFloat(item.unit_price ?? item.price) || 0).toFixed(2)
+                  }}
+                </div>
+              </div>
+            </div>
+            <div v-else class="text-sm text-gray-500">No items</div>
+          </div>
+
+          <div class="text-right space-y-1 text-sm">
+            <div class="flex justify-between">
+              <span>Subtotal:</span>
+              <span>₱{{ (selectedReceiptOrder?.amount || 0).toFixed(2) }}</span>
+            </div>
+            <div class="flex justify-between">
+              <span>Amount Paid:</span>
+              <span
+                >₱{{
+                  (selectedReceiptOrder?.amount_paid || 0).toFixed(2)
+                }}</span
+              >
+            </div>
+            <div class="flex justify-between">
+              <span>Change:</span>
+              <span
+                >₱{{
+                  (selectedReceiptOrder?.change_amount || 0).toFixed(2)
+                }}</span
+              >
+            </div>
+            <div
+              class="flex justify-between border-t border-gray-400 pt-2 font-bold"
+            >
+              <span>Total:</span>
+              <span>₱{{ (selectedReceiptOrder?.amount || 0).toFixed(2) }}</span>
+            </div>
+          </div>
+
+          <div
+            class="text-center mt-4 pt-3 border-t border-dashed border-gray-400"
+          >
+            <div class="text-xs text-gray-500">
+              Thank you for your business!
+            </div>
+            <div class="text-xs text-gray-400 mt-1">
+              Generated on
+              {{
+                new Date().toLocaleString('en-PH', { timeZone: 'Asia/Manila' })
+              }}
+            </div>
+          </div>
+
+          <!-- QR Code Section -->
+          <div
+            class="text-center mt-4 pt-3 border-t border-dashed border-gray-400"
+          >
+            <div class="text-xs text-gray-500 mb-2">Rate your experience</div>
+            <div class="flex justify-center mb-2">
+              <div class="w-24 h-24 flex items-center justify-center">
+                <QRCodeGenerator
+                  v-if="receiptQRData"
+                  :data="receiptQRData"
+                  :size="96"
+                  class="max-w-full max-h-full"
+                />
+                <div
+                  v-else
+                  class="w-24 h-24 border border-dashed border-gray-300 rounded flex items-center justify-center text-xs text-gray-400"
+                >
+                  QR Code
+                </div>
+              </div>
+            </div>
+            <div class="text-xs text-gray-500">Scan to rate your order</div>
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="flex space-x-3">
+          <button
+            @click="closeReceiptModal"
+            class="flex-1 btn btn-outline btn-sm font-thin"
+          >
+            Close
+          </button>
+          <button
+            @click="printReceipt(selectedReceiptOrder)"
+            class="flex-1 btn bg-primaryColor text-white btn-sm font-thin hover:bg-primaryColor/80 flex items-center justify-center gap-2"
+          >
+            <Printer class="w-4 h-4" />
+            Print Receipt
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 

@@ -1,20 +1,48 @@
 // backend/models/BudgetRelease.js
 const { db } = require("../config/database");
+const { getCurrentPhilippineTime } = require("../utils/timezoneUtils");
+const FinanceBalance = require("./FinanceBalance");
+const CashMovement = require("./CashMovement");
+
+// Email notifications are handled elsewhere (e.g., at PO creation)
 
 class BudgetRelease {
   // Get all budget releases with optional filters
   static async getAll(filters = {}) {
     try {
       let query = db("budget_releases as br")
-        .join("supply_requests as sr", "br.supply_request_id", "sr.id")
+        .leftJoin("supply_requests as sr", "br.supply_request_id", "sr.id")
+        .leftJoin("payroll_periods as pp", function () {
+          this.on("br.id", "=", "pp.budget_release_id");
+        })
+        .leftJoin("employees as e", function () {
+          this.on(
+            db.raw("CAST(br.released_by AS TEXT)"),
+            "=",
+            db.raw("CAST(e.id AS TEXT)")
+          );
+        })
         .select(
           "br.*",
+          // Supply request fields (null for payroll releases)
           "sr.request_id",
           "sr.request_description",
           "sr.department",
           "sr.requested_by",
           "sr.priority",
-          "sr.request_date"
+          "sr.request_date",
+          "sr.released_by as supply_released_by",
+          // Payroll period fields (null for supply releases)
+          "pp.id as payroll_period_id",
+          "pp.period_name as payroll_period_name",
+          "pp.period_type as payroll_period_type",
+          "pp.date_from as payroll_date_from",
+          "pp.date_to as payroll_date_to",
+          "pp.generated_by as payroll_generated_by",
+          // Employee fields
+          "e.first_name",
+          "e.last_name",
+          db.raw("CONCAT(e.first_name, ' ', e.last_name) as released_by_name")
         );
 
       // Apply filters
@@ -36,7 +64,8 @@ class BudgetRelease {
           this.where("sr.request_description", "ilike", `%${filters.search}%`)
             .orWhere("sr.request_id", "like", `%${filters.search}%`)
             .orWhere("br.release_id", "like", `%${filters.search}%`)
-            .orWhere("sr.requested_by", "ilike", `%${filters.search}%`);
+            .orWhere("sr.requested_by", "ilike", `%${filters.search}%`)
+            .orWhere("pp.period_name", "ilike", `%${filters.search}%`);
         });
       }
 
@@ -56,15 +85,38 @@ class BudgetRelease {
       }
 
       const release = await db("budget_releases as br")
-        .join("supply_requests as sr", "br.supply_request_id", "sr.id")
+        .leftJoin("supply_requests as sr", "br.supply_request_id", "sr.id")
+        .leftJoin("payroll_periods as pp", function () {
+          this.on("br.id", "=", "pp.budget_release_id");
+        })
+        .leftJoin("employees as e", function () {
+          this.on(
+            db.raw("CAST(br.released_by AS TEXT)"),
+            "=",
+            db.raw("CAST(e.id AS TEXT)")
+          );
+        })
         .select(
           "br.*",
+          // Supply request fields (null for payroll releases)
           "sr.request_id",
           "sr.request_description",
           "sr.department",
           "sr.requested_by",
           "sr.priority",
-          "sr.request_date"
+          "sr.request_date",
+          "sr.released_by as supply_released_by",
+          // Payroll period fields (null for supply releases)
+          "pp.id as payroll_period_id",
+          "pp.period_name as payroll_period_name",
+          "pp.period_type as payroll_period_type",
+          "pp.date_from as payroll_date_from",
+          "pp.date_to as payroll_date_to",
+          "pp.generated_by as payroll_generated_by",
+          // Employee fields
+          "e.first_name",
+          "e.last_name",
+          db.raw("CONCAT(e.first_name, ' ', e.last_name) as released_by_name")
         )
         .where("br.id", id)
         .first();
@@ -110,9 +162,14 @@ class BudgetRelease {
 
     try {
       // Generate unique release_id
-      const year = new Date().getFullYear();
+      const year = getCurrentPhilippineTime().getFullYear();
       const count = await trx("budget_releases").count("* as total").first();
       const releaseId = `BR${year}${String(parseInt(count.total) + 1).padStart(3, "0")}`;
+
+      // Get supply request details for cash movement notes
+      const supplyRequest = await trx("supply_requests")
+        .where("id", releaseData.supply_request_id)
+        .first();
 
       // Create budget release
       const [budgetRelease] = await trx("budget_releases")
@@ -121,7 +178,7 @@ class BudgetRelease {
           supply_request_id: releaseData.supply_request_id,
           released_amount: releaseData.released_amount,
           released_by: releaseData.released_by,
-          released_at: new Date(),
+          released_at: getCurrentPhilippineTime(),
           release_remarks: releaseData.release_remarks || null,
         })
         .returning("*");
@@ -132,10 +189,47 @@ class BudgetRelease {
         .update({
           request_status: "Budget Released",
           released_by: releaseData.released_by,
-          released_at: new Date(),
+          released_at: getCurrentPhilippineTime(),
           release_id: releaseId,
-          updated_at: new Date(),
+          updated_at: getCurrentPhilippineTime(),
         });
+
+      // Deduct from finance balance (capital)
+      const currentBalance = await trx("finance_balances")
+        .whereNull("deleted_at")
+        .orderBy("balance_date", "desc")
+        .first();
+
+      const releasedAmount = Number(releaseData.released_amount);
+      const newCapital = Number(currentBalance?.capital || 0) - releasedAmount;
+
+      // Create new finance balance snapshot with deducted amount
+      await trx("finance_balances").insert({
+        capital: newCapital,
+        profit: Number(currentBalance?.profit || 0),
+        sales_remittances: Number(currentBalance?.sales_remittances || 0),
+        total_balance:
+          newCapital +
+          Number(currentBalance?.profit || 0) +
+          Number(currentBalance?.sales_remittances || 0),
+        balance_date: getCurrentPhilippineTime(),
+        created_at: getCurrentPhilippineTime(),
+        updated_at: getCurrentPhilippineTime(),
+      });
+
+      // Create cash movement record for outflow
+      await trx("cash_movements").insert({
+        branch_id: supplyRequest?.branch_id || null,
+        movement_type: "out",
+        amount: releasedAmount,
+        source: "budget_release",
+        reference_id: budgetRelease.id,
+        reference_type: "budget_release",
+        notes: `Budget released for ${supplyRequest?.branch_id ? "Branch" : "SCM"}`,
+        occurred_at: getCurrentPhilippineTime(),
+        created_at: getCurrentPhilippineTime(),
+        updated_at: getCurrentPhilippineTime(),
+      });
 
       await trx.commit();
       return budgetRelease;
@@ -157,8 +251,8 @@ class BudgetRelease {
         .update({
           receipt_confirmed: true,
           receipt_confirmed_by: confirmedBy,
-          receipt_confirmed_at: new Date(),
-          updated_at: new Date(),
+          receipt_confirmed_at: getCurrentPhilippineTime(),
+          updated_at: getCurrentPhilippineTime(),
         })
         .returning("*");
 
@@ -173,8 +267,8 @@ class BudgetRelease {
           request_status: "Completed",
           receipt_confirmed: true,
           receipt_confirmed_by: confirmedBy,
-          receipt_confirmed_at: new Date(),
-          updated_at: new Date(),
+          receipt_confirmed_at: getCurrentPhilippineTime(),
+          updated_at: getCurrentPhilippineTime(),
         });
 
       await trx.commit();
@@ -257,6 +351,142 @@ class BudgetRelease {
     } catch (error) {
       console.error("Error fetching budget release statistics:", error);
       throw new Error("Failed to retrieve budget release statistics");
+    }
+  }
+
+  /**
+   * Create budget release for payroll
+   * @param {Object} payrollData
+   * @param {number} payrollData.payroll_period_id
+   * @param {number} payrollData.amount - total payroll amount (net + employer contributions)
+   * @param {string} payrollData.released_by
+   * @param {string} payrollData.remarks
+   */
+  static async createForPayroll(payrollData) {
+    const trx = await db.transaction();
+
+    try {
+      // Check if payroll period exists
+      const payrollPeriod = await trx("payroll_periods")
+        .where("id", payrollData.payroll_period_id)
+        .first();
+
+      if (!payrollPeriod) {
+        throw new Error("Payroll period not found");
+      }
+
+      // Check current finance balance
+      const currentBalance = await trx("finance_balances")
+        .whereNull("deleted_at")
+        .orderBy("balance_date", "desc")
+        .first();
+
+      const requiredAmount = Number(payrollData.amount);
+      const availableBalance = Number(currentBalance?.capital || 0);
+
+      if (availableBalance < requiredAmount) {
+        throw new Error(
+          `Insufficient balance. Required: ₱${requiredAmount.toLocaleString()}, Available: ₱${availableBalance.toLocaleString()}`
+        );
+      }
+
+      // Generate unique release_id
+      const year = getCurrentPhilippineTime().getFullYear();
+      const count = await trx("budget_releases").count("* as total").first();
+      const releaseId = `BR${year}${String(parseInt(count.total) + 1).padStart(3, "0")}`;
+
+      // Create budget release record (with payroll_period_id instead of supply_request_id)
+      const [budgetRelease] = await trx("budget_releases")
+        .insert({
+          release_id: releaseId,
+          supply_request_id: null, // Payroll doesn't have supply request
+          payroll_period_id: payrollData.payroll_period_id, // Link to payroll period
+          released_amount: requiredAmount,
+          released_by: payrollData.released_by,
+          released_at: getCurrentPhilippineTime(),
+          release_remarks:
+            payrollData.remarks ||
+            `Payroll budget release - ${payrollPeriod.period_name}`,
+          receipt_confirmed: true, // Auto-confirmed for payroll
+          receipt_confirmed_by: payrollData.released_by,
+          receipt_confirmed_at: getCurrentPhilippineTime(),
+        })
+        .returning("*");
+
+      // Update payroll period with budget release info
+      await trx("payroll_periods")
+        .where("id", payrollData.payroll_period_id)
+        .update({
+          budget_release_id: budgetRelease.id,
+          budget_released_at: getCurrentPhilippineTime(),
+          status: "budget_released",
+          updated_at: getCurrentPhilippineTime(),
+        });
+
+      // Deduct from finance balance (capital)
+      const newCapital = availableBalance - requiredAmount;
+
+      // Create new finance balance snapshot
+      await trx("finance_balances").insert({
+        capital: newCapital,
+        profit: Number(currentBalance?.profit || 0),
+        sales_remittances: Number(currentBalance?.sales_remittances || 0),
+        total_balance:
+          newCapital +
+          Number(currentBalance?.profit || 0) +
+          Number(currentBalance?.sales_remittances || 0),
+        balance_date: getCurrentPhilippineTime(),
+        created_at: getCurrentPhilippineTime(),
+        updated_at: getCurrentPhilippineTime(),
+      });
+
+      // Create cash movement record for outflow
+      await trx("cash_movements").insert({
+        branch_id: null, // HQ-level expense
+        movement_type: "out",
+        amount: requiredAmount,
+        source: "payroll_budget_release",
+        reference_id: payrollPeriod.id,
+        reference_type: "payroll_period",
+        notes: `Payroll budget released - ${payrollPeriod.period_name}`,
+        occurred_at: getCurrentPhilippineTime(),
+        created_at: getCurrentPhilippineTime(),
+        updated_at: getCurrentPhilippineTime(),
+      });
+
+      await trx.commit();
+      return budgetRelease;
+    } catch (error) {
+      await trx.rollback();
+      console.error("Error creating payroll budget release:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Check if sufficient balance exists for payroll
+   * @param {number} amount
+   * @returns {Object} { sufficient: boolean, available: number, required: number }
+   */
+  static async checkBalanceForPayroll(amount) {
+    try {
+      const currentBalance = await db("finance_balances")
+        .whereNull("deleted_at")
+        .orderBy("balance_date", "desc")
+        .first();
+
+      const available = Number(currentBalance?.capital || 0);
+      const required = Number(amount);
+
+      return {
+        sufficient: available >= required,
+        available,
+        required,
+        shortage: available < required ? required - available : 0,
+      };
+    } catch (error) {
+      console.error("Error checking balance for payroll:", error);
+      throw new Error("Failed to check balance");
     }
   }
 }

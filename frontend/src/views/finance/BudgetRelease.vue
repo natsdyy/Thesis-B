@@ -9,7 +9,6 @@
     Clock,
     RefreshCcw,
     Plus,
-    EllipsisVertical,
     X,
     Send,
     Calendar,
@@ -32,12 +31,20 @@
   import { useSupplyRequestStore } from '../../stores/supplyRequestStore.js';
   import { useBudgetReleaseStore } from '../../stores/budgetReleaseStore.js';
   import { useAuthStore } from '../../stores/authStore.js';
+  import { useFinanceBalanceStore } from '../../stores/financeBalanceStore.js';
+  import { usePayrollStore } from '../../stores/payrollStore.js';
+  import { useEmployeeResolver } from '../../composables/useEmployeeResolver.js';
   import cashRequestReceiptModal from '../../components/scm/cashRequestReceiptModal.vue';
 
   // Stores
   const supplyRequestStore = useSupplyRequestStore();
   const budgetReleaseStore = useBudgetReleaseStore();
   const authStore = useAuthStore();
+
+  // Employee resolver
+  const { resolveEmployeeName } = useEmployeeResolver();
+  const financeBalanceStore = useFinanceBalanceStore();
+  const payrollStore = usePayrollStore();
 
   // Local state
   const loading = ref(false);
@@ -53,6 +60,20 @@
   );
 
   const budgetReleaseHistory = computed(() => budgetReleaseStore.releases);
+
+  // Processed budget release history with resolved employee names
+  const processedBudgetHistory = computed(() => {
+    return budgetReleaseHistory.value.map((release) => ({
+      ...release,
+      released_by_display:
+        release.supply_released_by || // Use supply request released_by for SCM requests
+        release.released_by_name ||
+        release.finance_approved_by_name || // Use payroll approved by name for payroll releases
+        (isNaN(release.released_by)
+          ? release.released_by
+          : `Employee ${release.released_by}`),
+    }));
+  });
 
   // Enhanced budget release stats using real data
   const budgetReleaseStats = computed(() => {
@@ -321,8 +342,8 @@
       ...filteredBudgetHistory.value.map((release) =>
         [
           release.release_id,
-          release.request_id,
-          `"${release.request_description.replace(/"/g, '""')}"`,
+          release.request_id || 'N/A',
+          `"${(release.payroll_period_name || release.request_description).replace(/"/g, '""')}"`,
           release.released_amount,
           release.released_at,
           release.released_by,
@@ -376,11 +397,21 @@
     };
 
     if (type === 'viewRequest' && request) {
-      // Fetch the full request details with items
-      const fullRequest = await supplyRequestStore.fetchRequestByRequestId(
-        request.request_id
-      );
-      modal.value.request = fullRequest;
+      // Check if request_id is valid before fetching
+      if (
+        request.request_id &&
+        request.request_id !== 'null' &&
+        request.request_id !== null
+      ) {
+        // Fetch the full request details with items
+        const fullRequest = await supplyRequestStore.fetchRequestByRequestId(
+          request.request_id
+        );
+        modal.value.request = fullRequest;
+      } else {
+        console.log('No valid request_id found for request:', request);
+        modal.value.request = request;
+      }
     } else {
       modal.value.request = request;
     }
@@ -406,7 +437,7 @@
     const configs = {
       release: {
         title: 'Release Budget',
-        message: `Are you sure you want to release budget for request #${data?.request_id}?`,
+        message: `Are you sure you want to release budget?`,
         confirmText: 'Release Budget',
         confirmClass: 'bg-primaryColor text-white hover:bg-primaryColor/80',
         onConfirm: () => handleBudgetRelease(data.request_id),
@@ -467,6 +498,17 @@
         return;
       }
 
+      // Re-check balance sufficiency before proceeding
+      await financeBalanceStore.fetchTotals?.();
+      const currentBalance = Number(
+        financeBalanceStore.totals?.total_balance || 0
+      );
+      const requiredAmount = Number(request.total_amount || 0);
+      if (currentBalance < requiredAmount) {
+        showToast('error', 'Insufficient balance to release this budget');
+        return;
+      }
+
       // Use the store to release budget (pass an object!)
       await budgetReleaseStore.releaseBudget({
         supply_request_id: request.id, // numeric id
@@ -495,16 +537,70 @@
   const viewRequest = (request) => openModal('viewRequest', request);
   const releaseBudget = (request) => openModal('release', request);
 
+  // Balance indicators for the Release modal
+  const currentFinanceBalance = computed(() =>
+    Number(financeBalanceStore.totals?.total_balance || 0)
+  );
+  const toBeReleasedAmount = computed(() =>
+    Number(modal.value?.request?.total_amount || 0)
+  );
+  const remainingAfterRelease = computed(
+    () => currentFinanceBalance.value - toBeReleasedAmount.value
+  );
+  const hasSufficientBalance = computed(
+    () => currentFinanceBalance.value >= toBeReleasedAmount.value
+  );
+
   // Receipt modal function
   const showReceiptModal = async (release) => {
     try {
-      // Fetch the full request details for the receipt
-      const fullRequest = await supplyRequestStore.fetchRequestByRequestId(
-        release.request_id
+      console.log('Release data received:', release);
+      console.log(
+        'Release has payroll_period_id:',
+        !!release.payroll_period_id
       );
-      receiptData.value = fullRequest;
+      console.log('Release has request_id:', !!release.request_id);
+
+      // Check if this is a payroll release (has payroll_period_id)
+      if (release.payroll_period_id) {
+        console.log(
+          'Fetching payroll data for period:',
+          release.payroll_period_id
+        );
+        try {
+          // Fetch the full payroll period details with records
+          const payrollData = await payrollStore.fetchPeriodDetails(
+            release.payroll_period_id
+          );
+          console.log('Payroll data fetched:', payrollData);
+          receiptData.value = payrollData;
+        } catch (payrollError) {
+          console.error('Error fetching payroll data:', payrollError);
+          // Fallback to release data if payroll fetch fails
+          receiptData.value = release;
+        }
+      }
+      // Check if request_id is valid for supply request releases
+      else if (
+        release.request_id &&
+        release.request_id !== 'null' &&
+        release.request_id !== null
+      ) {
+        // Fetch the full request details for the receipt
+        const fullRequest = await supplyRequestStore.fetchRequestByRequestId(
+          release.request_id
+        );
+        receiptData.value = fullRequest;
+      } else {
+        console.log(
+          'No valid request_id or payroll_period_id found for release:',
+          release
+        );
+        // For releases without valid IDs, use the release data directly
+        receiptData.value = release;
+      }
     } catch (error) {
-      console.error('Error fetching request details:', error);
+      console.error('Error fetching receipt details:', error);
       // Fallback to basic release data
       receiptData.value = release;
     }
@@ -520,6 +616,7 @@
         supplyRequestStore.fetchRequests(),
         budgetReleaseStore.fetchReleases(),
         supplyRequestStore.fetchStats(),
+        financeBalanceStore.fetchTotals?.(),
       ]);
 
       // Update filter counts after data is loaded
@@ -664,7 +761,7 @@
 
   // Computed properties for Budget Release History
   const filteredBudgetHistoryByDate = computed(() => {
-    let filtered = [...(budgetReleaseHistory.value || [])];
+    let filtered = [...(processedBudgetHistory.value || [])];
 
     // Apply date filtering based on filter type
     if (historyFilterType.value) {
@@ -744,6 +841,7 @@
       filtered = filtered.filter(
         (r) =>
           (r.request_description || '').toLowerCase().includes(q) ||
+          (r.payroll_period_name || '').toLowerCase().includes(q) ||
           (r.request_id || '').toString().toLowerCase().includes(q) ||
           (r.release_id || '').toString().toLowerCase().includes(q)
       );
@@ -773,7 +871,7 @@
 </script>
 
 <template>
-  <div class="container mx-auto p-6 max-w-7xl">
+  <div class="mx-auto p-6">
     <!-- Header -->
     <div class="text-center mb-8">
       <h1 class="text-4xl font-bold text-primaryColor mb-2 text-shadow-xs">
@@ -887,14 +985,14 @@
                 </h2>
                 <div class="flex gap-2">
                   <button
-                    class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10 font-thin hover:border-none hover:shadow-none"
+                    class="btn  btn-sm"
                     @click="fetchData"
                     :class="{ loading: loading }"
                     :disabled="loading"
                   >
                     <RefreshCcw
                       v-if="!loading"
-                      class="w-4 h-4 mr-2 text-primaryColor"
+                      class="w-4 h-4 mr-2"
                     />
                     <span
                       class="loading loading-spinner loading-xs"
@@ -935,10 +1033,8 @@
                 <table
                   class="table table-zebra text-black/50 border border-black/10 custom-zebra"
                 >
-                  <thead class="text-secondaryColor">
-                    <tr class="bg-primaryColor text-accentColor">
-                      <th>Request ID</th>
-                      <th>Department</th>
+                  <thead class="text-black/60 bg-white/5">
+                    <tr class="">
                       <th>Requested By</th>
                       <th>Priority</th>
                       <th class="w-1/4">Description</th>
@@ -953,14 +1049,6 @@
                       :key="request.request_id"
                       class="hover:bg-success/5"
                     >
-                      <td class="font-mono font-medium text-black">
-                        {{ request.request_id }}
-                      </td>
-                      <td>
-                        <div class="badge badge-outline badge-sm">
-                          {{ request.department }}
-                        </div>
-                      </td>
                       <td>{{ request.requested_by }}</td>
                       <td>
                         <div
@@ -982,10 +1070,12 @@
                       <td class="text-wrap">
                         {{ request.request_description }}
                       </td>
-                      <td class="font-semibold text-black">
-                        ₱{{
-                          request.total_amount.toLocaleString('en-PH', {
+                      <td class="font-semibold text-black/80">
+                        <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                        {{
+                          Number(request.total_amount).toLocaleString('en-PH', {
                             minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
                           })
                         }}
                       </td>
@@ -1011,34 +1101,23 @@
                         </div>
                       </td>
                       <td>
-                        <div class="dropdown dropdown-left">
-                          <label
-                            tabindex="0"
-                            class="btn btn-ghost btn-xs hover:outline-none hover:bg-white/10 hover:text-black/50 hover:border-none hover:shadow-none"
+                        <div class="flex gap-1">
+                          <button
+                            title="View Details"
+                            @click="viewRequest(request)"
+                            class="btn btn-ghost btn-xs hover:bg-white/10 hover:text-black/50"
                           >
-                            <EllipsisVertical class="w-4 h-4" />
-                          </label>
-                          <ul
-                            tabindex="0"
-                            class="dropdown-content z-[1] menu p-2 shadow bg-accentColor rounded-box w-52 border border-black/10"
+                            <font-awesome-icon icon="fa-solid fa-eye" />
+                          </button>
+                          <button
+                            title="Release Budget"
+                            @click="releaseBudget(request)"
+                            class="btn btn-ghost btn-xs hover:bg-white/10 hover:text-success"
                           >
-                            <li class="hover:bg-black/10">
-                              <a
-                                @click="viewRequest(request)"
-                                class="text-primary"
-                              >
-                                View Details
-                              </a>
-                            </li>
-                            <li class="hover:bg-black/10">
-                              <a
-                                @click="releaseBudget(request)"
-                                class="text-success"
-                              >
-                                Release Budget
-                              </a>
-                            </li>
-                          </ul>
+                            <font-awesome-icon
+                              icon="fa-solid fa-money-bill-wave"
+                            />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -1275,8 +1354,9 @@
                       <th class="w-32">Released Amount</th>
                       <th class="w-28">Released Date</th>
                       <th class="w-24">Released By</th>
-                      <th class="w-32">Receipt Status</th>
+
                       <th class="w-28">Confirmed Date</th>
+                      <th class="w-32">Receipt Status</th>
                       <th class="w-24">Receipt</th>
                     </tr>
                   </thead>
@@ -1329,19 +1409,39 @@
                       <td class="max-w-xs">
                         <div
                           class="tooltip tooltip-top"
-                          :data-tip="release.request_description"
+                          :data-tip="
+                            release.payroll_period_name ||
+                            release.request_description
+                          "
                         >
                           <p class="truncate font-medium">
-                            {{ release.request_description }}
+                            {{
+                              release.payroll_period_name ||
+                              release.request_description
+                            }}
+                          </p>
+                          <p
+                            v-if="release.payroll_period_name"
+                            class="text-xs text-purple-600"
+                          >
+                            Payroll Release
                           </p>
                         </div>
                       </td>
 
                       <td class="font-semibold text-left">
-                        ₱{{
-                          release.released_amount.toLocaleString('en-PH', {
-                            minimumFractionDigits: 2,
-                          })
+                        <font-awesome-icon
+                          icon="fa-solid fa-peso-sign"
+                          class="mr-1"
+                        />
+                        {{
+                          Number(release.released_amount).toLocaleString(
+                            'en-PH',
+                            {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            }
+                          )
                         }}
                       </td>
 
@@ -1357,7 +1457,20 @@
                         </div>
                       </td>
 
-                      <td class="text-sm">{{ release.released_by }}</td>
+                      <td class="text-sm">{{ release.released_by_display }}</td>
+
+                      <td class="text-sm">
+                        <div v-if="release.receipt_confirmed_at">
+                          <span>{{
+                            formatManilaDate(release.receipt_confirmed_at)
+                          }}</span>
+                          <br />
+                          <span class="text-xs text-black/50">
+                            {{ formatManilaTime(release.receipt_confirmed_at) }}
+                          </span>
+                        </div>
+                        <span v-else>N/A</span>
+                      </td>
 
                       <td>
                         <div
@@ -1373,19 +1486,6 @@
                             release.receipt_confirmed ? 'Confirmed' : 'Pending'
                           }}
                         </div>
-                      </td>
-
-                      <td class="text-sm">
-                        <div v-if="release.receipt_confirmed_at">
-                          <span>{{
-                            formatManilaDate(release.receipt_confirmed_at)
-                          }}</span>
-                          <br />
-                          <span class="text-xs text-black/50">
-                            {{ formatManilaTime(release.receipt_confirmed_at) }}
-                          </span>
-                        </div>
-                        <span v-else>N/A</span>
                       </td>
 
                       <td>
@@ -1667,6 +1767,64 @@
           >
         </div>
 
+        <!-- Balance indication -->
+        <div
+          class="mt-4 p-3 rounded border"
+          :class="
+            hasSufficientBalance
+              ? 'bg-success/5 border-success/30'
+              : 'bg-error/5 border-error/30'
+          "
+        >
+          <div class="flex flex-col gap-2 text-sm">
+            <div class="flex justify-between">
+              <span class="text-black/60">Current Balance</span>
+              <span class="font-semibold text-black/80">
+                <font-awesome-icon icon="fa-solid fa-peso-sign" />{{
+                  currentFinanceBalance.toLocaleString('en-PH', {
+                    minimumFractionDigits: 2,
+                  })
+                }}
+              </span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-black/60">To be Released</span>
+              <span class="font-semibold text-black/80">
+                <font-awesome-icon icon="fa-solid fa-peso-sign" />{{
+                  toBeReleasedAmount.toLocaleString('en-PH', {
+                    minimumFractionDigits: 2,
+                  })
+                }}
+              </span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-black/60">Remaining After Release</span>
+              <span
+                class="font-thin"
+                :class="
+                  remainingAfterRelease >= 0 ? 'text-success' : 'text-error'
+                "
+              >
+                <font-awesome-icon icon="fa-solid fa-peso-sign" />{{
+                  Math.max(remainingAfterRelease, 0).toLocaleString('en-PH', {
+                    minimumFractionDigits: 2,
+                  })
+                }}
+              </span>
+            </div>
+            <div
+              v-if="!hasSufficientBalance"
+              class="alert alert-error shadow-none py-2 px-3 mt-2"
+            >
+              <AlertCircle class="w-4 h-4" />
+              <span class="text-xs"
+                >Insufficient balance. Please add funds or reduce the
+                amount.</span
+              >
+            </div>
+          </div>
+        </div>
+
         <!-- Optional remarks for budget release -->
         <div class="form-control mt-4">
           <label class="label">
@@ -1694,13 +1852,19 @@
             type="button"
             class="btn bg-primaryColor text-white hover:bg-primaryColor/80 font-thin btn-sm"
             @click="openConfirmModal('release', modal.request)"
-            :disabled="loading"
+            :disabled="loading || !hasSufficientBalance"
           >
             <span
               class="loading loading-spinner loading-xs"
               v-if="loading"
             ></span>
-            {{ loading ? 'Releasing...' : 'Release Budget' }}
+            {{
+              loading
+                ? 'Releasing...'
+                : hasSufficientBalance
+                  ? 'Release Budget'
+                  : 'Insufficient Balance'
+            }}
           </button>
         </div>
       </template>
@@ -1734,7 +1898,7 @@
         <!-- Show info for budget release -->
         <div
           v-if="confirmModal.type === 'release'"
-          class="alert alert-success mt-3"
+          class="alert bg-success/10 border-success text-success mt-3"
         >
           <CheckCircle class="w-6 h-6" />
           <span class="text-sm"

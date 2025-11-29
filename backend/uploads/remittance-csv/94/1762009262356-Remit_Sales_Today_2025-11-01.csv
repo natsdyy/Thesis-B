@@ -1,0 +1,18 @@
+"Order Number","Date","Type","Items","Total Amount","Cashier","Status","Remitted"
+"#69693447","Nov 1, 2025, 10:18 PM","Dine In","1x Bacsilog","P195.00","Cedric Kyle Belisario","completed","No"
+"#68174583","Nov 1, 2025, 10:18 PM","Dine In","1x Beef and Mushroom","P370.00","Cedric Kyle Belisario","completed","No"
+"#88468020","Nov 1, 2025, 03:08 PM","Dine In","5x Longsilog","P1225.00","Cedric Kyle Belisario","completed","Yes"
+"#86509804","Nov 1, 2025, 03:07 PM","Dine In","10x Bacsilog","P1950.00","Cedric Kyle Belisario","completed","Yes"
+"#84595014","Nov 1, 2025, 03:07 PM","Dine In","2x Beef and Mushroom","P740.00","Cedric Kyle Belisario","completed","Yes"
+
+"SUMMARY"
+"Total Orders in Period","5"
+"Already Remitted","3"
+"To be Remitted","2"
+
+"FINANCIAL SUMMARY (UNREMITTER ORDERS ONLY)"
+"Gross Sales","P565.00"
+"Refunds","P0.00"
+"Voided Amount","P0.00"
+"Net Sales","P565.00"
+"Amount to Remit","P565.00"

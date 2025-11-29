@@ -5,12 +5,17 @@ const BranchInventory = () => import('../../views/branch/BranchInventory.vue');
 const BranchEmployees = () => import('../../views/branch/BranchEmployees.vue');
 const BranchProfile = () => import('../../views/branch/BranchProfile.vue');
 
+// Import store for branch status check
+import { useBranchStore } from '../../stores/branchStore';
+
 // Role-based access control
 const rolePermissions = {
   'Super Admin': [
     'dashboard',
     'sales',
+    'utilities',
     'inventory',
+    'kitchen',
     'employees',
     'profile',
     'attendance',
@@ -18,18 +23,22 @@ const rolePermissions = {
   Manager: [
     'dashboard',
     'sales',
+    'utilities',
     'inventory',
+    'kitchen',
     'employees',
     'profile',
     'attendance',
   ],
   Cashier: ['dashboard', 'profile', 'attendance'],
-  Cook: ['dashboard', 'inventory', 'profile', 'attendance'],
+  Cook: ['dashboard', 'kitchen', 'inventory', 'profile', 'attendance'],
   Waiter: ['dashboard', 'profile', 'attendance'],
+  // Allow Kitchen Assistant to access relevant branch areas
+  'Kitchen Assistant': ['dashboard', 'profile', 'attendance'],
 };
 
 // Route guard for role-based access
-function checkBranchAccess(to, from, next) {
+async function checkBranchAccess(to, from, next) {
   // Get user from auth store (will be implemented)
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   const userRole = user.role;
@@ -46,6 +55,35 @@ function checkBranchAccess(to, from, next) {
     if (userRole === 'Super Admin') {
       next();
       return;
+    }
+
+    // Check if branch is inactive (for non-Super Admin users)
+    if (userBranchId && userRole !== 'Super Admin') {
+      try {
+        const branchStore = useBranchStore();
+
+        // Try to get branch from store first
+        let branch = branchStore.getBranchById(userBranchId);
+
+        // If not in store, fetch it
+        if (!branch) {
+          branch = await branchStore.fetchBranchById(userBranchId);
+        }
+
+        // Check if branch is inactive
+        if (branch && branch.is_active === false) {
+          // Allow access to inactive and profile routes only
+          const allowedInactiveRoutes = ['BranchInactive', 'BranchProfile'];
+          if (!allowedInactiveRoutes.includes(to.name)) {
+            console.warn('Branch is inactive, redirecting to inactive page');
+            next('/branch/inactive');
+            return;
+          }
+        }
+      } catch (error) {
+        console.error('Error checking branch status:', error);
+        // If we can't check branch status, allow access (fail open)
+      }
     }
 
     // Check role permissions for other roles
@@ -94,6 +132,28 @@ export default [
     },
   },
   {
+    path: 'utilities',
+    name: 'BranchUtilities',
+    component: () => import('../../views/branch/BranchUtilities.vue'),
+    beforeEnter: checkBranchAccess,
+    meta: {
+      title: 'Monthly Utilities',
+      requiresAuth: true,
+      operation: 'utilities',
+    },
+  },
+  {
+    path: 'kitchen',
+    name: 'BranchKitchen',
+    component: () => import('../../views/branch/BranchKitchen.vue'),
+    beforeEnter: checkBranchAccess,
+    meta: {
+      title: 'Kitchen',
+      requiresAuth: true,
+      operation: 'kitchen',
+    },
+  },
+  {
     path: 'inventory',
     name: 'BranchInventory',
     component: BranchInventory,
@@ -135,6 +195,15 @@ export default [
       title: 'My Attendance',
       requiresAuth: true,
       operation: 'attendance',
+    },
+  },
+  {
+    path: 'inactive',
+    name: 'BranchInactive',
+    component: () => import('../../views/branch/BranchInactive.vue'),
+    meta: {
+      title: 'Branch Not Active',
+      requiresAuth: true,
     },
   },
 ];

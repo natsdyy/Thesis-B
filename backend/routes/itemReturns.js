@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const ItemReturn = require("../models/ItemReturn");
+const CashMovement = require("../models/CashMovement");
 
 // GET /api/item-returns - Get all item returns
 router.get("/", async (req, res) => {
@@ -98,6 +99,59 @@ router.post("/", async (req, res) => {
   }
 });
 
+// PUT /api/item-returns/:id/process - Process item return (for suppliers to accept)
+router.put("/:id/process", async (req, res) => {
+  try {
+    const requestBody = req.body || {};
+    const processedBy =
+      requestBody.processed_by || req.user?.username || "Supplier";
+
+    // Update status to "Processed"
+    const itemReturn = await ItemReturn.update(req.params.id, {
+      status: "Processed",
+      processed_at: new Date(),
+      processed_by: processedBy,
+    });
+
+    if (!itemReturn) {
+      return res.status(404).json({
+        success: false,
+        message: "Item return not found",
+      });
+    }
+
+    // Record cash inflow when supplier accepts the return
+    try {
+      const fresh = await ItemReturn.getById(itemReturn.id);
+      const amount = Number(fresh?.return_value || 0);
+      if (amount > 0) {
+        await CashMovement.recordInflowForBudgetReturn({
+          branch_id: null, // HQ/SCM
+          amount,
+          purchase_order_id: fresh.purchase_order_id,
+          notes: `Supplier accepted return #${fresh.id} for PO ${fresh.po_number} - Refund: ₱${amount.toFixed(2)}`,
+          occurred_at: new Date(),
+        });
+      }
+    } catch (cmErr) {
+      console.error("Failed to record supplier return refund inflow:", cmErr);
+      // Do not fail the main operation
+    }
+
+    res.json({
+      success: true,
+      message: "Return processed successfully",
+      data: itemReturn,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error processing item return",
+      error: error.message,
+    });
+  }
+});
+
 // PUT /api/item-returns/:id/complete - Complete item return
 router.put("/:id/complete", async (req, res) => {
   try {
@@ -125,6 +179,9 @@ router.put("/:id/complete", async (req, res) => {
         message: "Item return not found",
       });
     }
+
+    // Note: Cash movement is already created when supplier accepts the return (status: Processed)
+    // No need to create duplicate cash movement on completion
 
     res.json({
       success: true,

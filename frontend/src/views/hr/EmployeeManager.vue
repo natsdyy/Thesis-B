@@ -1,5 +1,5 @@
 <script setup>
-  import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
+  import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
   import { useRouter, useRoute } from 'vue-router';
   import {
     Users,
@@ -17,12 +17,26 @@
     AlertTriangle,
     Building2,
     MapPin,
+    DollarSign,
+    Calendar,
+    ArrowRightLeft,
   } from 'lucide-vue-next';
   import { useEmployeeStore } from '../../stores/employeeStore.js';
   import { usePositionsStore } from '../../stores/positionsStore.js';
   import { useAttendanceStore } from '../../stores/attendanceStore.js';
   import { apiConfig } from '../../config/api.js';
   import { useBranchStore } from '../../stores/branchStore.js';
+  import { useAuthStore } from '../../stores/authStore.js';
+  import PayrollGenerationModal from '../../components/payroll/PayrollGenerationModal.vue';
+  import EmployeeAttendanceViewer from '../../components/hr/EmployeeAttendanceViewer.vue';
+  import EmployeeTransferApprovalsComponent from '../../components/hr/EmployeeTransferApprovalsComponent.vue';
+  import {
+    PHILIPPINE_TIMEZONE,
+    getCurrentPhilippineDate,
+    formatForDisplay,
+    formatTimeForDisplay,
+    formatPhilippineTime,
+  } from '../../utils/timezoneUtils.js';
 
   const router = useRouter();
   const route = useRoute();
@@ -30,19 +44,34 @@
   const positionsStore = usePositionsStore();
   const attendanceStore = useAttendanceStore();
   const branchStore = useBranchStore();
+  const authStore = useAuthStore();
 
   // UI state
   const searchQuery = ref('');
   const departmentFilter = ref('');
-  const statusFilter = ref('');
+  const statusFilter = ref('Active');
   const currentPage = ref(1);
   const itemsPerPage = ref(10);
   const showDeletedEmployees = ref(false);
+
+  // Role-based UI controls
+  const isBoardMember = computed(
+    () =>
+      authStore.userRole === 'Board of Directors' ||
+      authStore.userRole === 'Chairman of the Board'
+  );
+  const canGeneratePayroll = computed(() => !isBoardMember.value);
 
   // Tab state
   const activeTab = ref('all');
   const selectedDepartment = ref('');
   const selectedBranch = ref('');
+
+  // View employee modal tab state
+  const viewEmployeeTab = ref('details'); // 'details' or 'attendance'
+
+  // Termination data for viewing terminated employees
+  const terminationRecord = ref(null);
 
   // Attendance data
   const attendanceData = ref({});
@@ -71,6 +100,15 @@
     handoverNotes: '',
     finalPayroll: false,
     systemAccess: false,
+  });
+
+  // Payroll generation modal state
+  const payrollGenerationModal = ref({
+    show: false,
+    scope: '', // 'department' or 'branch'
+    scopeId: '',
+    scopeName: '',
+    estimatedEmployeeCount: 0,
   });
   const openConfirm = (title, message, onConfirm) => {
     confirmModal.value = { show: true, title, message, onConfirm };
@@ -186,13 +224,83 @@
     return Array.from(set).sort();
   });
 
+  // Payroll generation modal functions
+  const openPayrollGenerationModal = (scope) => {
+    if (scope === 'department' && !selectedDepartment.value) {
+      showToast('warning', 'Please select a department first');
+      return;
+    }
+    if (scope === 'branch' && !selectedBranch.value) {
+      showToast('warning', 'Please select a branch first');
+      return;
+    }
+
+    payrollGenerationModal.value = {
+      show: true,
+      scope,
+      scopeId:
+        scope === 'department'
+          ? selectedDepartment.value
+          : selectedBranch.value,
+      scopeName:
+        scope === 'department'
+          ? selectedDepartment.value
+          : getBranchName(selectedBranch.value),
+      estimatedEmployeeCount: filteredEmployees.value.length,
+    };
+  };
+
+  const closePayrollGenerationModal = () => {
+    payrollGenerationModal.value = {
+      show: false,
+      scope: '',
+      scopeId: '',
+      scopeName: '',
+      estimatedEmployeeCount: 0,
+    };
+  };
+
+  const handlePayrollGenerated = (result) => {
+    showToast('success', 'Payroll generated successfully');
+    closePayrollGenerationModal();
+  };
+
   // Fetch attendance data for employees
   const fetchAttendanceData = async () => {
     try {
-      // Use today's date for attendance checking (Philippines timezone UTC+8)
-      const now = new Date();
-      const philippinesTime = new Date(now.getTime() + 8 * 60 * 60 * 1000); // UTC+8
-      const today = philippinesTime.toISOString().split('T')[0];
+      // Use Philippine timezone date for attendance checking
+      const today = getCurrentPhilippineDate();
+
+      const normalizeStatus = (row) => {
+        // If API row has a time_in, force status to present to override day_off
+        if (row.time_in) return { ...row, attendance_status: 'present' };
+        return row;
+      };
+
+      const prioritize = (list) => {
+        const rank = {
+          present: 5,
+          late: 4,
+          on_leave: 3,
+          day_off: 2,
+          absent: 1,
+        };
+        const map = {};
+        list.forEach((raw) => {
+          const row = normalizeStatus(raw);
+          const id = row.employee_id;
+          const status = (row.attendance_status || '').toLowerCase();
+          const current = map[id];
+          if (
+            !current ||
+            (rank[status] || 0) >
+              (rank[(current.attendance_status || '').toLowerCase()] || 0)
+          ) {
+            map[id] = row;
+          }
+        });
+        return map;
+      };
 
       if (activeTab.value === 'department' && selectedDepartment.value) {
         const attendanceStatus =
@@ -200,24 +308,14 @@
             department: selectedDepartment.value,
             date: today,
           });
-
-        // Convert array to object keyed by employee_id for easy lookup
-        attendanceData.value = {};
-        attendanceStatus.forEach((emp) => {
-          attendanceData.value[emp.employee_id] = emp;
-        });
+        attendanceData.value = prioritize(attendanceStatus);
       } else if (activeTab.value === 'branch' && selectedBranch.value) {
         const attendanceStatus =
           await attendanceStore.fetchBulkAttendanceStatus({
             branch_id: selectedBranch.value,
             date: today,
           });
-
-        // Convert array to object keyed by employee_id for easy lookup
-        attendanceData.value = {};
-        attendanceStatus.forEach((emp) => {
-          attendanceData.value[emp.employee_id] = emp;
-        });
+        attendanceData.value = prioritize(attendanceStatus);
       }
     } catch (error) {
       console.error('Failed to fetch attendance data:', error);
@@ -263,11 +361,14 @@
     if (activeTab.value === 'department' && selectedDepartment.value) {
       list = list.filter((e) => e.department === selectedDepartment.value);
     } else if (activeTab.value === 'branch' && selectedBranch.value) {
-      list = list.filter((e) => e.branch_id === selectedBranch.value);
+      // Filter by branch_id AND ensure department is Branch
+      list = list.filter(
+        (e) => e.branch_id === selectedBranch.value && e.department === 'Branch'
+      );
     }
 
-    // Apply general filters
-    if (departmentFilter.value) {
+    // Apply general filters (skip department filter if already filtering by tab)
+    if (departmentFilter.value && activeTab.value === 'all') {
       list = list.filter((e) => e.department === departmentFilter.value);
     }
 
@@ -356,6 +457,8 @@
         1000 // Fetch all employees for client-side pagination
       );
       showToast('success', 'Employee list refreshed');
+      // Also refresh today's attendance view
+      await fetchAttendanceData();
     } catch (e) {
       showToast('error', e.message || 'Failed to refresh employees');
     }
@@ -386,13 +489,30 @@
   const gotoAddEmployee = () => router.push({ name: 'HRAddEmployee' });
   // View modal state
   const selectedEmployee = ref(null);
-  const openView = (emp) => {
+  const openView = async (emp) => {
     selectedEmployee.value = emp;
+
+    // Fetch termination record if employee is terminated
+    if (emp.status === 'Terminated') {
+      try {
+        terminationRecord.value = await employeeStore.getTerminationRecord(
+          emp.id
+        );
+      } catch (error) {
+        console.error('Error fetching termination record:', error);
+        terminationRecord.value = null;
+      }
+    } else {
+      terminationRecord.value = null;
+    }
+
     document.getElementById('view_employee_modal')?.showModal();
   };
   const closeView = () => {
     document.getElementById('view_employee_modal')?.close();
     selectedEmployee.value = null;
+    terminationRecord.value = null;
+    viewEmployeeTab.value = 'details'; // Reset to details tab
   };
 
   // Edit modal state
@@ -430,12 +550,12 @@
       ? departmentsWithRoles.value[employeeForm.value.department] || []
       : [];
   });
-  const activeBranches = computed(() => branchStore.activeBranches || []);
+  const allBranches = computed(() => branchStore.allBranches || []);
 
   // Helper function to get branch name by ID
   const getBranchName = (branchId) => {
-    if (!branchId || !activeBranches.value.length) return '';
-    const branch = activeBranches.value.find((b) => b.id === branchId);
+    if (!branchId || !allBranches.value.length) return '';
+    const branch = allBranches.value.find((b) => b.id === branchId);
     return branch ? branch.name : '';
   };
 
@@ -464,9 +584,14 @@
     };
   });
 
-  const openEditModal = (emp) => {
+  const openEditModal = async (emp) => {
     // Reset form first
     resetEmployeeForm();
+
+    // Ensure departments and roles are loaded
+    if (!Object.keys(departmentsWithRoles.value).length) {
+      await fetchDepartmentsWithRoles();
+    }
 
     // Populate form with employee data
     employeeForm.value = {
@@ -477,7 +602,7 @@
       address: emp.address || '',
       department: emp.department || '',
       role_id: emp.role_id || '',
-      employee_type: emp.employee_type || '',
+      employee_type: 'Full-time', // Fixed to Full-time
       status: emp.status || 'Active',
       emergency_contact_name: emp.emergency_contact_name || '',
       emergency_relationship: emp.emergency_relationship || '',
@@ -490,7 +615,20 @@
       editingEmployeeId: emp.id,
     };
 
+    // Debug logging
+    console.log('Employee data:', emp);
+    console.log('Department:', emp.department);
+    console.log('Role ID:', emp.role_id);
+    console.log(
+      'Available roles for department:',
+      departmentsWithRoles.value[emp.department]
+    );
+    console.log('Available roles computed:', availableRoles.value);
+
     showEditModal.value = true;
+
+    // Use nextTick to ensure DOM is updated
+    await nextTick();
     document.getElementById('edit_employee_modal')?.showModal();
   };
 
@@ -509,7 +647,7 @@
       address: '',
       department: '',
       role_id: '',
-      employee_type: '',
+      employee_type: 'Full-time',
       status: 'Active',
       emergency_contact_name: '',
       emergency_relationship: '',
@@ -664,7 +802,7 @@
 
   const formatDate = (dateString) => {
     if (!dateString) return '';
-    return new Date(dateString).toLocaleDateString('en-PH', {
+    return formatForDisplay(dateString, 'en-PH', {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
@@ -672,7 +810,7 @@
   };
   const formatDateLong = (dateString) => {
     if (!dateString) return '—';
-    return new Date(dateString).toLocaleDateString('en-PH', {
+    return formatForDisplay(dateString, 'en-PH', {
       year: 'numeric',
       month: 'long',
       day: 'numeric',
@@ -697,11 +835,25 @@
     }
   };
 
-  // Watch for department changes to reset role
+  // Watch for department changes to reset role and branch_id
   watch(
     () => employeeForm.value.department,
-    () => {
-      employeeForm.value.role_id = '';
+    (newDepartment) => {
+      console.log('Department changed to:', newDepartment);
+      console.log(
+        'Available roles for new department:',
+        departmentsWithRoles.value[newDepartment]
+      );
+
+      // Reset role if we're not editing an existing employee
+      if (!employeeForm.value.isEditing) {
+        employeeForm.value.role_id = '';
+      }
+
+      // Clear branch_id if department is not Branch (always, even when editing)
+      if (newDepartment && newDepartment !== 'Branch') {
+        employeeForm.value.branch_id = '';
+      }
     }
   );
 
@@ -759,17 +911,24 @@
     } catch (e) {
       console.error('Failed to load positions', e);
     }
-    // Load active branches for branch assignment
+    // Load all branches for branch assignment
     try {
-      await branchStore.fetchActiveBranches();
+      await branchStore.fetchAllBranches();
     } catch (e) {
       console.error('Failed to load branches', e);
+    }
+    // If a tab with a scope is already selected, fetch attendance immediately
+    if (
+      (activeTab.value === 'department' && selectedDepartment.value) ||
+      (activeTab.value === 'branch' && selectedBranch.value)
+    ) {
+      await fetchAttendanceData();
     }
   });
 </script>
 
 <template>
-  <div class="container mx-auto p-4 sm:p-6 max-w-7xl">
+  <div class="mx-auto p-4 sm:p-6">
     <!-- Header -->
     <div class="mb-4 sm:mb-6">
       <div class="flex items-center gap-3">
@@ -813,6 +972,14 @@
         <MapPin class="w-4 h-4 mr-2" />
         <span>Branch Employees</span>
       </button>
+      <button
+        @click="setActiveTab('transfers')"
+        class="tab"
+        :class="{ 'tab-active': activeTab === 'transfers' }"
+      >
+        <ArrowRightLeft class="w-4 h-4 mr-2" />
+        <span>Transfer Approvals</span>
+      </button>
     </div>
 
     <!-- Department Selection (Department Tab) -->
@@ -840,8 +1007,18 @@
               </select>
             </div>
           </div>
-          <div class="text-sm text-black/60" v-if="selectedDepartment">
-            Showing employees from {{ selectedDepartment }} department
+          <div class="flex items-center gap-3">
+            <div class="text-sm text-black/60" v-if="selectedDepartment">
+              Showing employees from {{ selectedDepartment }} department
+            </div>
+            <button
+              v-if="selectedDepartment && canGeneratePayroll"
+              @click="openPayrollGenerationModal('department')"
+              class="btn btn-sm bg-primaryColor text-white hover:bg-primaryColor/90 border-none font-thin whitespace-nowrap"
+            >
+              <font-awesome-icon icon="fa-solid fa-peso-sign" />
+              Generate Payroll
+            </button>
           </div>
         </div>
       </div>
@@ -866,14 +1043,31 @@
                 class="select select-sm sm:select-md select-bordered"
               >
                 <option value="">Choose a branch...</option>
-                <option v-for="b in activeBranches" :key="b.id" :value="b.id">
-                  {{ b.name }} ({{ b.code }})
+                <option v-for="b in allBranches" :key="b.id" :value="b.id">
+                  {{ b.name }}
+                  {{
+                    b.is_active === true
+                      ? '(Active)'
+                      : b.is_active === false
+                        ? '(Inactive)'
+                        : '(Unknown Status)'
+                  }}
                 </option>
               </select>
             </div>
           </div>
-          <div class="text-sm text-black/60" v-if="selectedBranch">
-            Showing employees from {{ getBranchName(selectedBranch) }} branch
+          <div class="flex items-center gap-3">
+            <div class="text-sm text-black/60" v-if="selectedBranch">
+              Showing employees from {{ getBranchName(selectedBranch) }} branch
+            </div>
+            <button
+              v-if="selectedBranch && canGeneratePayroll"
+              @click="openPayrollGenerationModal('branch')"
+              class="btn btn-sm bg-primaryColor text-white hover:bg-primaryColor/90 border-none font-thin whitespace-nowrap"
+            >
+              <font-awesome-icon icon="fa-solid fa-peso-sign" />
+              Generate Payroll
+            </button>
           </div>
         </div>
       </div>
@@ -898,9 +1092,11 @@
               />
             </div>
 
+            <!-- Department filter dropdown - hidden in department/branch tabs to avoid redundancy -->
             <select
               v-model="departmentFilter"
               class="select select-sm sm:select-md select-bordered"
+              v-show="activeTab !== 'department' && activeTab !== 'branch'"
             >
               <option value="">All Departments</option>
               <option v-for="d in departments" :key="d" :value="d">
@@ -914,7 +1110,6 @@
             >
               <option value="">All Status</option>
               <option value="Active">Active</option>
-              <option value="Inactive">Inactive</option>
               <option value="On Leave">On Leave</option>
               <option value="Terminated">Terminated</option>
             </select>
@@ -932,7 +1127,7 @@
             </select>
 
             <button
-              class="btn btn-outline btn-sm text-primaryColor border-primaryColor hover:bg-primaryColor hover:text-white"
+              class="btn btn-outline btn-sm text-primaryColor border-primaryColor hover:bg-primaryColor hover:text-white font-thin"
               :disabled="loading"
               @click="refresh"
             >
@@ -941,7 +1136,7 @@
             </button>
 
             <button
-              class="btn btn-sm bg-primaryColor text-white hover:bg-primaryColor/90 border-none"
+              class="btn btn-sm bg-primaryColor text-white hover:bg-primaryColor/90 border-none font-thin"
               @click="gotoAddEmployee"
             >
               <Plus class="w-4 h-4 mr-1" />
@@ -980,7 +1175,7 @@
         <div v-else class="overflow-x-auto">
           <table class="table table-zebra">
             <thead>
-              <tr class="bg-primaryColor text-white">
+              <tr class="">
                 <th class="whitespace-nowrap">Name</th>
                 <th class="whitespace-nowrap">Email</th>
                 <th class="whitespace-nowrap">Phone</th>
@@ -1021,7 +1216,11 @@
                 </td>
                 <td class="text-sm">{{ emp.email || '—' }}</td>
                 <td class="text-sm">{{ emp.phone_number || '—' }}</td>
-                <td class="text-sm">{{ emp.address || '—' }}</td>
+                <td class="text-sm max-w-xs">
+                  <div class="truncate cursor-help" :title="emp.address || '—'">
+                    {{ emp.address || '—' }}
+                  </div>
+                </td>
                 <td>
                   <div class="text-xs">
                     {{ emp.department || '—' }}
@@ -1140,10 +1339,10 @@
                 :key="page"
                 @click="goToPage(page)"
                 :class="[
-                  'btn btn-sm',
+                  'btn btn-sm font-thin',
                   page === currentPage
-                    ? ' border-none text-primaryColor'
-                    : 'border-none text-black/60 hover:bg-gray-200',
+                    ? 'bg-primaryColor text-white border-primaryColor'
+                    : 'bg-gray-200 text-black/60 hover:bg-gray-300 border-none',
                 ]"
               >
                 {{ page }}
@@ -1210,7 +1409,7 @@
         <div v-else class="overflow-x-auto">
           <table class="table table-zebra">
             <thead>
-              <tr class="bg-primaryColor text-white">
+              <tr class="">
                 <th class="whitespace-nowrap">Name</th>
                 <th class="whitespace-nowrap">Email</th>
                 <th class="whitespace-nowrap">Phone</th>
@@ -1251,10 +1450,20 @@
                 </td>
                 <td class="text-sm">{{ emp.email || '—' }}</td>
                 <td class="text-sm">{{ emp.phone_number || '—' }}</td>
-                <td class="text-sm">{{ emp.address || '—' }}</td>
+                <td class="text-sm max-w-xs">
+                  <div class="truncate cursor-help" :title="emp.address || '—'">
+                    {{ emp.address || '—' }}
+                  </div>
+                </td>
                 <td>
                   <div class="text-xs">
                     {{ emp.role || emp.job_title || '—' }}
+                    <span
+                      v-if="emp.branch_id && getBranchName(emp.branch_id)"
+                      class="text-xs text-gray-500 block mt-1"
+                    >
+                      ({{ getBranchName(emp.branch_id) }})
+                    </span>
                   </div>
                 </td>
                 <td>
@@ -1393,10 +1602,10 @@
                 :key="page"
                 @click="goToPage(page)"
                 :class="[
-                  'btn btn-sm',
+                  'btn btn-sm font-thin',
                   page === currentPage
                     ? 'bg-primaryColor text-white border-primaryColor'
-                    : 'btn-outline',
+                    : 'bg-gray-200 text-black/60 hover:bg-gray-300 border-none',
                 ]"
               >
                 {{ page }}
@@ -1464,7 +1673,7 @@
         <div v-else class="overflow-x-auto">
           <table class="table table-zebra">
             <thead>
-              <tr class="bg-primaryColor text-white">
+              <tr class="">
                 <th class="whitespace-nowrap">Name</th>
                 <th class="whitespace-nowrap">Email</th>
                 <th class="whitespace-nowrap">Phone</th>
@@ -1506,7 +1715,11 @@
                 </td>
                 <td class="text-sm">{{ emp.email || '—' }}</td>
                 <td class="text-sm">{{ emp.phone_number || '—' }}</td>
-                <td class="text-sm">{{ emp.address || '—' }}</td>
+                <td class="text-sm max-w-xs">
+                  <div class="truncate cursor-help" :title="emp.address || '—'">
+                    {{ emp.address || '—' }}
+                  </div>
+                </td>
                 <td>
                   <div class="text-xs">
                     {{ emp.department || '—' }}
@@ -1654,10 +1867,10 @@
                 :key="page"
                 @click="goToPage(page)"
                 :class="[
-                  'btn btn-sm',
+                  'btn btn-sm font-thin',
                   page === currentPage
                     ? 'bg-primaryColor text-white border-primaryColor'
-                    : 'btn-outline',
+                    : 'bg-gray-200 text-black/60 hover:bg-gray-300 border-none',
                 ]"
               >
                 {{ page }}
@@ -1687,6 +1900,11 @@
           </div>
         </div>
       </div>
+    </div>
+
+    <!-- Transfer Approvals Tab Content -->
+    <div v-if="activeTab === 'transfers'">
+      <EmployeeTransferApprovalsComponent />
     </div>
 
     <!-- Toggle for showing deleted employees -->
@@ -1749,13 +1967,42 @@
   </dialog>
   <!-- View Employee Modal -->
   <dialog id="view_employee_modal" class="modal">
-    <div class="modal-box bg-accentColor text-black/70 max-w-4xl">
+    <div
+      class="modal-box bg-accentColor text-black/70 max-w-6xl max-h-[90vh] overflow-y-auto"
+    >
       <h3
         class="font-bold text-xl text-primaryColor mb-4 border-b border-black/10 pb-3"
       >
         Employee Details
       </h3>
-      <div v-if="selectedEmployee" class="space-y-6">
+
+      <!-- Tabs Navigation -->
+      <div class="tabs tabs-boxed mb-6" role="tablist">
+        <a
+          role="tab"
+          @click="viewEmployeeTab = 'details'"
+          class="tab"
+          :class="{ 'tab-active': viewEmployeeTab === 'details' }"
+        >
+          <Users class="w-4 h-4 mr-2" />
+          Details
+        </a>
+        <a
+          role="tab"
+          @click="viewEmployeeTab = 'attendance'"
+          class="tab"
+          :class="{ 'tab-active': viewEmployeeTab === 'attendance' }"
+        >
+          <Calendar class="w-4 h-4 mr-2" />
+          Attendance
+        </a>
+      </div>
+
+      <!-- Details Tab Content -->
+      <div
+        v-if="selectedEmployee && viewEmployeeTab === 'details'"
+        class="space-y-6"
+      >
         <!-- Basic Info -->
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
@@ -1973,7 +2220,106 @@
             </div>
           </div>
         </div>
+
+        <!-- Termination Details (only for terminated employees) -->
+        <div
+          v-if="selectedEmployee.status === 'Terminated' && terminationRecord"
+          class="bg-red-50 border border-red-200 p-4 rounded-lg"
+        >
+          <h4 class="font-semibold text-red-800 mb-3 flex items-center">
+            <UserX class="w-5 h-5 mr-2" />
+            Termination Details
+          </h4>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="space-y-2">
+              <div class="flex justify-between">
+                <span class="text-gray-700 font-medium"
+                  >Termination Reason:</span
+                >
+                <span class="font-medium text-red-800">{{
+                  terminationRecord.termination_reason || '—'
+                }}</span>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-gray-700 font-medium">Last Working Day:</span>
+                <span class="font-medium">{{
+                  formatDateLong(terminationRecord.last_working_day) || '—'
+                }}</span>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-gray-700 font-medium">Terminated Date:</span>
+                <span class="font-medium">{{
+                  formatDateLong(terminationRecord.terminated_at) || '—'
+                }}</span>
+              </div>
+            </div>
+            <div class="space-y-2">
+              <div class="flex justify-between items-center">
+                <span class="text-gray-700 font-medium"
+                  >Final Payroll Processing:</span
+                >
+                <span
+                  :class="[
+                    'badge badge-sm',
+                    terminationRecord.final_payroll_processed
+                      ? 'bg-success text-white border-none'
+                      : 'bg-warning text-warning-content border-none',
+                  ]"
+                >
+                  {{
+                    terminationRecord.final_payroll_processed
+                      ? '✓ Completed'
+                      : '✗ Pending'
+                  }}
+                </span>
+              </div>
+              <div class="flex justify-between items-center">
+                <span class="text-gray-700 font-medium"
+                  >System Access Revoked:</span
+                >
+                <span
+                  :class="[
+                    'badge badge-sm',
+                    terminationRecord.system_access_revoked
+                      ? 'bg-success text-white border-none'
+                      : 'bg-warning text-warning-content border-none',
+                  ]"
+                >
+                  {{
+                    terminationRecord.system_access_revoked
+                      ? '✓ Revoked'
+                      : '✗ Pending'
+                  }}
+                </span>
+              </div>
+              <div
+                v-if="terminationRecord.handover_notes"
+                class="mt-3 pt-3 border-t border-red-300"
+              >
+                <div class="text-gray-700 font-medium mb-1">
+                  Handover Notes:
+                </div>
+                <div class="text-sm text-gray-600 bg-white p-2 rounded">
+                  {{ terminationRecord.handover_notes }}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
+
+      <!-- Attendance Tab Content -->
+      <div
+        v-if="selectedEmployee && viewEmployeeTab === 'attendance'"
+        class="space-y-4"
+      >
+        <EmployeeAttendanceViewer
+          :employee-id="selectedEmployee.id"
+          :employee-name="`${selectedEmployee.first_name} ${selectedEmployee.last_name}`"
+        />
+      </div>
+
+      <!-- Modal Actions -->
       <div class="modal-action">
         <button
           @click="closeView"
@@ -1982,7 +2328,11 @@
           Close
         </button>
         <button
-          v-if="selectedEmployee && selectedEmployee.status !== 'Terminated'"
+          v-if="
+            selectedEmployee &&
+            selectedEmployee.status !== 'Terminated' &&
+            viewEmployeeTab === 'details'
+          "
           @click="updateEmployee(selectedEmployee)"
           class="btn btn-sm font-thin border-none bg-primaryColor hover:bg-primaryColor/80 text-white"
         >
@@ -2147,6 +2497,12 @@
                 {{ role.role }}
               </option>
             </select>
+            <div
+              v-if="employeeForm.isEditing && !availableRoles.length"
+              class="text-xs text-yellow-600 mt-1"
+            >
+              Loading roles for {{ employeeForm.department }}...
+            </div>
             <span class="text-xs text-gray-500 mt-1">
               {{ !employeeForm.department ? 'Select department first' : '' }}
             </span>
@@ -2170,13 +2526,17 @@
               required
             >
               <option value="">Select branch</option>
-              <option v-for="b in activeBranches" :key="b.id" :value="b.id">
+              <option v-for="b in allBranches" :key="b.id" :value="b.id">
                 {{ b.name }} ({{ b.code }})
+                {{
+                  b.is_active === true
+                    ? '(Active)'
+                    : b.is_active === false
+                      ? '(Inactive)'
+                      : '(Unknown Status)'
+                }}
               </option>
             </select>
-            <span class="text-xs text-gray-500 mt-1"
-              >Only active branches are shown</span
-            >
           </div>
 
           <div class="form-control">
@@ -2187,16 +2547,14 @@
                 Employee Type
               </span>
             </label>
-            <select
+            <input
               v-model="employeeForm.employee_type"
-              class="select select-sm sm:select-md select-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
-            >
-              <option value="" disabled>Select Type</option>
-              <option value="Full-time">Full-time</option>
-              <option value="Part-time">Part-time</option>
-              <option value="Contract">Contract</option>
-              <option value="Intern">Intern</option>
-            </select>
+              type="text"
+              class="input input-sm sm:input-md input-bordered w-full bg-gray-50 cursor-not-allowed"
+              readonly
+              value="Full-time"
+            />
+            <span class="text-xs text-gray-500 mt-1">Fixed to Full-time</span>
           </div>
 
           <div class="form-control">
@@ -2207,16 +2565,15 @@
                 Status <span class="text-red-500">*</span>
               </span>
             </label>
-            <select
+            <input
               v-model="employeeForm.status"
-              class="select select-sm sm:select-md select-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
-              required
+              type="text"
+              class="input input-sm sm:input-md input-bordered w-full bg-gray-50 cursor-not-allowed"
+              readonly
+            />
+            <span class="text-xs text-gray-500 mt-1"
+              >Status cannot be changed</span
             >
-              <option value="Active">Active</option>
-              <option value="Inactive">Inactive</option>
-              <option value="On Leave">On Leave</option>
-              <option value="Terminated">Terminated</option>
-            </select>
           </div>
         </div>
 
@@ -2439,10 +2796,6 @@
             >
               <option value="" disabled>Select reason</option>
               <option value="Resignation">Resignation</option>
-              <option value="Performance Issues">Performance Issues</option>
-              <option value="Misconduct">Misconduct</option>
-              <option value="Redundancy">Redundancy</option>
-              <option value="End of Contract">End of Contract</option>
               <option value="Other">Other</option>
             </select>
           </div>
@@ -2490,34 +2843,50 @@
           </p>
 
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <label class="flex items-center gap-3 cursor-pointer">
+            <label
+              class="flex items-center gap-3 cursor-pointer hover:bg-gray-100 p-2 rounded transition-colors"
+            >
               <input
                 v-model="terminationModal.finalPayroll"
                 type="checkbox"
-                class="checkbox checkbox-sm border-red-300 checked:bg-red-500"
+                class="checkbox checkbox-sm border-2 border-red-300 checked:bg-red-500 checked:border-red-500 focus:ring-2 focus:ring-red-300 focus:ring-offset-2"
               />
-              <div>
+              <div class="flex-1">
                 <div class="font-medium text-gray-800">
                   Final Payroll Processing
                 </div>
                 <div class="text-xs text-gray-600">
                   Calculate final salary, benefits, and deductions
                 </div>
+                <div
+                  v-if="terminationModal.finalPayroll"
+                  class="text-xs text-red-600 font-medium mt-1"
+                >
+                  ✓ Confirmed
+                </div>
               </div>
             </label>
 
-            <label class="flex items-center gap-3 cursor-pointer">
+            <label
+              class="flex items-center gap-3 cursor-pointer hover:bg-gray-100 p-2 rounded transition-colors"
+            >
               <input
                 v-model="terminationModal.systemAccess"
                 type="checkbox"
-                class="checkbox checkbox-sm border-red-300 checked:bg-red-500"
+                class="checkbox checkbox-sm border-2 border-red-300 checked:bg-red-500 checked:border-red-500 focus:ring-2 focus:ring-red-300 focus:ring-offset-2"
               />
-              <div>
+              <div class="flex-1">
                 <div class="font-medium text-gray-800">
                   System Access Revocation
                 </div>
                 <div class="text-xs text-gray-600">
                   Disable all company system accounts
+                </div>
+                <div
+                  v-if="terminationModal.systemAccess"
+                  class="text-xs text-red-600 font-medium mt-1"
+                >
+                  ✓ Confirmed
                 </div>
               </div>
             </label>
@@ -2579,9 +2948,38 @@
       <button @click="closeTerminationModal">close</button>
     </form>
   </dialog>
+
+  <!-- Payroll Generation Modal -->
+  <PayrollGenerationModal
+    :show="payrollGenerationModal.show"
+    :scope="payrollGenerationModal.scope"
+    :scope-id="payrollGenerationModal.scopeId"
+    :scope-name="payrollGenerationModal.scopeName"
+    :estimated-employee-count="payrollGenerationModal.estimatedEmployeeCount"
+    :employees="filteredEmployees"
+    @close="closePayrollGenerationModal"
+    @generated="handlePayrollGenerated"
+  />
 </template>
 <style scoped>
   .table-zebra tbody tr:nth-child(odd) {
     background-color: rgba(0, 0, 0, 0.05);
+  }
+
+  /* Address column styling */
+  .max-w-xs {
+    max-width: 12rem; /* 192px */
+  }
+
+  .truncate {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Ensure table cells have consistent height */
+  .table td {
+    vertical-align: top;
+    padding: 0.75rem 0.5rem;
   }
 </style>

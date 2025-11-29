@@ -59,7 +59,7 @@
   const currentPage = ref(1);
   const requestsPerPage = ref(10);
   const searchQuery = ref('');
-  const statusFilter = ref('');
+  const statusFilter = ref('Draft');
   const showCreateModal = ref(false);
   const showEditModal = ref(false);
   const showViewModal = ref(false);
@@ -800,7 +800,7 @@
           id: idx + 1,
           inventory_item_id: null,
           menu_item_id: null,
-          item_name: it.name || '',
+          item_name: cleanItemName(it.name || ''),
           item_quantity: Number(it.quantity || 1),
           item_unit: it.unit || 'pieces',
           unit_price: Number(it.unit_price || 0),
@@ -826,7 +826,7 @@
               id: 1,
               inventory_item_id: null,
               menu_item_id: null,
-              item_name: payload.items?.[0]?.name || '',
+              item_name: cleanItemName(payload.items?.[0]?.name || ''),
               item_quantity: Number(payload.items?.[0]?.quantity || 1),
               item_unit: payload.items?.[0]?.unit || 'pieces',
               unit_price: Number(payload.items?.[0]?.unit_price || 0),
@@ -859,7 +859,7 @@
           id: idx + 1,
           inventory_item_id: null, // optional: could resolve by name
           menu_item_id: null,
-          item_name: it.name || '',
+          item_name: cleanItemName(it.name || ''),
           item_quantity: Number(it.quantity || 1),
           item_unit: it.unit || 'pieces',
           unit_price: Number(it.unit_price || 0),
@@ -885,7 +885,7 @@
               id: 1,
               inventory_item_id: null,
               menu_item_id: null,
-              item_name: payload.items?.[0]?.name || '',
+              item_name: cleanItemName(payload.items?.[0]?.name || ''),
               item_quantity: Number(payload.items?.[0]?.quantity || 1),
               item_unit: payload.items?.[0]?.unit || 'pieces',
               unit_price: Number(payload.items?.[0]?.unit_price || 0),
@@ -922,13 +922,38 @@
     }
   });
 
+  // Helper function to clean item names by removing status indicators
+  const cleanItemName = (itemName) => {
+    if (!itemName) return '';
+    return itemName
+      .replace(/\s*\(LOW STOCK\)\s*/gi, '')
+      .replace(/\s*\(OUT OF STOCK\)\s*/gi, '')
+      .trim();
+  };
+
   const handleSelectInventoryItem = (row, inventoryItemId) => {
-    const inv = branchInventoryItems.value.find(
-      (i) => i.id === inventoryItemId
-    );
+    // Convert to number if it's a string
+    const id = Number(inventoryItemId);
+    if (!id) {
+      // If no valid ID, clear the row
+      row.inventory_item_id = null;
+      row.item_name = '';
+      row.item_unit = 'pieces';
+      row.unit_price = 0;
+      row.category = '';
+      row.source = '';
+      row.menu_item_id = null;
+      return;
+    }
+
+    const inv = branchInventoryItems.value.find((i) => i.id === id);
     if (!inv) return;
+
+    // Update all row properties with clean data
     row.inventory_item_id = inv.id;
-    row.item_name = inv.item_name;
+    // Use the original item name without status indicators
+    // Clean the item name to remove any status indicators that might be present
+    row.item_name = cleanItemName(inv.item_name);
     row.item_unit = inv.unit || 'pieces';
     row.unit_price = Number(inv.unit_cost || 0);
     row.category = inv.category || '';
@@ -1086,7 +1111,7 @@
                     </div>
                   </td>
                   <td>
-                    <div class="dropdown dropdown-left">
+                    <div class="dropdown dropdown-left dropdown-center">
                       <label
                         tabindex="0"
                         class="btn btn-ghost btn-xs hover:outline-none hover:bg-white/10 hover:text-black/50 hover:border-none hover:shadow-none"
@@ -1434,10 +1459,10 @@
 
           <div class="overflow-x-auto">
             <table
-              class="table table-sm table-zebra text-black/50 border border-black/10 custom-zebra"
+              class="table table-sm table-zebra    custom-zebra"
             >
-              <thead class="text-primaryColor">
-                <tr class="bg-primaryColor text-accentColor">
+              <thead class="">
+                <tr class="">
                   <th class="w-12">#</th>
                   <th class="w-40">Item</th>
                   <th class="w-20">Qty</th>
@@ -1460,7 +1485,7 @@
                     <select
                       v-model.number="item.inventory_item_id"
                       @change="
-                        handleSelectInventoryItem(item, item.inventory_item_id)
+                        handleSelectInventoryItem(item, $event.target.value)
                       "
                       class="select select-xs w-full bg-white border-primaryColor/30 focus:border-primaryColor focus:bg-white"
                     >
@@ -1731,7 +1756,7 @@
                     <select
                       v-model.number="item.inventory_item_id"
                       @change="
-                        handleSelectInventoryItem(item, item.inventory_item_id)
+                        handleSelectInventoryItem(item, $event.target.value)
                       "
                       class="select select-xs w-full bg-white border-primaryColor/30 focus:border-primaryColor focus:bg-white"
                     >
@@ -1925,7 +1950,6 @@
                   <th class="text-right">Unit Price</th>
                   <th>Category</th>
                   <th>Source</th>
-                  <th class="text-right">Amount</th>
                 </tr>
               </thead>
               <tbody>
@@ -1944,39 +1968,9 @@
                   <td>
                     {{ item.item_type || selectedRequest.source_type || '-' }}
                   </td>
-                  <td class="text-right">
-                    {{
-                      item.unit_price != null
-                        ? (
-                            Number(item.unit_price) *
-                            Number(item.item_quantity || 0)
-                          ).toFixed(2)
-                        : '-'
-                    }}
-                  </td>
                 </tr>
               </tbody>
             </table>
-          </div>
-          <div
-            class="mt-3 text-right text-sm text-gray-700"
-            v-if="selectedRequest && selectedRequest.items"
-          >
-            <span class="font-medium mr-2">Total Amount:</span>
-            <span>
-              {{
-                selectedRequest.items
-                  .reduce(
-                    (s, it) =>
-                      s +
-                      (it.unit_price
-                        ? Number(it.unit_price) * Number(it.item_quantity || 0)
-                        : 0),
-                    0
-                  )
-                  .toFixed(2)
-              }}
-            </span>
           </div>
         </div>
 
@@ -2012,7 +2006,7 @@
               {{ requestToDelete.request_description }}
             </p>
           </div>
-          <p class="text-red-600 text-sm mt-2 font-medium">
+          <p class="text-error text-sm mt-2 font-medium">
             <TriangleAlert class="w-4 h-4 mr-1" />
             This action cannot be undone.
           </p>

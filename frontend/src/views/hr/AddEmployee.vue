@@ -1,5 +1,6 @@
 <script setup>
-  import { ref, computed, onMounted, watch } from 'vue';
+  import { ref, computed, onMounted, watch, nextTick } from 'vue';
+  import { useRoute } from 'vue-router';
   import {
     User,
     Users,
@@ -37,6 +38,7 @@
   const branchStore = useBranchStore();
   const positionsStore = usePositionsStore();
   const { showSuccess, showError, showInfo, showWarning } = useCustomToast();
+  const route = useRoute();
 
   // Reactive state
   const currentStep = ref(0);
@@ -107,6 +109,7 @@
   // Departments and roles data
   const departmentsWithRoles = ref({});
   const departments = computed(() => Object.keys(departmentsWithRoles.value));
+  const prefillLocks = ref({ department: false, role: false, employee_type: false });
 
   const civilStatuses = ['Single', 'Married'];
 
@@ -141,6 +144,37 @@
       ? departmentsWithRoles.value[employeeForm.value.department] || []
       : [];
   });
+
+  // Prefill from query params (dept, role_name, employee_type)
+  const tryPrefillFromQuery = async () => {
+    const q = route?.query || {};
+    const dept = typeof q.dept === 'string' ? q.dept : '';
+    const roleName = typeof q.role_name === 'string' ? q.role_name : '';
+    const empType = typeof q.employee_type === 'string' ? q.employee_type : '';
+
+    if (dept && departments.value.includes(dept)) {
+      employeeForm.value.department = dept;
+      prefillLocks.value.department = true;
+      await nextTick();
+
+      // wait a tick for availableRoles to compute
+      const roles = availableRoles.value || [];
+      if (roleName) {
+        const match = roles.find((r) =>
+          (r.role || '').toLowerCase() === roleName.toLowerCase()
+        );
+        if (match) {
+          employeeForm.value.role_id = match.role_id;
+          prefillLocks.value.role = true;
+        }
+      }
+    }
+
+    if (empType) {
+      employeeForm.value.employee_type = empType;
+      prefillLocks.value.employee_type = true;
+    }
+  };
 
   // Wizard navigation computed properties
   const currentStepData = computed(() => steps[currentStep.value]);
@@ -184,8 +218,8 @@
     return true;
   });
 
-  // Active branches for assignment (used when department is Branch)
-  const activeBranches = computed(() => branchStore.activeBranches || []);
+  // All branches for assignment (used when department is Branch)
+  const allBranches = computed(() => branchStore.allBranches || []);
 
   // Base salary calculation based on role and employee type
   const baseSalary = computed(() => {
@@ -345,21 +379,21 @@
     const errors = {};
     const form = employeeForm.value;
 
-    // Validate phone number format (Philippine) - allow 09XXXXXXXXX or +639XXXXXXXXX
+    // Validate phone number format (Philippine) - must be exactly 09XXXXXXXXX (11 digits)
     if (form.phone_number) {
       const isLocalPH = /^09\d{9}$/.test(form.phone_number);
-      const isIntlPH = /^\+639\d{9}$/.test(form.phone_number);
-      if (!isLocalPH && !isIntlPH) {
-        errors.phone_number = 'Use 09XXXXXXXXX or +639XXXXXXXXX';
+      if (!isLocalPH) {
+        errors.phone_number =
+          'Phone number must start with 09 and be exactly 11 digits';
       }
     }
 
-    // Validate emergency contact number format
+    // Validate emergency contact number format - must be exactly 09XXXXXXXXX (11 digits)
     if (form.emergency_contact_number) {
       const isLocalPH = /^09\d{9}$/.test(form.emergency_contact_number);
-      const isIntlPH = /^\+639\d{9}$/.test(form.emergency_contact_number);
-      if (!isLocalPH && !isIntlPH) {
-        errors.emergency_contact_number = 'Use 09XXXXXXXXX or +639XXXXXXXXX';
+      if (!isLocalPH) {
+        errors.emergency_contact_number =
+          'Emergency contact number must start with 09 and be exactly 11 digits';
       }
     }
 
@@ -404,48 +438,55 @@
     }
   };
 
-  // Philippine phone input handler: accepts only 09XXXXXXXXX or +639XXXXXXXXX
+  // Prevent non-numeric characters from being typed
+  const handlePhoneKeypress = (event) => {
+    const char = String.fromCharCode(event.which);
+    // Only allow digits (0-9)
+    if (!/[0-9]/.test(char)) {
+      event.preventDefault();
+    }
+  };
+
+  // Philippine phone input handler: accepts only 09XXXXXXXXX (11 digits total)
   const handlePHPhoneInput = (rawInput, field) => {
     const input = String(rawInput || '');
 
-    // If starts with +, normalize to +639XXXXXXXXX
-    if (input.trim().startsWith('+')) {
-      // Keep only digits, remember it is intended as +63
-      let digits = input.replace(/\D/g, '');
-      if (!digits.startsWith('63')) {
-        // Force country code 63
-        digits = '63' + digits.replace(/^\+?/, '').replace(/^63?/, '');
+    // Remove all non-digit characters
+    let digits = input.replace(/\D/g, '');
+
+    // If user types starting with 9, prepend 0
+    if (digits.startsWith('9') && !digits.startsWith('09')) {
+      digits = '0' + digits;
+    }
+
+    // If user types starting with 63, convert to local format
+    if (digits.startsWith('63')) {
+      digits = '0' + digits.substring(2);
+    }
+
+    // If user types starting with +63, convert to local format
+    if (input.trim().startsWith('+63')) {
+      digits = '0' + digits.substring(2);
+    }
+
+    // Ensure it starts with 09
+    if (digits.length > 0 && !digits.startsWith('09')) {
+      // If it doesn't start with 09, clear it
+      if (digits.length > 1) {
+        digits = '';
       }
-      // Keep country code + 10 digits for mobile
-      digits = digits.substring(0, 12); // 63 + 10 digits
-      const localPart = digits.substring(2); // after 63
-      employeeForm.value[field] = '+63' + localPart;
-      return;
     }
 
-    // Local format: keep digits only
-    let local = input.replace(/\D/g, '');
+    // STRICT LIMIT: Maximum 11 digits only
+    digits = digits.substring(0, 11);
 
-    // If user types starting with 63, convert to international
-    if (local.startsWith('63')) {
-      const afterCC = local.substring(2).substring(0, 10);
-      employeeForm.value[field] = '+63' + afterCC;
-      return;
+    // Only allow if it starts with 09 and is maximum 11 digits
+    if (digits.startsWith('09') && digits.length <= 11) {
+      employeeForm.value[field] = digits;
+    } else if (digits.length === 0) {
+      employeeForm.value[field] = '';
     }
-
-    // Ensure it starts with 09 for local numbers
-    if (local.startsWith('9')) {
-      local = '0' + local;
-    }
-    if (!local.startsWith('0')) {
-      // If doesn't start with 0, just keep as is until it does
-      // Limit to 11 digits regardless
-      employeeForm.value[field] = local.substring(0, 11);
-      return;
-    }
-    // Limit to 11 digits for local
-    local = local.substring(0, 11);
-    employeeForm.value[field] = local;
+    // If it doesn't start with 09 or exceeds 11 digits, don't update the field
   };
 
   // Modal functions
@@ -505,6 +546,8 @@
       closeConfirmModal();
 
       let newEmployee;
+      let emailStatus = { sent: false, error: null };
+
       if (photoFile.value) {
         const formData = new FormData();
         Object.entries(employeeForm.value).forEach(([key, val]) => {
@@ -513,7 +556,9 @@
         formData.append('photo', photoFile.value);
 
         if (typeof employeeStore.createEmployeeWithPhoto === 'function') {
-          newEmployee = await employeeStore.createEmployeeWithPhoto(formData);
+          const result = await employeeStore.createEmployeeWithPhoto(formData);
+          newEmployee = result;
+          emailStatus = result.emailStatus || { sent: false, error: null };
         } else {
           // Fallback direct multipart request if store method isn't available (HMR/desync safety)
           const res = await fetch(`${apiConfig.baseURL}/employees/upload`, {
@@ -530,15 +575,36 @@
             );
           }
           newEmployee = data.data;
+          emailStatus = data.emailStatus || { sent: false, error: null };
         }
       } else {
-        newEmployee = await employeeStore.createEmployee(employeeForm.value);
+        const result = await employeeStore.createEmployee(employeeForm.value);
+        newEmployee = result;
+        emailStatus = result.emailStatus || { sent: false, error: null };
       }
 
-      showSuccess(
-        'Employee added successfully! Welcome email has been sent to the employee.',
-        'Employee Created Successfully'
-      );
+      // Show appropriate success message based on email status
+      let successMessage = 'Employee added successfully!';
+      if (emailStatus.sent) {
+        successMessage += ' Welcome email has been sent to the employee.';
+      } else if (emailStatus.error) {
+        successMessage +=
+          ' Note: Welcome email could not be sent due to email service issues.';
+        console.warn('Email sending failed:', emailStatus.error);
+
+        // Show additional info for production email issues
+        if (
+          emailStatus.error.includes('production') ||
+          emailStatus.error.includes('SMTP')
+        ) {
+          showWarning(
+            'Email service is currently unavailable in production. The employee has been created successfully.',
+            'Email Service Notice'
+          );
+        }
+      }
+
+      showSuccess(successMessage, 'Employee Created Successfully');
       openSuccessModal(newEmployee);
 
       // Reset form
@@ -631,6 +697,8 @@
 
       if (data.success) {
         departmentsWithRoles.value = data.data;
+        // After departments/roles load, attempt to prefill
+        await tryPrefillFromQuery();
       } else {
         throw new Error(
           data.message || 'Failed to fetch departments with roles'
@@ -648,8 +716,8 @@
   onMounted(() => {
     fetchEmployeeStats();
     fetchDepartmentsWithRoles();
-    // Load branches for assignment
-    branchStore.fetchActiveBranches().catch((e) => {
+    // Load all branches for assignment
+    branchStore.fetchAllBranches().catch((e) => {
       console.error('Failed to load branches', e);
     });
     // Load positions data for salary calculation
@@ -660,7 +728,7 @@
 </script>
 
 <template>
-  <div class="container mx-auto p-2 sm:p-4 lg:p-6 max-w-6xl">
+  <div class="mx-auto p-2 sm:p-4 lg:p-6">
     <!-- Header -->
     <div class="text-center mb-4 sm:mb-6 lg:mb-8">
       <h1
@@ -698,24 +766,6 @@
         </div>
       </div>
 
-      <div
-        class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
-      >
-        <div class="stat-figure">
-          <Activity class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-success" />
-        </div>
-        <div class="stat-title text-black/50 !text-xs sm:text-sm">
-          Active Employees
-        </div>
-        <div
-          class="stat-value text-success text-lg sm:text-xl lg:text-2xl xl:text-3xl"
-        >
-          {{ employeeStats.active_employees }}
-        </div>
-        <div class="stat-desc text-black/50 !text-xs sm:text-sm">
-          Currently active
-        </div>
-      </div>
 
       <div
         class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
@@ -928,14 +978,15 @@
               <input
                 :value="employeeForm.phone_number"
                 @input="handlePHPhoneInput($event.target.value, 'phone_number')"
-                type="text"
-                placeholder="09XXXXXXXXX or +639XXXXXXXXX"
+                @keypress="handlePhoneKeypress"
+                type="tel"
+                placeholder="09XXXXXXXXX"
                 class="input input-sm sm:input-md input-bordered w-full"
                 required
+                maxlength="11"
+                pattern="[0-9]*"
+                inputmode="numeric"
               />
-              <span class="text-xs text-gray-500 mt-1"
-                >Use Philippine mobile format only</span
-              >
             </div>
 
             <!-- Leave blank column to balance -->
@@ -1045,7 +1096,7 @@
                   >Age <span class="text-red-500">*</span></span
                 >
                 <span class="text-xs text-gray-500 ml-2"
-                  >(Auto-calculated from birthday)</span
+                  >(Auto-calculated)</span
                 >
               </label>
               <input
@@ -1091,11 +1142,12 @@
                 <Building
                   class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4"
                 />
-                <select
-                  v-model="employeeForm.department"
+              <select
+                v-model="employeeForm.department"
                   class="select select-sm sm:select-md select-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor pl-10"
-                  :class="{ 'select-error': formErrors.department }"
-                  required
+                :class="{ 'select-error': formErrors.department }"
+                :disabled="prefillLocks.department"
+                required
                 >
                   <option value="">Select department</option>
                   <option v-for="dept in departments" :key="dept" :value="dept">
@@ -1123,7 +1175,7 @@
                 v-model="employeeForm.role_id"
                 class="select select-sm sm:select-md select-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
                 :class="{ 'select-error': formErrors.role_id }"
-                :disabled="!employeeForm.department"
+                :disabled="!employeeForm.department || prefillLocks.role"
                 required
               >
                 <option value="">Select role</option>
@@ -1168,15 +1220,16 @@
                 >
                   <option value="">Select branch</option>
                   <option
-                    v-for="branch in activeBranches"
+                    v-for="branch in allBranches"
                     :key="branch.id"
                     :value="branch.id"
                   >
                     {{ branch.name }} ({{ branch.code }})
+                    {{ branch.is_active ? '(Active)' : '(Inactive)' }}
                   </option>
                 </select>
                 <span class="text-xs text-gray-500 mt-1"
-                  >Only active branches are shown</span
+                  >Both active and inactive branches are shown</span
                 >
               </div>
             </div>
@@ -1197,11 +1250,13 @@
                     type="radio"
                     value="Full-time"
                     class="radio checked:text-primaryColor radio-sm border-black/50"
+                    :disabled="prefillLocks.employee_type"
                   />
                   <span class="label-text ml-2">Full-time</span>
                 </label>
                 <label class="label cursor-pointer">
                   <input
+                    disabled
                     v-model="employeeForm.employee_type"
                     type="radio"
                     value="Part-time"
@@ -1436,20 +1491,20 @@
                       'emergency_contact_number'
                     )
                   "
-                  type="text"
-                  placeholder="09XXXXXXXXX or +639XXXXXXXXX"
+                  @keypress="handlePhoneKeypress"
+                  type="tel"
+                  placeholder="09XXXXXXXXX"
                   class="input input-bordered pl-10 w-full"
                   :class="{
                     'input-error': formErrors.emergency_contact_number,
                   }"
                   required
+                  maxlength="11"
+                  pattern="[0-9]*"
+                  inputmode="numeric"
                 />
               </div>
-              <label class="label">
-                <span class="label-text-alt text-gray-500"
-                  >Philippine number format only</span
-                >
-              </label>
+              <label class="label"> </label>
               <label v-if="formErrors.emergency_contact_number" class="label">
                 <span class="label-text-alt text-error">
                   {{ formErrors.emergency_contact_number }}
@@ -1476,16 +1531,16 @@
                       'alternate_contact_number'
                     )
                   "
-                  type="text"
-                  placeholder="09XXXXXXXXX or +639XXXXXXXXX (optional)"
+                  @keypress="handlePhoneKeypress"
+                  type="tel"
+                  placeholder="09XXXXXXXXX (optional)"
                   class="input input-bordered pl-10 w-full"
+                  maxlength="11"
+                  pattern="[0-9]*"
+                  inputmode="numeric"
                 />
               </div>
-              <label class="label">
-                <span class="label-text-alt text-gray-500"
-                  >Optional alternate number</span
-                >
-              </label>
+              <label class="label"> </label>
             </div>
 
             <!-- Emergency Contact Address -->
@@ -1543,61 +1598,75 @@
         </div>
 
         <!-- Wizard Navigation Buttons -->
-        <div
-          class="flex flex-col sm:flex-row justify-between items-center gap-4 mt-8 pt-6 border-t border-gray-200"
-        >
-          <div class="text-sm text-gray-600">
+        <div class="flex flex-col gap-4 mt-8 pt-6 border-t border-gray-200">
+          <!-- Form Completion Progress -->
+          <div class="text-sm text-gray-600 text-center sm:text-left">
             <span class="font-medium">Form Completion:</span>
             {{ completionPercentage }}%
           </div>
 
-          <div class="flex gap-3">
-            <!-- Previous Button -->
-            <button
-              v-if="!isFirstStep"
-              @click="previousStep"
-              class="btn btn-outline btn-sm text-gray-600 hover:bg-gray-100 font-thin"
-              :disabled="saving"
-            >
-              <ChevronLeft class="w-4 h-4 mr-1" />
-              Previous
-            </button>
+          <!-- Button Groups - Responsive Layout -->
+          <div class="flex flex-col sm:flex-row gap-3 w-full">
+            <!-- Primary Actions Group -->
+            <div class="flex flex-col sm:flex-row gap-2 flex-1">
+              <!-- Previous Button -->
+              <button
+                v-if="!isFirstStep"
+                @click="previousStep"
+                class="btn btn-outline btn-sm sm:btn-md text-gray-600 hover:bg-gray-100 font-thin flex-1 sm:flex-none min-h-[44px]"
+                :disabled="saving"
+              >
+                <ChevronLeft class="w-4 h-4 mr-1" />
+                <span class="hidden sm:inline">Previous</span>
+                <span class="sm:hidden">Prev</span>
+              </button>
 
-            <!-- Next Button -->
-            <button
-              v-if="!isLastStep"
-              @click="nextStep"
-              class="btn btn-primary btn-sm bg-primaryColor hover:bg-primaryColor/90 font-thin border-none shadow-none"
-              :disabled="!canGoNext || saving"
-            >
-              Next
-              <ChevronRight class="w-4 h-4 ml-1" />
-            </button>
+              <!-- Next Button -->
+              <button
+                v-if="!isLastStep"
+                @click="nextStep"
+                class="btn btn-primary btn-sm sm:btn-md bg-primaryColor hover:bg-primaryColor/90 font-thin border-none shadow-none flex-1 sm:flex-none min-h-[44px]"
+                :disabled="!canGoNext || saving"
+              >
+                <span class="hidden sm:inline">Next</span>
+                <span class="sm:hidden">Next</span>
+                <ChevronRight class="w-4 h-4 ml-1" />
+              </button>
 
-            <!-- Submit Button (only on last step) -->
-            <button
-              v-if="isLastStep"
-              @click="openConfirmModal"
-              class="btn btn-primary btn-sm bg-primaryColor hover:bg-primaryColor/90 font-thin border-none shadow-none"
-              :disabled="!isFormValid || saving"
-            >
-              <Save class="w-4 h-4 mr-1" />
-              <span
-                v-if="saving"
-                class="loading loading-spinner loading-sm"
-              ></span>
-              {{ saving ? 'Adding Employee...' : 'Add Employee' }}
-            </button>
+              <!-- Submit Button (only on last step) -->
+              <button
+                v-if="isLastStep"
+                @click="openConfirmModal"
+                class="btn btn-primary btn-sm sm:btn-md bg-primaryColor hover:bg-primaryColor/90 font-thin border-none shadow-none flex-1 sm:flex-none min-h-[44px]"
+                :disabled="!isFormValid || saving"
+              >
+                <Save class="w-4 h-4 mr-1" />
+                <span
+                  v-if="saving"
+                  class="loading loading-spinner loading-sm"
+                ></span>
+                <span class="hidden sm:inline">{{
+                  saving ? 'Adding Employee...' : 'Add Employee'
+                }}</span>
+                <span class="sm:hidden">{{
+                  saving ? 'Adding...' : 'Add'
+                }}</span>
+              </button>
+            </div>
 
-            <!-- Reset Button -->
-            <button
-              @click="resetForm"
-              class="btn btn-outline btn-sm text-gray-600 hover:bg-gray-100 font-thin"
-              :disabled="saving"
-            >
-              <X class="w-4 h-4 mr-1" />
-              Reset Form
-            </button>
+            <!-- Secondary Actions Group -->
+            <div class="flex flex-col sm:flex-row gap-2">
+              <!-- Reset Button -->
+              <button
+                @click="resetForm"
+                class="btn btn-outline btn-sm sm:btn-md text-gray-600 hover:bg-gray-100 font-thin flex-1 sm:flex-none min-h-[44px]"
+                :disabled="saving"
+              >
+                <X class="w-4 h-4 mr-1" />
+                <span class="hidden sm:inline">Reset Form</span>
+                <span class="sm:hidden">Reset</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>

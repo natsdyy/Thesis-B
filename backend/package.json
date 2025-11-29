@@ -11,7 +11,9 @@
     "migrate:status": "knex migrate:status --knexfile knexfile.js",
     "migrate:make": "knex migrate:make --knexfile knexfile.js",
     "seed": "node seeders/seedDefaultData.js",
-    "setup": "npm run migrate && npm run seed"
+    "setup": "npm run migrate && npm run seed",
+    "ensure-positions": "node scripts/ensure_all_branch_positions.js",
+    "sync-rates": "node scripts/sync_branch_positions_rates.js"
   },
   "keywords": [],
   "author": "",
@@ -19,9 +21,10 @@
   "description": "",
   "dependencies": {
     "@sendgrid/mail": "^8.1.6",
-    "axios": "^1.11.0",
+    "axios": "^1.12.2",
     "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",
+    "date-holidays": "^3.26.1",
     "dotenv": "^17.2.1",
     "express": "4.19.2",
     "jsonwebtoken": "^9.0.2",

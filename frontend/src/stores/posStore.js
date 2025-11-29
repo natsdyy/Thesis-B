@@ -23,11 +23,17 @@ export const usePOSStore = defineStore('pos', () => {
     createdAt: null,
     completedAt: null,
   });
+  // PH SC/PWD discount state (order-level)
+  const discountType = ref('NONE'); // NONE | SC | PWD
+  const beneficiaryName = ref('');
+  const beneficiaryIdNo = ref('');
   const selectedCategory = ref('All');
   const loading = ref(false);
   const error = ref(null);
   const orderHistory = ref([]);
   const currentBranchId = ref(null);
+  // Map of menu_item_id -> quantity currently reserved by 'processing' orders (today)
+  const processingReservations = ref({});
 
   // Selected transaction for void/refund operations
   const selectedTransaction = ref(null);
@@ -36,7 +42,8 @@ export const usePOSStore = defineStore('pos', () => {
   // Getters
   const filteredMenuItems = computed(() => {
     if (selectedCategory.value === 'All') {
-      return menuItems.value;
+      // Exclude Beverages from the default "All" view
+      return menuItems.value.filter((item) => item.category !== 'Beverages');
     }
     return menuItems.value.filter(
       (item) => item.category === selectedCategory.value
@@ -57,22 +64,104 @@ export const usePOSStore = defineStore('pos', () => {
     return filteredMenuItems.value.filter((item) => item.is_expired);
   });
 
+  // Separate production and SCM items for better organization
+  const productionItems = computed(() => {
+    return filteredMenuItems.value.filter(
+      (item) => item.item_type === 'production'
+    );
+  });
+
+  const scmItems = computed(() => {
+    return filteredMenuItems.value.filter((item) => item.item_type === 'scm');
+  });
+
+  const beverageItems = computed(() => {
+    return filteredMenuItems.value.filter(
+      (item) => item.item_type === 'scm' && item.category === 'Beverages'
+    );
+  });
+
   const orderSubtotal = computed(() => {
     return currentOrder.value.items.reduce((total, item) => {
-      return total + item.price * item.quantity;
+      // Promo and SC/PWD are mutually exclusive. If discountType != NONE, ignore promo pricing.
+      let itemPrice = item.price;
+      const applyingScPwd =
+        discountType.value === 'SC' || discountType.value === 'PWD';
+      if (!applyingScPwd) {
+        if (
+          item.promo_info &&
+          item.promo_info.is_active &&
+          item.quantity >= item.promo_info.minimum_quantity
+        ) {
+          if (item.promo_info.discount_type === 'percentage') {
+            const discountAmount =
+              item.price * (item.promo_info.discount_percentage / 100);
+            itemPrice = Math.max(0, item.price - discountAmount);
+          } else if (item.promo_info.discount_type === 'fixed_amount') {
+            itemPrice = Math.max(
+              0,
+              item.price - parseFloat(item.promo_info.discount_amount || 0)
+            );
+          }
+        }
+      }
+      return total + itemPrice * item.quantity;
     }, 0);
   });
 
+  // SC/PWD VAT-exempt + 20% discount handling (frontend preview)
+  const isScPwd = computed(
+    () => discountType.value === 'SC' || discountType.value === 'PWD'
+  );
+
   const orderTax = computed(() => {
-    return 0; // VAT not included in POS total
+    return 0; // VAT not included directly; SC/PWD handled via net-of-VAT discount logic
+  });
+
+  const scVatExemptSales = computed(() => {
+    if (!isScPwd.value) return 0;
+    const VAT_RATE = 0.12;
+    // One-meal-only: find highest unit price (ignoring promos)
+    let highestUnit = 0;
+    for (const it of currentOrder.value.items) {
+      const originalUnit = parseFloat(it.price || 0);
+      if (it.quantity > 0 && originalUnit > highestUnit)
+        highestUnit = originalUnit;
+    }
+    const eligibleBase = highestUnit > 0 ? highestUnit / (1 + VAT_RATE) : 0;
+    return Number(eligibleBase.toFixed(2));
+  });
+
+  const scDiscountAmount = computed(() => {
+    if (!isScPwd.value) return 0;
+    return Number((scVatExemptSales.value * 0.2).toFixed(2));
   });
 
   const orderTotal = computed(() => {
-    return orderSubtotal.value + orderTax.value;
+    if (isScPwd.value) {
+      // One-meal-only: adjust only the highest-priced single unit
+      let highestUnit = 0;
+      for (const it of currentOrder.value.items) {
+        const originalUnit = parseFloat(it.price || 0);
+        if (it.quantity > 0 && originalUnit > highestUnit)
+          highestUnit = originalUnit;
+      }
+      const adjustedEligible = Number(
+        (scVatExemptSales.value - scDiscountAmount.value).toFixed(2)
+      );
+      const gross = orderSubtotal.value; // subtotal is VAT-inclusive sum in UI
+      const final = Math.max(0, gross - highestUnit + adjustedEligible);
+      return Number(final.toFixed(2));
+    }
+    return Number((orderSubtotal.value + orderTax.value).toFixed(2));
   });
 
   const orderChange = computed(() => {
-    return Math.max(0, currentOrder.value.amountPaid - orderTotal.value);
+    const change = Math.max(
+      0,
+      parseFloat(currentOrder.value.amountPaid || 0) - orderTotal.value
+    );
+    return Number(change.toFixed(2));
   });
 
   const isOrderValid = computed(() => {
@@ -123,6 +212,11 @@ export const usePOSStore = defineStore('pos', () => {
 
       const apiItems = Array.isArray(resp?.data) ? resp.data : [];
 
+      // Refresh reservations from orders that are already processing for today
+      if (branchId) {
+        await refreshProcessingReservations(branchId);
+      }
+
       // Map API rows to POS-friendly structure
       const mapped = apiItems.map((it) => {
         const today = new Date().toISOString().split('T')[0];
@@ -139,12 +233,18 @@ export const usePOSStore = defineStore('pos', () => {
             tomorrowStr &&
           !isExpired;
 
+        const reservedQty = Number(processingReservations.value[it.id] || 0);
+        const branchStock = Number(it.branch_stock ?? 0) || 0;
+        const available = Math.max(0, branchStock - reservedQty);
+
         return {
           id: it.id,
           name: it.menu_item_name || it.item_name,
           price: parseFloat(it.selling_price || 0),
           category: it.category,
-          stock_quantity: Number(it.branch_stock ?? 0) || 0,
+          stock_quantity: branchStock,
+          reserved_processing_quantity: reservedQty,
+          available_stock: available,
           image_url: formatImageUrl(it.image_url),
           description: it.description || '',
           item_code: it.item_code,
@@ -152,11 +252,17 @@ export const usePOSStore = defineStore('pos', () => {
           expiry_date: it.branch_expiry_date,
           is_expired: isExpired,
           is_expiring_soon: isExpiringSoon,
+          item_type: it.item_type || 'production', // Track if it's production or scm
+          unit: it.unit || null, // For SCM items
+          preparation_time_minutes: it.preparation_time_minutes || 0, // SCM items have 0 prep time
+          // Include promo information
+          promo_info: it.promo_info || null,
         };
       });
 
       // Merge or reset list based on options.reset
       const cleaned = mapped.filter((m) => m.stock_quantity >= 0);
+
       if (reset) {
         menuItems.value = cleaned;
       } else {
@@ -218,8 +324,13 @@ export const usePOSStore = defineStore('pos', () => {
     }
   };
 
-  const addItemToOrder = (menuItem) => {
-    if (menuItem.stock_quantity <= 0) {
+  const addItemToOrder = (menuItem, quantity = 1) => {
+    const available =
+      menuItem.available_stock != null
+        ? Number(menuItem.available_stock)
+        : Number(menuItem.stock_quantity);
+
+    if (available < quantity || quantity <= 0) {
       return false;
     }
 
@@ -228,21 +339,46 @@ export const usePOSStore = defineStore('pos', () => {
     );
 
     if (existingItem) {
-      existingItem.quantity += 1;
+      existingItem.quantity += quantity;
     } else {
       currentOrder.value.items.push({
         id: menuItem.id,
         name: menuItem.name,
         price: parseFloat(menuItem.price),
-        quantity: 1,
+        quantity: quantity,
         image: menuItem.image_url,
         category: menuItem.category,
         stock_quantity: menuItem.stock_quantity,
+        promo_info: menuItem.promo_info, // Include promo discount information
       });
     }
 
-    // Update stock quantity
-    menuItem.stock_quantity -= 1;
+    // Update local available and stock to reflect reservation (selected object)
+    if (menuItem.available_stock != null) {
+      menuItem.available_stock = Math.max(
+        0,
+        Number(menuItem.available_stock) - quantity
+      );
+    }
+    menuItem.stock_quantity = Math.max(
+      0,
+      Number(menuItem.stock_quantity) - quantity
+    );
+
+    // Also update the canonical item inside the store list by id
+    const listItem = menuItems.value.find((mi) => mi.id === menuItem.id);
+    if (listItem && listItem !== menuItem) {
+      if (listItem.available_stock != null) {
+        listItem.available_stock = Math.max(
+          0,
+          Number(listItem.available_stock) - quantity
+        );
+      }
+      listItem.stock_quantity = Math.max(
+        0,
+        Number(listItem.stock_quantity) - quantity
+      );
+    }
 
     return true;
   };
@@ -259,6 +395,9 @@ export const usePOSStore = defineStore('pos', () => {
       const menuItem = menuItems.value.find((mi) => mi.id === itemId);
       if (menuItem) {
         menuItem.stock_quantity += item.quantity;
+        if (menuItem.available_stock != null) {
+          menuItem.available_stock += item.quantity;
+        }
       }
 
       currentOrder.value.items.splice(itemIndex, 1);
@@ -274,9 +413,24 @@ export const usePOSStore = defineStore('pos', () => {
 
       if (quantity <= 0) {
         removeItemFromOrder(itemId);
-      } else if (menuItem.stock_quantity >= quantityDifference) {
-        item.quantity = quantity;
-        menuItem.stock_quantity -= quantityDifference;
+      } else {
+        const available =
+          menuItem.available_stock != null
+            ? Number(menuItem.available_stock)
+            : Number(menuItem.stock_quantity);
+        if (available >= quantityDifference) {
+          item.quantity = quantity;
+          if (menuItem.available_stock != null) {
+            menuItem.available_stock = Math.max(
+              0,
+              Number(menuItem.available_stock) - quantityDifference
+            );
+          }
+          menuItem.stock_quantity = Math.max(
+            0,
+            Number(menuItem.stock_quantity) - quantityDifference
+          );
+        }
       }
     }
   };
@@ -373,15 +527,51 @@ export const usePOSStore = defineStore('pos', () => {
         total_amount: orderTotal.value,
         amount_paid: currentOrder.value.amountPaid,
         change_amount: orderChange.value,
-        items: currentOrder.value.items.map((item) => ({
-          menu_item_id: item.id,
-          item_name: item.name,
-          quantity: item.quantity,
-          unit_price: item.price,
-          total_price: item.price * item.quantity,
-          notes: item.notes || null,
-        })),
+        items: currentOrder.value.items.map((item) => {
+          // Calculate discounted price if promo applies
+          let itemPrice = item.price;
+          const applyingScPwd =
+            discountType.value === 'SC' || discountType.value === 'PWD';
+          if (!applyingScPwd) {
+            if (
+              item.promo_info &&
+              item.promo_info.is_active &&
+              item.quantity >= item.promo_info.minimum_quantity
+            ) {
+              if (item.promo_info.discount_type === 'percentage') {
+                const discountAmount =
+                  item.price * (item.promo_info.discount_percentage / 100);
+                itemPrice = Math.max(0, item.price - discountAmount);
+              } else if (item.promo_info.discount_type === 'fixed_amount') {
+                itemPrice = Math.max(
+                  0,
+                  item.price - parseFloat(item.promo_info.discount_amount || 0)
+                );
+              }
+            }
+          }
+
+          return {
+            id: item.id, // Keep the original ID for reference
+            // Only set menu_item_id for production items; handle numeric IDs safely
+            menu_item_id:
+              typeof item.id === 'string' && item.id.startsWith('scm_')
+                ? null
+                : item.id,
+            item_name: item.name,
+            quantity: item.quantity,
+            unit_price: itemPrice, // Use discounted price
+            total_price: itemPrice * item.quantity, // Use discounted price
+            notes: item.notes || null,
+          };
+        }),
         notes: currentOrder.value.notes || null,
+        // SC/PWD fields
+        discount_type: discountType.value,
+        beneficiary_name:
+          discountType.value !== 'NONE' ? beneficiaryName.value : null,
+        beneficiary_id_no:
+          discountType.value !== 'NONE' ? beneficiaryIdNo.value : null,
       };
 
       // Create order via API
@@ -420,8 +610,9 @@ export const usePOSStore = defineStore('pos', () => {
         processedAt: processResponse.data.processed_at,
       });
 
-      // Reset current order
-      resetOrder();
+      // Reset current order WITHOUT restoring local stock quantities,
+      // because the backend has already decremented branch stock.
+      resetOrder(false);
 
       return processResponse.data;
     } catch (err) {
@@ -436,14 +627,20 @@ export const usePOSStore = defineStore('pos', () => {
     }
   };
 
-  const resetOrder = () => {
-    // Restore all stock quantities
-    currentOrder.value.items.forEach((orderItem) => {
-      const menuItem = menuItems.value.find((mi) => mi.id === orderItem.id);
-      if (menuItem) {
-        menuItem.stock_quantity += orderItem.quantity;
-      }
-    });
+  const resetOrder = (restoreStock = true) => {
+    // Optionally restore local stock quantities (used on cancel),
+    // but skip restoration after a successful order.
+    if (restoreStock) {
+      currentOrder.value.items.forEach((orderItem) => {
+        const menuItem = menuItems.value.find((mi) => mi.id === orderItem.id);
+        if (menuItem) {
+          menuItem.stock_quantity += orderItem.quantity;
+          if (menuItem.available_stock != null) {
+            menuItem.available_stock += orderItem.quantity;
+          }
+        }
+      });
+    }
 
     currentOrder.value = {
       orderNumber: '',
@@ -458,10 +655,14 @@ export const usePOSStore = defineStore('pos', () => {
       createdAt: null,
       completedAt: null,
     };
+    discountType.value = 'NONE';
+    beneficiaryName.value = '';
+    beneficiaryIdNo.value = '';
   };
 
   const cancelOrder = () => {
-    resetOrder();
+    // On cancel, restore local stock back to the shelf
+    resetOrder(true);
   };
 
   const voidOrder = async (orderId, voidReason, lossAmount = 0, flags = {}) => {
@@ -548,6 +749,47 @@ export const usePOSStore = defineStore('pos', () => {
     }
   };
 
+  // Move an existing order to processing (for kitchen/cook receiving orders)
+  const processOrderById = async (orderId) => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const url = getApiUrl(`/pos/orders/${orderId}/process`);
+      const { data: response } = await axios.post(
+        url,
+        {},
+        {
+          baseURL: apiConfig.baseURL,
+          headers: { ...getAuthHeaders() },
+        }
+      );
+
+      if (!response.success) {
+        throw new Error(response.message || 'Failed to receive order');
+      }
+
+      // Update local history state if present
+      const orderIndex = orderHistory.value.findIndex((o) => o.id === orderId);
+      if (orderIndex !== -1) {
+        orderHistory.value[orderIndex].status = 'processing';
+        orderHistory.value[orderIndex].processedAt =
+          response.data?.processed_at || new Date().toISOString();
+      }
+
+      return response.data;
+    } catch (err) {
+      error.value =
+        err?.response?.data?.message ||
+        err.message ||
+        'Failed to receive order';
+      console.error('Error processing order by id:', err);
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
   const fetchOrderHistory = async (filters = {}) => {
     try {
       const {
@@ -557,6 +799,7 @@ export const usePOSStore = defineStore('pos', () => {
         offset = 0,
         date_from = null,
         date_to = null,
+        remittance_id = null,
       } = filters;
 
       const url = getApiUrl('/pos/orders');
@@ -567,6 +810,7 @@ export const usePOSStore = defineStore('pos', () => {
       if (offset) params.append('offset', offset);
       if (date_from) params.append('date_from', date_from);
       if (date_to) params.append('date_to', date_to);
+      if (remittance_id) params.append('remittance_id', remittance_id);
 
       const { data: response } = await axios.get(
         `${url}?${params.toString()}`,
@@ -586,6 +830,59 @@ export const usePOSStore = defineStore('pos', () => {
     } catch (err) {
       console.error('Error fetching order history:', err);
       return { data: [], pagination: { total: 0, limit: 20, offset: 0 } };
+    }
+  };
+
+  // Build a reservation map from today's processing orders so we can subtract
+  // them from displayed branch stock and block further ordering.
+  const refreshProcessingReservations = async (branchId) => {
+    try {
+      const today = new Date();
+      const start = new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        today.getDate(),
+        0,
+        0,
+        0,
+        0
+      ).toISOString();
+      const end = new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        today.getDate(),
+        23,
+        59,
+        59,
+        999
+      ).toISOString();
+
+      const { data: response } = await axios.get(
+        `${getApiUrl('/pos/orders')}?${new URLSearchParams({
+          branch_id: String(branchId),
+          status: 'processing',
+          limit: '1000',
+          offset: '0',
+          date_from: start,
+          date_to: end,
+        }).toString()}`,
+        { baseURL: apiConfig.baseURL, headers: { ...getAuthHeaders() } }
+      );
+
+      const orders = Array.isArray(response?.data) ? response.data : [];
+      const map = {};
+      for (const order of orders) {
+        const items = Array.isArray(order.items) ? order.items : [];
+        for (const it of items) {
+          const id = it.menu_item_id || it.id; // prefer menu_item_id if present
+          if (!id) continue;
+          map[id] = (map[id] || 0) + Number(it.quantity || 0);
+        }
+      }
+      processingReservations.value = map;
+    } catch (err) {
+      console.warn('Failed to refresh processing reservations:', err);
+      processingReservations.value = {};
     }
   };
 
@@ -806,6 +1103,31 @@ export const usePOSStore = defineStore('pos', () => {
     }
   };
 
+  // Upload a CSV attachment for a remittance
+  const uploadRemittanceCSV = async (
+    remittanceId,
+    fileBlob,
+    filename = 'remittance.csv'
+  ) => {
+    try {
+      const url = getApiUrl(`/finance/remittances/${remittanceId}/csv`);
+      const form = new FormData();
+      const file =
+        fileBlob instanceof Blob
+          ? fileBlob
+          : new Blob([String(fileBlob || '')], { type: 'text/csv' });
+      form.append('file', file, filename);
+      const { data } = await axios.post(url, form, {
+        baseURL: apiConfig.baseURL,
+        headers: { ...getAuthHeaders(), 'Content-Type': 'multipart/form-data' },
+      });
+      return data?.data || null;
+    } catch (err) {
+      console.error('Error uploading remittance CSV:', err);
+      throw err;
+    }
+  };
+
   // Check if there's already a pending remittance for the same period
   const hasPendingRemittance = async (branchId, dateFrom, dateTo) => {
     try {
@@ -982,17 +1304,25 @@ export const usePOSStore = defineStore('pos', () => {
     orderHistory,
     pagination,
     hasMore,
+    processingReservations,
 
     // Getters
     filteredMenuItems,
     availableItems,
     outOfStockItems,
     expiredItems,
+    productionItems,
+    scmItems,
+    beverageItems,
     orderSubtotal,
     orderTax,
     orderTotal,
     orderChange,
     isOrderValid,
+    // Discount state
+    discountType,
+    beneficiaryName,
+    beneficiaryIdNo,
 
     // Actions
     fetchMenuItems,
@@ -1008,6 +1338,7 @@ export const usePOSStore = defineStore('pos', () => {
     cancelOrder,
     voidOrder,
     completeOrder,
+    processOrderById,
     fetchOrderHistory,
     fetchOrderById,
     fetchDailySummary,
@@ -1019,6 +1350,7 @@ export const usePOSStore = defineStore('pos', () => {
     approveRemittance,
     rejectRemittance,
     submitRemittance,
+    uploadRemittanceCSV,
     hasPendingRemittance,
     setSelectedCategory,
     initialize,

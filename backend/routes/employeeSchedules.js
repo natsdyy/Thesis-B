@@ -25,6 +25,7 @@ router.get("/", authenticateToken, async (req, res) => {
         "es.end_time",
         "es.notes",
         "es.is_active",
+        "es.is_rest_day_override",
         "es.created_at",
         "es.updated_at",
         "e.first_name",
@@ -48,7 +49,10 @@ router.get("/", authenticateToken, async (req, res) => {
           message: "Branch ID is required for branch employees",
         });
       }
-      query = query.where("es.branch_id", branch_id);
+      // Include department-level schedules (es.branch_id IS NULL) so employees see assignments made at department scope
+      query = query.andWhere(function () {
+        this.where("es.branch_id", branch_id).orWhereNull("es.branch_id");
+      });
     }
 
     // Filter by date range if provided
@@ -101,6 +105,7 @@ router.get("/", authenticateToken, async (req, res) => {
         end_time: schedule.end_time,
         notes: schedule.notes,
         is_active: schedule.is_active,
+        is_rest_day_override: schedule.is_rest_day_override || false,
         created_at: schedule.created_at,
         updated_at: schedule.updated_at,
       };
@@ -199,6 +204,7 @@ router.post("/", authenticateToken, async (req, res) => {
       end_time,
       notes,
       is_active: true,
+      is_rest_day_override: false, // New schedules are never rest day overrides
       created_at: db.fn.now(),
       updated_at: db.fn.now(),
     };
@@ -256,10 +262,11 @@ router.put("/:id", authenticateToken, async (req, res) => {
     const { id } = req.params;
     const { shift_name, start_time, end_time, notes } = req.body;
 
-    // Check if schedule exists
+    // Check if schedule exists - explicitly select all columns including is_rest_day_override
     const existingSchedule = await db("employee_schedules")
       .where("id", id)
       .where("is_active", true)
+      .select("*")
       .first();
 
     if (!existingSchedule) {
@@ -268,6 +275,13 @@ router.put("/:id", authenticateToken, async (req, res) => {
         message: "Employee schedule not found",
       });
     }
+
+    console.log(
+      `Update request for schedule ${id}:`,
+      `Current shift: "${existingSchedule.shift_name}",`,
+      `New shift: "${shift_name}",`,
+      `Current is_rest_day_override: ${existingSchedule.is_rest_day_override}`
+    );
 
     // No automatic day-off restrictions - all days are working days
 
@@ -279,6 +293,34 @@ router.put("/:id", authenticateToken, async (req, res) => {
     if (start_time) updateData.start_time = start_time;
     if (end_time) updateData.end_time = end_time;
     if (notes !== undefined) updateData.notes = notes;
+
+    // If the existing schedule was "Day Off" and we're changing it to a working shift,
+    // set is_rest_day_override to true so rest day pay rates still apply
+    if (
+      existingSchedule.shift_name === "Day Off" &&
+      shift_name &&
+      shift_name !== "Day Off"
+    ) {
+      updateData.is_rest_day_override = true;
+      console.log(
+        `✓ Setting rest day override flag: Day Off → ${shift_name} (Schedule ID: ${id})`
+      );
+    } else if (shift_name === "Day Off") {
+      // If changing to Day Off, clear the override flag
+      updateData.is_rest_day_override = false;
+      console.log(`Clearing rest day override flag (Schedule ID: ${id})`);
+    } else if (
+      existingSchedule.is_rest_day_override === true &&
+      shift_name &&
+      shift_name !== "Day Off"
+    ) {
+      // If already marked as rest day override and changing to another working shift,
+      // keep the flag set (it was originally a Day Off)
+      updateData.is_rest_day_override = true;
+      console.log(
+        `Keeping rest day override flag (Schedule ID: ${id}, changing to ${shift_name})`
+      );
+    }
 
     const [updated] = await db("employee_schedules")
       .where("id", id)
@@ -315,6 +357,8 @@ router.put("/:id", authenticateToken, async (req, res) => {
         ...scheduleWithEmployee,
         schedule_date: formattedScheduleDate,
         employee_name: `${scheduleWithEmployee.first_name} ${scheduleWithEmployee.last_name}`,
+        is_rest_day_override:
+          scheduleWithEmployee.is_rest_day_override || false, // Explicitly include in response
       },
       message: "Employee schedule updated successfully",
     });

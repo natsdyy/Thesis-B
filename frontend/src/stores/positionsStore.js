@@ -137,7 +137,10 @@ export const usePositionsStore = defineStore('positions', {
         );
 
         if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
+          const errorData = await response.json().catch(() => ({}));
+          const errorMessage =
+            errorData.message || `HTTP error! status: ${response.status}`;
+          throw new Error(errorMessage);
         }
 
         const data = await response.json();
@@ -155,6 +158,11 @@ export const usePositionsStore = defineStore('positions', {
             if (index !== -1) {
               this.positions[department][index] = updatedPosition;
             }
+          }
+
+          // If this is a Branch department position, notify that branch positions were also updated
+          if (department === 'Branch') {
+            console.log(`✅ Rate updated for ${updatedPosition.role}. All matching branch positions have been synced.`);
           }
 
           return updatedPosition;

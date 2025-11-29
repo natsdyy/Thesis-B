@@ -1,59 +1,90 @@
 <template>
   <div class="min-h-screen bg-gray-50">
-    <!-- Foodpanda Order Modal -->
-    <FoodpandaOrderModal
-      :isOpen="isFoodpandaModalOpen"
-      @close="closeFoodpandaModal"
-    />
+    <!-- Announcement Modal -->
+    <Teleport to="body">
+      <AnnouncementModal
+        :isOpen="isAnnouncementModalOpen"
+        :announcements="activeAnnouncements"
+        @close="closeAnnouncementModal"
+        @open-job-positions="openJobPositionsFromAnnouncement"
+      />
+    </Teleport>
 
-    <!-- Grabfood Order Modal -->
-    <GrabfoodOrderModal
-      :isOpen="isGrabfoodModalOpen"
-      @close="closeGrabfoodModal"
+    <!-- Job Positions Modal -->
+    <JobPositionsModal
+      :isOpen="isJobPositionsModalOpen"
+      @close="closeJobPositionsModal"
     />
 
     <!-- Header -->
     <header
       :class="[
         'text-white shadow-lg fixed top-0 left-0 right-0 z-50 transition-all duration-300',
-        isScrolled ? 'bg-green-800' : 'bg-transparent',
+        isMobileMenuOpen || isScrolled ? 'bg-green-800' : 'bg-transparent',
       ]"
     >
-      <div class="container mx-auto px-4 py-4">
+      <div class="container mx-auto px-3 sm:px-4 py-3 sm:py-4">
         <div class="flex items-center justify-between">
-          <!-- Logo and Brand -->
-          <div
-            class="flex items-center space-x-4 cursor-pointer group"
-            @click="scrollToHome"
-            title="Click to go to top"
-          >
+          <!-- Left Side: Mobile Menu Button + Logo and Brand -->
+          <div class="flex items-center space-x-2 sm:space-x-4">
+            <!-- Mobile Menu Button -->
+            <button
+              @click="toggleMobileMenu"
+              class="mobile-menu-container md:hidden flex items-center justify-center w-10 h-10 text-white hover:text-orange-300 transition-colors duration-300"
+              aria-label="Toggle mobile menu"
+            >
+              <!-- Hamburger Icon -->
+              <div class="relative w-6 h-6">
+                <span
+                  :class="[
+                    'absolute block h-0.5 w-6 bg-current transform transition-all duration-300 ease-in-out',
+                    isMobileMenuOpen
+                      ? 'rotate-45 translate-y-2.5'
+                      : 'translate-y-0',
+                  ]"
+                ></span>
+                <span
+                  :class="[
+                    'absolute block h-0.5 w-6 bg-current transform transition-all duration-300 ease-in-out translate-y-2.5',
+                    isMobileMenuOpen ? 'opacity-0' : 'opacity-100',
+                  ]"
+                ></span>
+                <span
+                  :class="[
+                    'absolute block h-0.5 w-6 bg-current transform transition-all duration-300 ease-in-out',
+                    isMobileMenuOpen
+                      ? '-rotate-45 translate-y-2.5'
+                      : 'translate-y-5',
+                  ]"
+                ></span>
+              </div>
+            </button>
+
+            <!-- Logo and Brand -->
             <div
-              class="w-16 h-16 flex items-center justify-center transition-transform duration-300 group-hover:scale-110"
+              class="flex items-center space-x-2 sm:space-x-4 cursor-pointer group"
+              @click="scrollToHome"
+              title="Click to go to top"
             >
-              <img
-                src="/logo1.png"
-                alt="Countryside Logo"
-                class="w-full h-full object-contain"
-              />
+              <div
+                class="w-12 h-12 sm:w-16 sm:h-16 flex items-center justify-center transition-transform duration-300 group-hover:scale-110"
+              >
+                <img
+                  src="/logo1.png"
+                  alt="Countryside Logo"
+                  class="w-full h-full object-contain"
+                />
+              </div>
+              <h1
+                class="text-lg sm:text-xl md:text-2xl font-bold transition-all duration-300 group-hover:text-orange-300 group-hover:drop-shadow-lg"
+              >
+                Countryside Steakhouse
+              </h1>
             </div>
-            <h1
-              class="text-2xl font-bold transition-all duration-300 group-hover:text-orange-300 group-hover:drop-shadow-lg"
-            >
-              Countryside Steakhouse
-            </h1>
           </div>
 
-          <!-- Navigation -->
+          <!-- Desktop Navigation -->
           <nav class="hidden md:flex items-center space-x-10">
-            <a
-              @click="scrollToHome"
-              class="relative group py-2 px-1 text-white hover:text-orange-300 transition-all duration-300 font-medium cursor-pointer"
-            >
-              <span class="relative z-10">Home</span>
-              <span
-                class="absolute bottom-0 left-0 w-0 h-0.5 bg-orange-400 transition-all duration-300 group-hover:w-full"
-              ></span>
-            </a>
             <router-link
               to="/menu"
               class="relative group py-2 px-1 text-white hover:text-orange-300 transition-all duration-300 font-medium"
@@ -73,34 +104,176 @@
                 class="absolute bottom-0 left-0 w-0 h-0.5 bg-orange-400 transition-all duration-300 group-hover:w-full"
               ></span>
             </router-link>
+            <router-link
+              to="/join-us"
+              class="relative group py-2 px-1 text-white hover:text-orange-300 transition-all duration-300 font-medium"
+            >
+              <span class="relative z-10">Join Us</span>
+              <span
+                class="absolute bottom-0 left-0 w-0 h-0.5 bg-orange-400 transition-all duration-300 group-hover:w-full"
+              ></span>
+            </router-link>
+            <router-link
+              to="/faq"
+              class="relative group py-2 px-1 text-white hover:text-orange-300 transition-all duration-300 font-medium"
+            >
+              <span class="relative z-10">FAQ</span>
+              <span
+                class="absolute bottom-0 left-0 w-0 h-0.5 bg-orange-400 transition-all duration-300 group-hover:w-full"
+              ></span>
+            </router-link>
             <a
               href="#contact"
               class="relative group py-2 px-1 text-white hover:text-orange-300 transition-all duration-300 font-medium"
             >
-              <span class="relative z-10">Feedbacks</span>
+              <span class="relative z-10">Contact Us</span>
               <span
                 class="absolute bottom-0 left-0 w-0 h-0.5 bg-orange-400 transition-all duration-300 group-hover:w-full"
               ></span>
             </a>
           </nav>
 
-          <!-- Login Button -->
-          <div class="flex items-center space-x-4">
+          <!-- Login Button and Announcements Icon (hidden on mobile, shown on md+) -->
+          <div class="hidden md:flex items-center space-x-2 sm:space-x-4">
             <button
               @click="goToLogin"
-              class="border border-white text-white px-6 py-2 rounded-sm cursor-pointer transition-all duration-300 shadow-md font-thin"
+              class="border border-white text-white px-3 sm:px-4 md:px-6 py-1.5 sm:py-2 rounded-sm cursor-pointer transition-all duration-300 shadow-md font-thin text-sm sm:text-base"
             >
               Login
+            </button>
+            <button
+              @click="openAnnouncementModal"
+              class="relative text-white hover:text-orange-300 transition-all duration-300 p-2 rounded-full hover:bg-white/10"
+              title="View Announcements"
+              aria-label="View Announcements"
+            >
+              <Megaphone class="w-5 h-5" />
+              <span
+                v-if="hasActiveAnnouncements"
+                class="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full shadow"
+              ></span>
             </button>
           </div>
         </div>
       </div>
     </header>
 
+    <!-- Mobile Menu Dropdown -->
+    <div
+      :class="[
+        'mobile-menu-container fixed top-16 sm:top-20 left-0 right-0 bg-green-800 shadow-lg z-40 transform transition-all duration-300 ease-in-out md:hidden',
+        isMobileMenuOpen
+          ? 'translate-y-0 opacity-100'
+          : '-translate-y-full opacity-0',
+      ]"
+    >
+      <nav class="py-3 sm:py-4 px-3 sm:px-4 space-y-1 sm:space-y-2">
+        <router-link
+          to="/login"
+          @click="closeMobileMenu()"
+          class="block py-3 sm:py-3 px-3 sm:px-4 text-white hover:text-orange-300 hover:bg-green-700 rounded-lg transition-all duration-300 font-medium text-base sm:text-lg"
+        >
+          <span class="flex items-center">
+            <font-awesome-icon
+              icon="fa-solid fa-right-to-bracket"
+              class="w-4 h-4 sm:w-5 sm:h-5 mr-3"
+            />
+            Login
+          </span>
+        </router-link>
+        <router-link
+          to="/menu"
+          @click="closeMobileMenu()"
+          class="block py-3 sm:py-3 px-3 sm:px-4 text-white hover:text-orange-300 hover:bg-green-700 rounded-lg transition-all duration-300 font-medium text-base sm:text-lg"
+        >
+          <span class="flex items-center">
+            <font-awesome-icon
+              icon="fa-solid fa-utensils"
+              class="w-4 h-4 sm:w-5 sm:h-5 mr-3"
+            />
+            Menu
+          </span>
+        </router-link>
+        <router-link
+          to="/stores"
+          @click="closeMobileMenu()"
+          class="block py-3 sm:py-3 px-3 sm:px-4 text-white hover:text-orange-300 hover:bg-green-700 rounded-lg transition-all duration-300 font-medium text-base sm:text-lg"
+        >
+          <span class="flex items-center">
+            <font-awesome-icon
+              icon="fa-solid fa-store"
+              class="w-4 h-4 sm:w-5 sm:h-5 mr-3"
+            />
+            Store's
+          </span>
+        </router-link>
+        <router-link
+          to="/join-us"
+          @click="closeMobileMenu()"
+          class="block py-3 sm:py-3 px-3 sm:px-4 text-white hover:text-orange-300 hover:bg-green-700 rounded-lg transition-all duration-300 font-medium text-base sm:text-lg"
+        >
+          <span class="flex items-center">
+            <font-awesome-icon
+              icon="fa-solid fa-user-plus"
+              class="w-4 h-4 sm:w-5 sm:h-5 mr-3"
+            />
+            Join Us
+          </span>
+        </router-link>
+        <router-link
+          to="/faq"
+          @click="closeMobileMenu()"
+          class="block py-3 sm:py-3 px-3 sm:px-4 text-white hover:text-orange-300 hover:bg-green-700 rounded-lg transition-all duration-300 font-medium text-base sm:text-lg"
+        >
+          <span class="flex items-center">
+            <font-awesome-icon
+              icon="fa-solid fa-circle-question"
+              class="w-4 h-4 sm:w-5 sm:h-5 mr-3"
+            />
+            FAQ
+          </span>
+        </router-link>
+        <a
+          href="#contact"
+          @click="closeMobileMenu()"
+          class="block py-3 sm:py-3 px-3 sm:px-4 text-white hover:text-orange-300 hover:bg-green-700 rounded-lg transition-all duration-300 font-medium text-base sm:text-lg"
+        >
+          <span class="flex items-center">
+            <font-awesome-icon
+              icon="fa-solid fa-phone"
+              class="w-4 h-4 sm:w-5 sm:h-5 mr-3"
+            />
+            Contact Us
+          </span>
+        </a>
+        <button
+          @click="
+            openAnnouncementModal();
+            closeMobileMenu();
+          "
+          class="block w-full text-left py-3 sm:py-3 px-3 sm:px-4 text-white hover:text-orange-300 hover:bg-green-700 rounded-lg transition-all duration-300 font-medium text-base sm:text-lg"
+        >
+          <span class="flex items-center">
+            <span class="relative mr-3">
+              <font-awesome-icon
+                icon="fa-solid fa-bullhorn"
+                class="w-4 h-4 sm:w-5 sm:h-5"
+              />
+              <span
+                v-if="hasActiveAnnouncements"
+                class="absolute -top-0.5 -right-0.5 w-2 h-2 bg-red-500 rounded-full shadow"
+              ></span>
+            </span>
+            Announcements
+          </span>
+        </button>
+      </nav>
+    </div>
+
     <!-- Hero Section -->
     <section
       id="home"
-      class="relative min-h-screen flex items-center pt-20 hero-section overflow-hidden lg:px-20 px-4"
+      class="relative min-h-screen flex items-center pt-16 sm:pt-20 hero-section overflow-hidden lg:px-20 px-3 sm:px-4"
     >
       <!-- Auto-scrolling Hero Carousel -->
       <div class="absolute inset-0 w-full h-full">
@@ -119,15 +292,7 @@
             backgroundSize: 'cover',
             backgroundPosition: 'center',
           }"
-        >
-          <!-- Fallback content if image fails to load -->
-          <div
-            v-if="!image.loaded"
-            class="absolute inset-0 flex items-center justify-center bg-gray-900 text-white"
-          >
-            <p>Image Loading Failed</p>
-          </div>
-        </div>
+        ></div>
       </div>
 
       <!-- Enhanced Background Overlay -->
@@ -155,7 +320,7 @@
       <!-- Previous/Next Navigation -->
       <button
         @click="previousHero"
-        class="absolute left-6 top-1/2 transform -translate-y-1/2 z-20 bg-white/10 backdrop-blur-sm border border-white/20 rounded-full p-3 text-white hover:bg-white/20 transition-all duration-300 group cursor-pointer"
+        class="hidden lg:block absolute left-6 top-1/2 transform -translate-y-1/2 z-20 bg-white/10 backdrop-blur-sm border border-white/20 rounded-full p-3 text-white hover:bg-white/20 transition-all duration-300 group cursor-pointer"
       >
         <font-awesome-icon
           icon="fa-solid fa-chevron-left"
@@ -165,7 +330,7 @@
 
       <button
         @click="nextHero"
-        class="absolute right-6 top-1/2 transform -translate-y-1/2 z-20 bg-white/10 backdrop-blur-sm border border-white/20 rounded-full p-3 text-white hover:bg-white/20 transition-all duration-300 group cursor-pointer"
+        class="hidden lg:block absolute right-6 top-1/2 transform -translate-y-1/2 z-20 bg-white/10 backdrop-blur-sm border border-white/20 rounded-full p-3 text-white hover:bg-white/20 transition-all duration-300 group cursor-pointer"
       >
         <font-awesome-icon
           icon="fa-solid fa-chevron-right"
@@ -174,39 +339,46 @@
       </button>
 
       <!-- Rest of the hero content -->
-      <div class="relative z-30 container mx-auto px-6">
-        <div class="grid lg:grid-cols-2 gap-12 items-center min-h-[80vh]">
+      <div class="relative z-30 container mx-auto px-3 sm:px-6">
+        <div
+          class="grid lg:grid-cols-2 gap-8 sm:gap-12 items-center min-h-[75vh] sm:min-h-[80vh]"
+        >
           <!-- Left Side - Main Content -->
-          <div class="text-left space-y-8">
+          <div
+            class="text-center lg:text-left space-y-6 sm:space-y-8 order-1 lg:order-1"
+          >
+            <!-- Main Heading -->
+            <h1
+              class="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-white leading-tight"
+            >
+              Ang Paborito ng
+              <span class="text-orange-400 block mt-1 sm:mt-2">Bayan</span>
+            </h1>
             <!-- Brand Badge -->
             <div
-              class="inline-flex items-center bg-white/10 backdrop-blur-sm border border-white/20 rounded-full px-6 py-3 text-white mb-6 mt-6"
+              class="inline-flex items-center bg-white/10 backdrop-blur-sm border border-white/20 rounded-full px-4 sm:px-6 py-2 sm:py-3 text-white mb-4 sm:mb-6 mt-4 sm:mt-6"
             >
-              <span class="text-sm font-medium">
+              <span class="text-xs sm:text-sm font-medium">
                 <font-awesome-icon icon="fa-solid fa-trophy" />
                 Since 1984</span
               >
             </div>
 
-            <!-- Main Heading -->
-            <h1 class="text-5xl lg:text-6xl font-bold text-white leading-tight">
-              Ang Paborito ng
-              <span class="text-orange-400 block mt-2">Bayan</span>
-            </h1>
-
             <!-- Subtitle -->
             <p
-              class="text-xl lg:text-1xl text-white/90 max-w-lg leading-relaxed"
+              class="text-base sm:text-lg md:text-xl lg:text-1xl text-white/90 max-w-lg leading-relaxed mx-auto lg:mx-0"
             >
               Sabi nga nila, sa unang tikim pa lang, alam mong babalik-balikan
               mo! Experience the authentic taste that made us famous.
             </p>
 
             <!-- CTA Buttons -->
-            <div class="flex flex-col sm:flex-row gap-4 pt-2">
+            <div
+              class="flex flex-row gap-3 sm:gap-4 pt-2 justify-center lg:justify-start"
+            >
               <router-link
                 to="/menu"
-                class="group bg-orange-500 hover:bg-orange-400 text-white px-8 py-4 rounded-md text-sm transition-all duration-300 flex items-center justify-center font-thin btn btn-md border border-none shadow-none"
+                class="bg-orange-500 hover:bg-orange-400 text-white px-6 sm:px-8 py-3 sm:py-4 rounded-md border-none !font-thin text-sm sm:text-base transition-all duration-300 flex items-center justify-center btn btn-md shadow-none"
               >
                 <span>View Menu</span>
                 <font-awesome-icon
@@ -216,7 +388,7 @@
               </router-link>
               <router-link
                 to="/stores"
-                class="group bg-transparent border-2 border-white text-white hover:bg-white hover:text-gray-800 px-8 py-4 rounded-md font-thin text-sm transition-all duration-300 flex items-center justify-center btn btn-md shadow-none"
+                class="bg-white/20 hover:bg-white/30 text-white px-6 sm:px-8 py-3 sm:py-4 rounded-md !font-thin text-sm sm:text-base transition-all duration-300 flex items-center justify-center btn btn-md shadow-none"
               >
                 <span>Find Stores</span>
                 <font-awesome-icon
@@ -227,40 +399,52 @@
             </div>
 
             <!-- Quick Stats -->
-            <div class="flex items-center space-x-8 pt-6">
+            <div
+              class="flex items-center justify-center lg:justify-start space-x-4 sm:space-x-6 lg:space-x-8 pt-4 sm:pt-6"
+            >
               <div class="text-center">
-                <div class="text-2xl font-bold text-orange-400">40+</div>
-                <div class="text-sm text-white/70">Years of Excellence</div>
+                <div class="text-xl sm:text-2xl font-bold text-orange-400">
+                  {{ yearsOfExcellence }}+
+                </div>
+                <div class="text-xs sm:text-sm text-white/70">
+                  Years of Excellence
+                </div>
               </div>
               <div class="text-center">
-                <div class="text-2xl font-bold text-orange-400">3</div>
-                <div class="text-sm text-white/70">Branches</div>
+                <div class="text-xl sm:text-2xl font-bold text-orange-400">
+                  {{ totalBranches }}
+                </div>
+                <div class="text-xs sm:text-sm text-white/70">Branches</div>
               </div>
               <div class="text-center">
-                <div class="text-2xl font-bold text-orange-400">1000+</div>
-                <div class="text-sm text-white/70">Happy Customers</div>
+                <div class="text-xl sm:text-2xl font-bold text-orange-400">
+                  {{ happyCustomersCount }}
+                </div>
+                <div class="text-xs sm:text-sm text-white/70">
+                  Happy Customers
+                </div>
               </div>
             </div>
           </div>
 
           <!-- Right Side - Professional Reels Carousel - Enhanced Layout with Right Alignment -->
           <div
-            class="text-center lg:text-right space-y-8 lg:space-y-10 lg:flex lg:flex-col lg:items-end"
+            class="hidden text-center lg:text-right space-y-6 sm:space-y-8 lg:space-y-10 lg:flex lg:flex-col lg:items-end mt-8 lg:mt-0 order-2 lg:order-2"
           >
             <!-- Reels Carousel Container -->
             <div class="relative">
-              <!-- Enhanced Video Display Area - Wider to Show All Content -->
+              <!-- Enhanced Video Display Area - Responsive sizing -->
               <div
-                class="relative w-80 !h-[30rem] lg:w-[32rem] lg:h-[32rem] mx-auto lg:mx-0 lg:ml-auto rounded-5xl shadow-2xl overflow-hidden video-player-container"
+                class="relative w-72 sm:w-80 md:w-96 lg:w-[32rem] h-[24rem] sm:h-[28rem] md:h-[30rem] lg:h-[32rem] mx-auto lg:mx-0 lg:ml-auto rounded-3xl sm:rounded-5xl shadow-2xl overflow-hidden video-player-container"
               >
                 <!-- Current Video -->
                 <video
                   :src="currentReel"
                   class="w-full h-full object-contain"
-                  autoplay
                   loop
                   playsinline
                   ref="videoPlayer"
+                  :muted="isHeroVideoMuted"
                 ></video>
 
                 <!-- Play/Pause Button for Hero Video -->
@@ -270,7 +454,7 @@
                   :title="isHeroVideoPlaying ? 'Pause' : 'Play'"
                 >
                   <font-awesome-icon
-                    v-if="isHeroVideoPlaying"
+                    v-if="!isHeroVideoPlaying"
                     class="w-2 h-2"
                     icon="fa-solid fa-play"
                   >
@@ -281,6 +465,38 @@
                     icon="fa-solid fa-pause"
                   >
                   </font-awesome-icon>
+                </button>
+
+                <!-- Volume Control for Hero Video -->
+                <button
+                  @click="toggleHeroVideoMute"
+                  class="absolute top-4 right-4 bg-black/70 hover:bg-black/90 backdrop-blur-sm rounded-full p-2.5 text-white hover:text-orange-400 transition-all duration-300 z-20"
+                  :title="
+                    isHeroVideoMuted
+                      ? 'Unmute (Click to enable sound)'
+                      : 'Mute (Click to disable sound)'
+                  "
+                >
+                  <font-awesome-icon
+                    v-if="isHeroVideoMuted"
+                    icon="fa-solid fa-volume-xmark"
+                    class="w-4 h-4"
+                  />
+                  <font-awesome-icon
+                    v-else-if="heroVideoVolume === 0"
+                    icon="fa-solid fa-volume-off"
+                    class="w-4 h-4"
+                  />
+                  <font-awesome-icon
+                    v-else-if="heroVideoVolume < 0.5"
+                    icon="fa-solid fa-volume-low"
+                    class="w-4 h-4"
+                  />
+                  <font-awesome-icon
+                    v-else
+                    icon="fa-solid fa-volume-high"
+                    class="w-4 h-4"
+                  />
                 </button>
 
                 <!-- Enhanced Video Navigation Controls - Larger and More Visible -->
@@ -324,22 +540,26 @@
               </div>
 
               <!-- Enhanced Reel Counter and Info - White Text for Better Visibility -->
-              <div class="text-center mt-6 space-y-3">
-                <div class="flex items-center justify-center space-x-3">
-                  <span class="text-base font-semibold text-white"
+              <div class="text-center mt-4 sm:mt-6 space-y-2 sm:space-y-3">
+                <div
+                  class="flex items-center justify-center space-x-2 sm:space-x-3"
+                >
+                  <span class="text-sm sm:text-base font-semibold text-white"
                     >{{ currentReelIndex + 1 }} of {{ reels.length }}</span
                   >
-                  <span class="text-sm text-white/70">•</span>
-                  <span class="text-sm text-orange-400 font-bold">{{
+                  <span class="text-xs sm:text-sm text-white/70">•</span>
+                  <span class="text-xs sm:text-sm text-orange-400 font-bold">{{
                     getReelTitle(currentReelIndex)
                   }}</span>
                 </div>
-                <p class="text-sm text-white/90 font-medium">
+                <p class="text-xs sm:text-sm text-white/90 font-medium px-4">
                   {{ getReelDescription(currentReelIndex) }}
                 </p>
 
                 <!-- Auto-scroll indicator -->
-                <div class="flex items-center justify-center space-x-2 mt-2">
+                <div
+                  class="flex items-center justify-center space-x-2 mt-1 sm:mt-2"
+                >
                   <div
                     :class="[
                       'w-2 h-2 rounded-full transition-all duration-300',
@@ -364,31 +584,37 @@
 
       <!-- Scroll Indicator -->
       <div
-        class="absolute bottom-24 left-1/2 transform -translate-x-1/2 animate-bounce"
+        class="absolute bottom-16 sm:bottom-20 lg:bottom-24 left-1/2 transform -translate-x-1/2 animate-bounce"
       >
         <div
-          class="w-6 h-10 border-2 border-white rounded-full flex justify-center"
+          class="w-5 h-8 sm:w-6 sm:h-10 border-2 border-white rounded-full flex justify-center"
         >
-          <div class="w-1 h-3 bg-white rounded-full mt-2 animate-pulse"></div>
+          <div
+            class="w-1 h-2 sm:h-3 bg-white rounded-full mt-1.5 sm:mt-2 animate-pulse"
+          ></div>
         </div>
       </div>
     </section>
 
     <!-- About the Countryside Section -->
-    <section class="py-20 bg-white">
-      <div class="container mx-auto px-6">
+    <section class="py-12 sm:py-16 lg:py-20 bg-white">
+      <div class="container mx-auto px-4 sm:px-6">
         <!-- Section Title -->
-        <div class="text-center mb-16">
-          <div class="flex items-center justify-center mb-6">
-            <div class="w-60 h-0.5 bg-orange-400"></div>
-            <h2 class="text-4xl font-bold text-green-800 mx-6">About Us</h2>
-            <div class="w-60 h-0.5 bg-orange-400"></div>
+        <div class="text-center mb-12 sm:mb-16">
+          <div class="flex items-center justify-center mb-4 sm:mb-6">
+            <div class="w-20 sm:w-40 lg:w-60 h-0.5 bg-orange-400"></div>
+            <h2
+              class="text-2xl sm:text-3xl lg:text-4xl font-bold text-green-800 mx-3 sm:mx-6"
+            >
+              About Us
+            </h2>
+            <div class="w-20 sm:w-40 lg:w-60 h-0.5 bg-orange-400"></div>
           </div>
         </div>
 
-        <div class="grid lg:grid-cols-2 gap-16 items-center">
+        <div class="grid lg:grid-cols-2 gap-8 sm:gap-12 lg:gap-16 items-center">
           <!-- Left Side - Image -->
-          <div class="relative">
+          <div class="relative order-1 lg:order-2">
             <div class="relative rounded-2xl overflow-hidden shadow-2xl">
               <img
                 src="/images/other/about.png"
@@ -403,32 +629,36 @@
 
             <!-- Floating achievement badge -->
             <div
-              class="absolute -bottom-6 -right-6 bg-orange-500 text-white px-6 py-3 rounded-full shadow-lg"
+              class="absolute -bottom-2 -right-2 sm:-bottom-4 sm:-right-4 lg:-bottom-6 lg:-right-6 bg-orange-500 text-white px-3 py-2 sm:px-4 sm:py-2.5 lg:px-6 lg:py-3 rounded-full shadow-lg"
             >
               <div class="text-center">
-                <div class="text-2xl font-bold">40+</div>
-                <div class="text-sm">Years of Excellence</div>
+                <div class="text-sm sm:text-lg lg:text-2xl font-bold">
+                  {{ yearsOfExcellence }}+
+                </div>
+                <div class="text-xs sm:text-sm">Years of Excellence</div>
               </div>
             </div>
           </div>
 
           <!-- Right Side - Content -->
-          <div class="space-y-8">
+          <div class="space-y-6 sm:space-y-8 order-2 lg:order-1">
             <!-- Main Heading -->
             <div>
               <h2
-                class="text-4xl lg:text-5xl font-bold text-green-800 mb-6 leading-tight"
+                class="text-2xl sm:text-3xl lg:text-4xl xl:text-5xl font-bold text-green-800 mb-4 sm:mb-6 leading-tight"
               >
                 Serving Sizzling Steaks Since 1984!<font-awesome-icon
                   icon="fa-solid fa-fire"
                   class="text-orange-600"
                 />
               </h2>
-              <div class="w-20 h-1 bg-orange-400 rounded-full"></div>
+              <div class="w-16 sm:w-20 h-1 bg-orange-400 rounded-full"></div>
             </div>
 
             <!-- Main Description -->
-            <div class="space-y-6 text-lg text-gray-700 leading-relaxed">
+            <div
+              class="space-y-4 sm:space-y-6 text-base sm:text-lg text-gray-700 leading-relaxed"
+            >
               <p>
                 Welcome to
                 <span class="font-semibold text-green-700"
@@ -460,70 +690,66 @@
 
             <!-- Branches Section -->
             <div
-              class="bg-white rounded-xl p-6 shadow-lg border-l-4 border-green-600"
+              class="bg-white rounded-xl p-4 sm:p-6 shadow-lg border-l-4 border-green-600"
             >
-              <h3 class="text-xl font-bold text-green-800 mb-4">
+              <h3
+                class="text-lg sm:text-xl font-bold text-green-800 mb-3 sm:mb-4"
+              >
                 🌿 Growing Across Cavite
               </h3>
-              <p class="text-gray-600 mb-4">
+              <p class="text-sm sm:text-base text-gray-600 mb-3 sm:mb-4">
                 We're proud to serve our community across multiple locations:
               </p>
-              <div class="grid grid-cols-2 gap-2 text-sm text-gray-700">
-                <div class="flex items-center">
-                  <span class="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
-                  Tanza, Philippines
+              <div v-if="isLoadingBranches" class="flex justify-center py-4">
+                <div
+                  class="loading loading-spinner loading-sm text-green-600"
+                ></div>
+              </div>
+              <div
+                v-else-if="branches.length > 0"
+                class="grid grid-cols-1 sm:grid-cols-2 gap-1 sm:gap-2 text-xs sm:text-sm text-gray-700"
+              >
+                <div
+                  v-for="(branch, index) in branches"
+                  :key="branch.id"
+                  class="flex items-center animate-fade-in-up"
+                  :style="{ animationDelay: `${index * 0.1}s` }"
+                >
+                  <span
+                    class="w-2 h-2 bg-green-500 rounded-full mr-2 animate-pulse"
+                  ></span>
+                  <span class="transition-all duration-300 hover:text-green-600"
+                    >{{ branch.name }}, Philippines</span
+                  >
                 </div>
-                <div class="flex items-center">
-                  <span class="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
-                  Imus, Philippines
-                </div>
-                <div class="flex items-center">
-                  <span class="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
-                  Kawit, Philippines
-                </div>
-                <div class="flex items-center">
-                  <span class="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
-                  Silang, Philippines
-                </div>
-                <div class="flex items-center">
-                  <span class="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
-                  General Trias, Philippines
-                </div>
-                <div class="flex items-center">
-                  <span class="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
-                  Bacoor, Philippines
-                </div>
-                <div class="flex items-center">
-                  <span class="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
-                  Dasmariñas, Philippines
-                </div>
-                <div class="flex items-center">
-                  <span class="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
-                  Noveleta, Philippines
-                </div>
+              </div>
+              <div
+                v-else
+                class="text-xs sm:text-sm text-gray-500 italic py-2 animate-fade-in"
+              >
+                No branches available at the moment.
               </div>
             </div>
 
             <!-- Call to Action -->
-            <div class="flex flex-col sm:flex-row gap-4">
+            <div class="flex flex-col sm:flex-row gap-3 sm:gap-4">
               <router-link
                 to="/menu"
-                class="bg-green-600 hover:bg-green-700 text-white px-8 py-3 rounded-lg font-thin transition-all duration-300 shadow-lg flex items-center justify-center btn btn-md"
+                class="bg-green-800 hover:bg-green-700 text-white px-6 sm:px-8 py-2.5 sm:py-3 rounded-lg !font-thin transition-all duration-300 shadow-lg flex items-center justify-center btn btn-md text-sm sm:text-base"
               >
                 <span>Explore our menu</span>
                 <font-awesome-icon
                   icon="fa-solid fa-arrow-right"
-                  class="ml-4 group-hover:translate-x-1 transition-transform"
+                  class="ml-3 sm:ml-4 group-hover:translate-x-1 transition-transform"
                 />
               </router-link>
 
               <router-link
                 to="/stores"
-                class="bg-orange-500 hover:bg-orange-400 text-white px-8 py-3 rounded-lg font-thin transition-all duration-300 shadow-lg flex items-center justify-center btn btn-md"
+                class="bg-orange-500 hover:bg-orange-400 text-white px-6 sm:px-8 py-2.5 sm:py-3 rounded-lg !font-thin transition-all duration-300 shadow-lg flex items-center justify-center btn btn-md text-sm sm:text-base"
               >
                 <span>Find your branch</span>
                 <font-awesome-icon
-                  ome-icon
                   icon="fa-solid fa-location-dot"
                   class="ml-2 group-hover:translate-x-1 transition-transform"
                 />
@@ -534,197 +760,25 @@
       </div>
     </section>
 
-    <!-- Delivery Options Section -->
-    <section class="py-20 bg-green-800">
-      <div class="container mx-auto px-6">
-        <div class="text-center mb-16">
-          <div class="flex items-center justify-center mb-4">
-            <div class="w-60 h-0.5 bg-orange-400 sm:block hidden"></div>
-            <h2 class="text-4xl font-bold text-white mx-4">
-              Order for Delivery
-            </h2>
-            <div class="w-60 h-0.5 bg-orange-400 sm:block hidden"></div>
-          </div>
-          <p class="text-xl text-green-100 max-w-2xl mx-auto">
-            Craving our delicious steaks? Order now through your favorite
-            delivery platforms!
-          </p>
-        </div>
-
-        <!-- Delivery Content with Video on Right -->
-        <div class="grid lg:grid-cols-2 gap-12 items-center px-10">
-          <!-- Left Side - Delivery Options -->
-          <div class="space-y-8">
-            <div class="text-center lg:text-left">
-              <h3 class="text-2xl font-bold text-white mb-1">
-                Choose Your Delivery Platform
-              </h3>
-              <p class="text-green-100">
-                We partner with the best delivery services to bring Countryside
-                to your doorstep
-              </p>
-            </div>
-
-            <!-- Delivery Cards -->
-            <div class="space-y-6">
-              <!-- Foodpanda Card -->
-              <div
-                class="bg-orange-500 rounded-2xl p-6 text-white text-center transition-all duration-300 shadow-lg card-hover cursor-pointer"
-              >
-                <div
-                  class="w-20 h-20 bg-white bg-opacity-20 rounded-full mx-auto mb-4 flex items-center justify-center"
-                >
-                  <img
-                    src="/src/assets/crm/Foodpanda.png"
-                    alt="Foodpanda Logo"
-                    class="w-14 h-14 object-contain"
-                  />
-                </div>
-                <h3 class="text-2xl font-bold mb-3">Foodpanda</h3>
-                <p class="text-base mb-4 opacity-90">
-                  Order your favorite Countryside dishes through Foodpanda
-                </p>
-                <button
-                  @click="openFoodpandaModal"
-                  class="bg-white text-orange-500 px-6 py-2 rounded-lg font-thin hover:bg-gray-100 transition-colors w-full cursor-pointer"
-                >
-                  Order on Foodpanda
-                </button>
-              </div>
-
-              <!-- Grabfood Card -->
-              <div
-                class="bg-green-600 rounded-2xl p-6 text-white text-center transition-all duration-300 shadow-lg card-hover cursor-pointer"
-              >
-                <div
-                  class="w-20 h-20 bg-white bg-opacity-20 rounded-full mx-auto mb-4 flex items-center justify-center"
-                >
-                  <img
-                    src="/src/assets/crm/GrabFood.png"
-                    alt="GrabFood Logo"
-                    class="w-14 h-14 object-contain"
-                  />
-                </div>
-                <h3 class="text-2xl font-bold mb-3">Grabfood</h3>
-                <p class="text-base mb-4 opacity-90">
-                  Get your Countryside favorites delivered by Grab
-                </p>
-                <button
-                  @click="openGrabfoodModal"
-                  class="bg-white text-green-600 px-6 py-2 rounded-lg font-thin hover:bg-gray-100 transition-colors w-full cursor-pointer"
-                >
-                  Order on Grabfood
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <!-- Right Side - Video -->
-          <div class="flex justify-center lg:justify-end">
-            <div class="max-w-lg w-full">
-              <div class="relative rounded-2xl overflow-hidden shadow-2xl">
-                <video
-                  class="w-full h-auto rounded-2xl"
-                  autoplay
-                  loop
-                  playsinline
-                  ref="deliveryVideo"
-                >
-                  <source src="/video/foodgrab.mp4" type="video/mp4" />
-                  Your browser does not support the video tag.
-                </video>
-
-                <!-- Play/Pause Button for Delivery Video -->
-                <button
-                  @click="toggleDeliveryVideo"
-                  class="absolute top-4 left-4 bg-black/70 hover:bg-black/90 text-white p-3 rounded-full transition-all duration-300 hover:scale-110 backdrop-blur-sm z-20"
-                  :title="isDeliveryVideoPlaying ? 'Pause' : 'Play'"
-                >
-                  <svg
-                    v-if="isDeliveryVideoPlaying"
-                    class="w-5 h-5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                    ></path>
-                  </svg>
-                  <svg
-                    v-else
-                    class="w-5 h-5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1m4 0h1m-6 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                    ></path>
-                  </svg>
-                </button>
-              </div>
-
-              <!-- Video Caption -->
-              <p
-                class="text-sm text-gray-200 mt-3 italic text-center lg:text-right"
-              >
-                Experience the convenience of food delivery with Countryside
-                Steakhouse
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <!-- Additional Delivery Info -->
-        <div class="mt-12 text-center">
-          <div
-            class="bg-white/10 backdrop-blur-lg rounded-2xl p-6 max-w-2xl mx-auto border border-white/30"
-          >
-            <div class="flex items-center justify-center mb-4">
-              <div class="w-36 h-0.5 bg-green-200"></div>
-              <h4 class="text-xl text-green-200 mx-3">Delivery Information</h4>
-              <div class="w-36 h-0.5 bg-green-200"></div>
-            </div>
-            <div class="grid md:grid-cols-3 gap-4 text-sm text-gray-200">
-              <div>
-                <font-awesome-icon icon="fa-solid fa-clock" />
-                <p>Delivery Time: 30-45 minutes</p>
-              </div>
-              <div>
-                <font-awesome-icon icon="fa-solid fa-coins" />
-                <p>Delivery Fee: ₱50-₱80</p>
-              </div>
-              <div>
-                <font-awesome-icon icon="fa-solid fa-location-dot" />
-                <p>Available in selected branches only</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Our stores Banner -->
-    <section class="bg-white py-4">
-      <div class="container mx-auto px-6 text-center">
-        <div class="flex items-center justify-center">
-          <div class="w-12 h-0.5 bg-orange-400"></div>
-          <h2 class="text-2xl font-bold text-green-800 mx-4">Our stores!</h2>
-          <div class="w-12 h-0.5 bg-orange-400"></div>
-        </div>
-      </div>
-    </section>
-
     <!-- Our Stores Section -->
-    <section id="stores" class="py-20 bg-white">
-      <div class="container mx-auto px-6">
+    <section id="stores" class="py-20 countryside-bg relative overflow-hidden">
+      <!-- Decorative countryside elements -->
+      <div class="absolute inset-0 opacity-5">
+        <div
+          class="absolute top-10 left-10 w-32 h-32 border-4 border-green-800 rounded-full"
+        ></div>
+        <div
+          class="absolute top-32 right-20 w-24 h-24 border-4 border-orange-500 rounded-full"
+        ></div>
+        <div
+          class="absolute bottom-20 left-1/4 w-20 h-20 border-4 border-green-700 rounded-full"
+        ></div>
+        <div
+          class="absolute bottom-32 right-1/3 w-28 h-28 border-4 border-orange-400 rounded-full"
+        ></div>
+      </div>
+
+      <div class="container mx-auto px-6 relative z-10">
         <div class="text-center mb-16">
           <div class="flex items-center justify-center mb-6">
             <div class="w-20 h-0.5 bg-orange-400"></div>
@@ -732,136 +786,272 @@
             <div class="w-20 h-0.5 bg-orange-400"></div>
           </div>
         </div>
-        <div class="grid md:grid-cols-3 gap-8">
-          <!-- Burol Main Branch -->
+        <!-- Loading State -->
+        <div
+          v-if="isLoadingBranches"
+          class="flex justify-center items-center py-12"
+        >
+          <div class="loading loading-spinner loading-lg text-green-600"></div>
+        </div>
+
+        <!-- Branches - Horizontal Scroll on Mobile, Grid on Desktop -->
+        <div v-else-if="branches.length > 0" class="relative">
+          <!-- Mobile: Horizontal Scrollable -->
           <div
-            class="bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 card-hover"
+            class="md:hidden overflow-x-auto pb-4 -mx-6 px-6 scrollbar-hide snap-x snap-mandatory"
           >
-            <div class="h-48 overflow-hidden">
-              <img
-                src="/src/assets/crm/Countryside Burol Main Branch.png"
-                alt="Countryside Burol Main Branch"
-                class="w-full h-full object-cover hover:scale-110 transition-transform duration-300"
-              />
-            </div>
-            <div class="p-6">
-              <h3 class="text-xl font-bold text-green-800 mb-2">
-                Countryside Burol Main Branch
-              </h3>
-              <p class="text-gray-600 text-sm mb-3">COUNTRYSIDE STEAKHOUSE</p>
-              <p class="text-gray-500 text-xs mb-4">
-                T-BONE • CHICKEN WINGS • PORKSTEAK • TAPSILOG • SISIG
-              </p>
-              <div class="flex items-center text-sm text-gray-600 mb-3">
-                <font-awesome-icon
-                  icon="fa-solid fa-location-dot"
-                  class="mr-2 text-green-600"
-                />
-                <span>Burol, Main Street</span>
-              </div>
-              <div class="flex items-center text-sm text-gray-600 mb-4">
-                <font-awesome-icon
-                  icon="fa-solid fa-clock"
-                  class="mr-2 text-green-600"
-                />
-                <span>Open Daily 10AM-10PM</span>
-              </div>
-              <button
-                class="w-full bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 transition-colors"
+            <div class="flex gap-4">
+              <div
+                v-for="(branch, index) in branches"
+                :key="branch.id"
+                class="countryside-card-bg rounded-xl sm:rounded-2xl shadow-md overflow-hidden hover:shadow-lg transition-all duration-300 transform hover:-translate-y-2 card-hover flex-shrink-0 w-[85vw] max-w-[320px] snap-start flex flex-col animate-fade-in-up"
+                :style="{ animationDelay: `${index * 0.15}s` }"
               >
-                Get Directions
-              </button>
+                <div class="h-40 sm:h-48 overflow-hidden">
+                  <img
+                    :src="
+                      resolvePublicUrl(branch.image_url) ||
+                      '/src/assets/crm/default-branch.png'
+                    "
+                    :alt="branch.name"
+                    class="w-full h-full object-cover hover:scale-110 transition-transform duration-300 animate-image-fade-in"
+                    :style="{ animationDelay: `${index * 0.15 + 0.2}s` }"
+                    loading="lazy"
+                  />
+                </div>
+                <div class="p-4 sm:p-6 flex flex-col flex-1">
+                  <h3 class="text-lg sm:text-xl font-bold text-green-800 mb-2">
+                    {{ branch.name }}
+                  </h3>
+                  <div
+                    class="flex items-start text-xs sm:text-sm text-gray-600 mb-3 leading-tight"
+                  >
+                    <font-awesome-icon
+                      icon="fa-solid fa-location-dot"
+                      class="mr-2 text-green-600 mt-1 flex-shrink-0"
+                    />
+                    <span class="whitespace-normal break-words">{{
+                      branch.address
+                    }}</span>
+                  </div>
+
+                  <div
+                    class="flex items-center text-xs sm:text-sm text-gray-600 mb-4"
+                    v-if="branch.phone"
+                  >
+                    <font-awesome-icon
+                      icon="fa-solid fa-phone"
+                      class="mr-2 text-green-600 flex-shrink-0"
+                    />
+                    <span>{{ branch.phone }}</span>
+                  </div>
+                  <button
+                    class="w-full bg-green-600 text-white py-2 sm:py-2.5 rounded-lg hover:bg-green-700 transition-colors text-sm sm:text-base font-medium mt-auto"
+                    @click="getDirections(branch)"
+                  >
+                    Get Directions
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
 
-          <!-- Malihan Main Branch -->
+          <!-- Desktop: Grid Layout -->
           <div
-            class="bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 card-hover"
+            class="hidden md:grid md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8"
           >
-            <div class="h-48 overflow-hidden">
-              <img
-                src="/src/assets/crm/Country Malihan Branch.png"
-                alt="Countryside Malihan Branch"
-                class="w-full h-full object-cover hover:scale-110 transition-transform duration-300"
-              />
-            </div>
-            <div class="p-6">
-              <h3 class="text-xl font-bold text-green-800 mb-2">
-                Countryside Malihan Main Branch
-              </h3>
-              <p class="text-gray-600 text-sm mb-3">
-                P&N COUNTRYSIDE STEAKHOUSE
-              </p>
-              <div class="flex items-center text-sm text-gray-600 mb-3">
-                <font-awesome-icon
-                  icon="fa-solid fa-location-dot"
-                  class="mr-2 text-green-600"
+            <div
+              v-for="(branch, index) in branches.slice(0, 6)"
+              :key="branch.id"
+              class="countryside-card-bg rounded-xl sm:rounded-2xl shadow-md overflow-hidden hover:shadow-lg transition-all duration-300 transform hover:-translate-y-2 card-hover flex flex-col animate-fade-in-up"
+              :style="{ animationDelay: `${index * 0.1}s` }"
+            >
+              <div class="h-48 sm:h-56 overflow-hidden">
+                <img
+                  :src="
+                    resolvePublicUrl(branch.image_url) ||
+                    '/src/assets/crm/default-branch.png'
+                  "
+                  :alt="branch.name"
+                  class="w-full h-full object-cover hover:scale-110 transition-transform duration-300 animate-image-fade-in"
+                  :style="{ animationDelay: `${index * 0.1 + 0.2}s` }"
+                  loading="lazy"
                 />
-                <span>Malihan, Central District</span>
               </div>
-              <div class="flex items-center text-sm text-gray-600 mb-4">
-                <font-awesome-icon
-                  icon="fa-solid fa-clock"
-                  class="mr-2 text-green-600"
-                />
-                <span>Open Daily 10AM-10PM</span>
+              <div class="p-4 sm:p-6 flex flex-col flex-1">
+                <h3 class="text-lg sm:text-xl font-bold text-green-800 mb-2">
+                  {{ branch.name }}
+                </h3>
+                <div
+                  class="flex items-start text-xs sm:text-sm text-gray-600 mb-3 leading-tight"
+                >
+                  <font-awesome-icon
+                    icon="fa-solid fa-location-dot"
+                    class="mr-2 text-green-600 mt-1 flex-shrink-0"
+                  />
+                  <span class="whitespace-normal break-words">{{
+                    branch.address
+                  }}</span>
+                </div>
+
+                <div
+                  class="flex items-center text-xs sm:text-sm text-gray-600 mb-4"
+                  v-if="branch.phone"
+                >
+                  <font-awesome-icon
+                    icon="fa-solid fa-phone"
+                    class="mr-2 text-green-600 flex-shrink-0"
+                  />
+                  <span>{{ branch.phone }}</span>
+                </div>
+                <button
+                  class="w-full bg-green-600 text-white py-2 sm:py-2.5 rounded-lg hover:bg-green-700 transition-colors text-sm sm:text-base font-medium mt-auto"
+                  @click="getDirections(branch)"
+                >
+                  Get Directions
+                </button>
               </div>
-              <button
-                class="w-full bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 transition-colors"
-              >
-                Get Directions
-              </button>
             </div>
           </div>
 
-          <!-- Imus Branch -->
+          <!-- View All Button -->
           <div
-            class="bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 card-hover"
+            v-if="branches.length > 6"
+            class="hidden md:flex justify-center mt-8"
           >
-            <div class="h-48 overflow-hidden">
-              <img
-                src="/src/assets/crm/Countryside Imus Branch.png"
-                alt="Countryside Imus Branch"
-                class="w-full h-full object-cover hover:scale-110 transition-transform duration-300"
+            <router-link
+              to="/stores"
+              class="btn bg-green-600 hover:bg-green-700 text-white px-8 py-3 rounded-lg shadow-lg hover:shadow-xl flex items-center !font-medium border-none"
+            >
+              <span>View All Branches</span>
+              <font-awesome-icon
+                icon="fa-solid fa-arrow-right"
+                class="ml-2 transition-transform group-hover:translate-x-1"
               />
-            </div>
-            <div class="p-6">
-              <h3 class="text-xl font-bold text-green-800 mb-2">
-                Countryside Imus Branch
-              </h3>
-              <p class="text-gray-600 text-sm mb-3">COUNTRYSIDE STEAKHOUSE</p>
-              <div class="flex items-center text-sm text-gray-600 mb-3">
-                <font-awesome-icon
-                  icon="fa-solid fa-location-dot"
-                  class="mr-2 text-green-600"
-                />
-                <span>Imus, Business District</span>
-              </div>
-              <div class="flex items-center text-sm text-gray-600 mb-4">
-                <font-awesome-icon
-                  icon="fa-solid fa-clock"
-                  class="mr-2 text-green-600"
-                />
-                <span>Open Daily 10AM-10PM</span>
-              </div>
-              <button
-                class="w-full bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 transition-colors"
-              >
-                Get Directions
-              </button>
-            </div>
+            </router-link>
           </div>
+
+          <!-- Mobile: View All Button (shown if more than visible branches) -->
+          <div
+            v-if="branches.length > 3"
+            class="md:hidden flex justify-center mt-6"
+          >
+            <router-link
+              to="/stores"
+              class="btn bg-green-600 hover:bg-green-700 text-white px-6 py-2.5 rounded-lg font-medium shadow-lg hover:shadow-xl flex items-center text-sm border-none"
+            >
+              <span>View All Branches</span>
+              <font-awesome-icon
+                icon="fa-solid fa-arrow-right"
+                class="ml-2 transition-transform group-hover:translate-x-1"
+              />
+            </router-link>
+          </div>
+        </div>
+
+        <!-- No Branches State -->
+        <div v-else class="text-center py-12">
+          <p class="text-gray-500">No branches available at the moment.</p>
         </div>
       </div>
     </section>
 
-    <!-- Food Gallery Banner -->
-    <section class="bg-green-800 py-4">
-      <div class="container mx-auto px-6 text-center">
-        <div class="flex items-center justify-center">
-          <div class="w-12 h-0.5 bg-orange-400"></div>
-          <h2 class="text-2xl font-bold text-white mx-4">Our Menu</h2>
-          <div class="w-12 h-0.5 bg-orange-400"></div>
+    <!-- Job Application Section -->
+    <section id="join-us" class="py-20 bg-green-800">
+      <div class="container mx-auto px-6">
+        <div class="text-center max-w-4xl mx-auto">
+          <!-- Title -->
+          <div class="flex items-center justify-center mb-6">
+            <div class="w-20 h-0.5 bg-orange-400"></div>
+            <h2
+              class="text-3xl sm:text-4xl lg:text-5xl font-bold text-white mx-6"
+            >
+              Join Our Team
+            </h2>
+            <div class="w-20 h-0.5 bg-orange-400"></div>
+          </div>
+
+          <!-- Description -->
+          <p class="text-lg sm:text-xl text-green-100 mb-8 leading-relaxed">
+            Be part of the Countryside family! We're always looking for
+            passionate individuals to join our growing team. Explore our current
+            job openings and find the perfect role that matches your skills and
+            passion.
+          </p>
+
+          <!-- Job Type Info Cards -->
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 mb-8">
+            <!-- Full-time Card -->
+            <div
+              class="bg-white/10 backdrop-blur-sm rounded-xl p-4 sm:p-6 border border-white/20 hover:bg-white/20 transition-all duration-300"
+            >
+              <div class="flex flex-col items-center">
+                <div
+                  class="w-12 h-12 sm:w-14 sm:h-14 bg-blue-500/20 rounded-full flex items-center justify-center mb-3"
+                >
+                  <Clock :size="24" class="text-blue-300" />
+                </div>
+                <h3 class="text-white font-semibold text-lg sm:text-xl mb-2">
+                  Full-time
+                </h3>
+                <p class="text-green-100 text-sm sm:text-base">
+                  40+ hours per week
+                </p>
+              </div>
+            </div>
+
+            <!-- Part-time Card -->
+            <div
+              class="bg-white/10 backdrop-blur-sm rounded-xl p-4 sm:p-6 border border-white/20 hover:bg-white/20 transition-all duration-300"
+            >
+              <div class="flex flex-col items-center">
+                <div
+                  class="w-12 h-12 sm:w-14 sm:h-14 bg-orange-500/20 rounded-full flex items-center justify-center mb-3"
+                >
+                  <Briefcase :size="24" class="text-orange-300" />
+                </div>
+                <h3 class="text-white font-semibold text-lg sm:text-xl mb-2">
+                  Part-time
+                </h3>
+                <p class="text-green-100 text-sm sm:text-base">(coming soon)</p>
+              </div>
+            </div>
+
+            <!-- Available Positions Card -->
+            <div
+              class="bg-white/10 backdrop-blur-sm rounded-xl p-4 sm:p-6 border border-white/20 hover:bg-white/20 transition-all duration-300"
+            >
+              <div class="flex flex-col items-center">
+                <div
+                  class="w-12 h-12 sm:w-14 sm:h-14 bg-green-500/20 rounded-full flex items-center justify-center mb-3"
+                >
+                  <Users :size="24" class="text-green-300" />
+                </div>
+                <h3 class="text-white font-semibold text-lg sm:text-xl mb-2">
+                  Open Positions
+                </h3>
+                <p class="text-green-100 text-sm sm:text-base">
+                  Multiple roles available
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Button -->
+          <button
+            @click="openJobPositionsModal"
+            class="bg-orange-500 hover:bg-orange-400 text-white px-4 sm:px-6 md:px-8 lg:px-12 py-2.5 sm:py-3 md:py-4 rounded-lg font-medium sm:font-semibold text-sm sm:text-base md:text-lg shadow-md hover:shadow-lg flex items-center justify-center mx-auto max-w-xs sm:max-w-none cursor-pointer"
+          >
+            <font-awesome-icon
+              icon="fa-solid fa-user-plus"
+              class="mr-2 sm:mr-3 text-sm sm:text-base"
+            />
+            <span class="whitespace-nowrap font-medium"
+              >Join Us<span class="hidden sm:inline">
+                - Check Available Jobs</span
+              ></span
+            >
+          </button>
         </div>
       </div>
     </section>
@@ -883,44 +1073,279 @@
           </p>
         </div>
 
-        <!-- Signature Dishes Grid -->
-        <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <!-- Loading State -->
+        <div
+          v-if="isLoadingMenu"
+          class="flex justify-center items-center py-12"
+        >
+          <div class="loading loading-spinner loading-lg text-orange-500"></div>
+        </div>
+
+        <!-- Signature Dishes - Horizontal Scroll on Mobile, Grid on Desktop -->
+        <div v-else-if="signatureDishes.length > 0" class="relative">
+          <!-- Mobile: Horizontal Scrollable -->
           <div
-            v-for="item in signatureDishes"
-            :key="item.name"
-            class="bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2"
+            class="md:hidden overflow-x-auto pb-4 -mx-6 px-6 scrollbar-hide snap-x snap-mandatory"
           >
-            <div class="h-48 overflow-hidden">
-              <img
-                :src="item.image"
-                :alt="item.name"
-                class="w-full h-full object-cover hover:scale-110 transition-transform duration-300"
-              />
-            </div>
-            <div class="p-6">
-              <h3 class="text-xl font-bold text-green-800 mb-2">
-                {{ item.name }}
-              </h3>
-              <p class="text-gray-600 text-sm mb-3">{{ item.description }}</p>
-              <div class="flex justify-between items-center">
-                <span class="text-orange-500 font-bold text-lg"
-                  >₱{{ item.price.toFixed(2) }}</span
+            <div class="flex gap-4">
+              <div
+                v-for="item in signatureDishes"
+                :key="item.name"
+                class="menu-card-bg rounded-xl sm:rounded-2xl overflow-hidden shadow-md hover:shadow-lg transition-all duration-300 transform hover:-translate-y-2 card-hover relative flex-shrink-0 w-[75vw] max-w-[280px] snap-start"
+              >
+                <!-- Modern Promo Badge -->
+                <div
+                  v-if="item.hasPromo"
+                  class="absolute top-3 right-3 sm:top-4 sm:right-4 z-10"
                 >
+                  <div
+                    class="bg-gradient-to-br from-red-500 to-orange-500 rounded-lg sm:rounded-xl px-2 py-1.5 sm:px-3 sm:py-2 shadow-lg backdrop-blur-sm border border-white/20 relative overflow-hidden hover:scale-105 transition-all duration-300 hover:shadow-xl"
+                  >
+                    <!-- Shimmer Effect -->
+                    <div
+                      class="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full animate-[shimmer_2s_infinite]"
+                    ></div>
+
+                    <div class="relative z-10 text-center">
+                      <div
+                        class="text-white text-xs sm:text-sm font-thin leading-none drop-shadow-sm"
+                      >
+                        {{
+                          item.promoInfo.discount_type === 'percentage'
+                            ? '-' + item.promoInfo.discount_percentage + '%'
+                            : '-₱' + item.promoInfo.discount_amount
+                        }}
+                      </div>
+                      <div
+                        class="text-white/90 text-[10px] sm:text-xs font-thin uppercase tracking-wide mt-0.5 sm:mt-1"
+                      >
+                        OFF
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="h-40 sm:h-48 overflow-hidden group relative">
+                  <img
+                    :src="item.image"
+                    :alt="item.name"
+                    class="w-full h-full object-cover transform transition-transform duration-500 ease-in-out group-hover:scale-110"
+                  />
+
+                  <!-- Promo Overlay -->
+                  <div
+                    v-if="item.hasPromo"
+                    class="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+                  ></div>
+                </div>
+
+                <div class="p-4 sm:p-6">
+                  <h3 class="text-lg sm:text-xl font-bold text-green-800 mb-2">
+                    {{ item.name }}
+                  </h3>
+
+                  <!-- Price Section with Promo -->
+                  <div class="flex justify-between items-center">
+                    <div class="flex flex-col">
+                      <!-- Original Price (crossed out if promo) -->
+                      <span
+                        v-if="item.hasPromo"
+                        class="text-gray-400 text-xs sm:text-sm line-through"
+                      >
+                        <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                        {{ item.originalPrice.toFixed(2) }}
+                      </span>
+
+                      <!-- Current Price -->
+                      <span
+                        :class="[
+                          'font-bold text-base sm:text-lg',
+                          item.hasPromo ? 'text-red-500' : 'text-orange-500',
+                        ]"
+                      >
+                        <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                        {{
+                          item.discountedPrice
+                            ? item.discountedPrice.toFixed(2)
+                            : item.price.toFixed(2)
+                        }}
+                      </span>
+
+                      <!-- Discount Amount -->
+                      <span
+                        v-if="
+                          item.hasPromo &&
+                          item.promoInfo.discount_type === 'percentage'
+                        "
+                        class="text-[10px] sm:text-xs text-green-600 font-semibold"
+                      >
+                        {{ item.promoInfo.discount_percentage }}% OFF
+                      </span>
+                      <span
+                        v-else-if="
+                          item.hasPromo &&
+                          item.promoInfo.discount_type === 'fixed_amount'
+                        "
+                        class="text-[10px] sm:text-xs text-green-600 font-semibold"
+                      >
+                        ₱{{ item.promoInfo.discount_amount }} OFF
+                      </span>
+                    </div>
+
+                    <!-- Promo Icon -->
+                    <div
+                      v-if="item.hasPromo"
+                      class="flex items-center justify-center w-5 h-5 sm:w-6 sm:h-6 bg-gradient-to-br from-red-500 to-orange-500 text-white rounded-full shadow-md hover:scale-110 hover:shadow-lg transition-all duration-300"
+                    >
+                      <font-awesome-icon
+                        icon="fa-solid fa-bolt"
+                        class="text-[10px] sm:text-xs"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Desktop: Grid Layout -->
+          <div
+            class="hidden md:grid md:grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-8 cursor-pointer"
+          >
+            <div
+              v-for="item in signatureDishes"
+              :key="item.name"
+              class="menu-card-bg rounded-2xl overflow-hidden shadow-md hover:shadow-lg transition-all duration-300 transform hover:-translate-y-2 card-hover relative"
+            >
+              <!-- Modern Promo Badge -->
+              <div v-if="item.hasPromo" class="absolute top-4 right-4 z-10">
+                <div
+                  class="bg-gradient-to-br from-red-500 to-orange-500 rounded-xl px-3 py-2 shadow-lg backdrop-blur-sm border border-white/20 relative overflow-hidden hover:scale-105 transition-all duration-300 hover:shadow-xl"
+                >
+                  <!-- Shimmer Effect -->
+                  <div
+                    class="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full animate-[shimmer_2s_infinite]"
+                  ></div>
+
+                  <div class="relative z-10 text-center">
+                    <div
+                      class="text-white text-sm font-thin leading-none drop-shadow-sm"
+                    >
+                      {{
+                        item.promoInfo.discount_type === 'percentage'
+                          ? '-' + item.promoInfo.discount_percentage + '%'
+                          : '-₱' + item.promoInfo.discount_amount
+                      }}
+                    </div>
+                    <div
+                      class="text-white/90 text-xs font-thin uppercase tracking-wide mt-1"
+                    >
+                      OFF
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="h-48 overflow-hidden group relative">
+                <img
+                  :src="item.image"
+                  :alt="item.name"
+                  class="w-full h-full object-cover transform transition-transform duration-500 ease-in-out group-hover:scale-110"
+                />
+
+                <!-- Promo Overlay -->
+                <div
+                  v-if="item.hasPromo"
+                  class="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+                ></div>
+              </div>
+
+              <div class="p-6">
+                <h3 class="text-xl font-bold text-green-800 mb-2">
+                  {{ item.name }}
+                </h3>
+
+                <!-- Price Section with Promo -->
+                <div class="flex justify-between items-center">
+                  <div class="flex flex-col">
+                    <!-- Original Price (crossed out if promo) -->
+                    <span
+                      v-if="item.hasPromo"
+                      class="text-gray-400 text-sm line-through"
+                    >
+                      <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                      {{ item.originalPrice.toFixed(2) }}
+                    </span>
+
+                    <!-- Current Price -->
+                    <span
+                      :class="[
+                        'font-bold text-lg',
+                        item.hasPromo ? 'text-red-500' : 'text-orange-500',
+                      ]"
+                    >
+                      <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                      {{
+                        item.discountedPrice
+                          ? item.discountedPrice.toFixed(2)
+                          : item.price.toFixed(2)
+                      }}
+                    </span>
+
+                    <!-- Discount Amount -->
+                    <span
+                      v-if="
+                        item.hasPromo &&
+                        item.promoInfo.discount_type === 'percentage'
+                      "
+                      class="text-xs text-green-600 font-semibold"
+                    >
+                      {{ item.promoInfo.discount_percentage }}% OFF
+                    </span>
+                    <span
+                      v-else-if="
+                        item.hasPromo &&
+                        item.promoInfo.discount_type === 'fixed_amount'
+                      "
+                      class="text-xs text-green-600 font-semibold"
+                    >
+                      ₱{{ item.promoInfo.discount_amount }} OFF
+                    </span>
+                  </div>
+
+                  <!-- Promo Icon -->
+                  <div
+                    v-if="item.hasPromo"
+                    class="flex items-center justify-center w-6 h-6 bg-gradient-to-br from-red-500 to-orange-500 text-white rounded-full shadow-md hover:scale-110 hover:shadow-lg transition-all duration-300"
+                  >
+                    <font-awesome-icon
+                      icon="fa-solid fa-bolt"
+                      class="text-xs"
+                    />
+                  </div>
+                </div>
               </div>
             </div>
           </div>
         </div>
 
+        <!-- No Menu Items State -->
+        <div v-else class="text-center py-12">
+          <p class="text-white/70">
+            No signature dishes available at the moment.
+          </p>
+        </div>
+
         <!-- Full Menu Button -->
-        <div class="text-center mt-12 flex justify-endx`">
+        <div class="mt-12 flex justify-center lg:justify-end">
           <router-link
             to="/menu"
-            class="bg-orange-500 text-white px-8 py-3 rounded-lg font-thin transition-all duration-300 shadow-lg flex items-center justify-center cursor-pointer hover:bg-orange-400"
+            class="btn btn-sm border-none bg-orange-500 hover:bg-orange-400 text-white px-8 py-3 rounded-md !font-thin shadow-none"
           >
             <span>View Full Menu</span>
             <font-awesome-icon
               icon="fa-solid fa-arrow-right"
-              class="ml-2 group-hover:translate-x-1 transition-transform"
+              class="ml-2 transition-transform group-hover:translate-x-1"
             />
           </router-link>
         </div>
@@ -929,28 +1354,36 @@
 
     <!-- Contact Section -->
     <section id="contact" class="py-20 bg-gray-50">
-      <div class="container mx-auto px-6">
+      <div class="container mx-auto px-6 lg:px-8">
+        <!-- Section Header -->
         <div class="text-center mb-16">
           <div class="flex items-center justify-center">
-            <div class="w-12 h-0.5 bg-green-600"></div>
-            <h2 class="text-4xl font-bold text-green-800 mx-4">Get In Touch</h2>
-            <div class="w-12 h-0.5 bg-green-600"></div>
+            <div class="w-10 sm:w-12 h-0.5 bg-green-600"></div>
+            <h2
+              class="text-3xl sm:text-4xl font-bold text-green-800 mx-3 sm:mx-4"
+            >
+              Get In Touch
+            </h2>
+            <div class="w-10 sm:w-12 h-0.5 bg-green-600"></div>
           </div>
-          <p class="text-xl text-gray-600 max-w-2xl mx-auto">
+          <p class="text-base sm:text-lg text-gray-600 max-w-2xl mx-auto mt-4">
             Have questions or want to make a reservation? We'd love to hear from
             you!
           </p>
         </div>
 
-        <div class="grid lg:grid-cols-2 gap-12">
-          <div>
-            <h3 class="text-2xl font-bold text-green-800 mb-6">
-              Contact Information
-            </h3>
-            <div class="space-y-4">
+        <!-- Contact Info - 2 Column Layout -->
+        <div class="max-w-5xl mx-auto">
+          <h3 class="text-2xl font-bold text-green-800 mb-8 text-center">
+            Contact Information
+          </h3>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-12">
+            <!-- Left Column: Contact Details -->
+            <div class="space-y-5">
+              <!-- Phone -->
               <div class="flex items-center">
                 <div
-                  class="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center mr-4"
+                  class="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center mr-4 flex-shrink-0"
                 >
                   <font-awesome-icon
                     icon="fa-solid fa-phone"
@@ -962,9 +1395,11 @@
                   <div class="text-gray-600">+63 912 345 6789</div>
                 </div>
               </div>
+
+              <!-- Email -->
               <div class="flex items-center">
                 <div
-                  class="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center mr-4"
+                  class="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center mr-4 flex-shrink-0"
                 >
                   <font-awesome-icon
                     icon="fa-solid fa-envelope"
@@ -973,14 +1408,16 @@
                 </div>
                 <div>
                   <div class="font-semibold text-gray-800">Email</div>
-                  <div class="text-gray-600">
+                  <div class="text-gray-600 break-all">
                     countryside_steakhouse@yahoo.com.ph
                   </div>
                 </div>
               </div>
+
+              <!-- Address -->
               <div class="flex items-center">
                 <div
-                  class="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center mr-4"
+                  class="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center mr-4 flex-shrink-0"
                 >
                   <font-awesome-icon
                     icon="fa-solid fa-location-dot"
@@ -995,270 +1432,240 @@
                 </div>
               </div>
             </div>
-          </div>
 
-          <div class="bg-white rounded-2xl p-8 shadow-lg">
-            <h3 class="text-2xl font-bold text-green-800 mb-6">
-              Send us a Message
-            </h3>
-            <form @submit.prevent="submitFeedback" class="space-y-4">
-              <div>
-                <input
-                  v-model="feedbackForm.name"
-                  type="text"
-                  placeholder="Your Name"
-                  required
-                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-300 hover:border-green-400 focus:shadow-lg placeholder:text-gray-600"
-                />
-              </div>
-              <div>
-                <input
-                  v-model="feedbackForm.email"
-                  type="email"
-                  placeholder="Your Email"
-                  required
-                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-300 hover:border-green-400 focus:shadow-lg placeholder:text-gray-600"
-                />
-              </div>
-              <div>
-                <input
-                  v-model="feedbackForm.phone"
-                  type="tel"
-                  placeholder="Your Phone (Optional)"
-                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-300 hover:border-green-400 focus:shadow-lg placeholder:text-gray-600"
-                />
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-3"
-                  >Rating (Optional)</label
+            <!-- Right Column: Social Media -->
+            <div
+              class="flex flex-col items-center md:items-start justify-center md:justify-start"
+            >
+              <div class="flex items-center mb-6">
+                <div
+                  class="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center mr-4 flex-shrink-0"
                 >
-                <div class="flex items-center space-x-1 star-rating">
-                  <button
-                    v-for="star in 5"
-                    :key="star"
-                    type="button"
-                    @click="setRating(star)"
-                    @mouseenter="hoveredRating = star"
-                    @mouseleave="hoveredRating = 0"
-                    :class="[
-                      'relative w-10 h-10 flex items-center justify-center transition-all duration-300 ease-out transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2',
-                      feedbackForm.rating >= star || hoveredRating >= star
-                        ? 'text-yellow-400'
-                        : 'text-gray-300',
-                    ]"
+                  <font-awesome-icon
+                    icon="fa-solid fa-share-nodes"
+                    class="text-white text-md"
+                  />
+                </div>
+                <div>
+                  <div class="font-semibold text-gray-800 text-lg">
+                    Follow Us
+                  </div>
+                </div>
+              </div>
+              <div class="space-y-4 w-full">
+                <!-- Main Branch -->
+                <a
+                  href="https://www.facebook.com/PNCountryside"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="flex items-center p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-all duration-300 shadow-sm hover:shadow-md group"
+                >
+                  <div
+                    class="w-10 h-10 bg-green-600 rounded-full flex items-center justify-center mr-3 flex-shrink-0 group-hover:bg-green-700 transition-colors"
                   >
-                    <!-- Star Icon with SVG for better quality -->
                     <svg
-                      class="w-8 h-8 transition-all duration-300"
-                      :class="[
-                        feedbackForm.rating >= star || hoveredRating >= star
-                          ? 'scale-110 drop-shadow-lg'
-                          : 'scale-100',
-                      ]"
-                      fill="currentColor"
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="18"
+                      height="18"
                       viewBox="0 0 24 24"
+                      class="fill-current text-white"
                     >
                       <path
-                        d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
+                        d="M9 8h-3v4h3v12h5v-12h3.642l.358-4h-4v-1.667
+              c0-.955.192-1.333 1.115-1.333h2.885v-5h-3.808
+              c-3.596 0-5.192 1.583-5.192 4.615v3.385z"
                       />
                     </svg>
-
-                    <!-- Glow effect for selected stars -->
-                    <div
-                      v-if="feedbackForm.rating >= star"
-                      class="absolute inset-0 bg-yellow-400 rounded-full opacity-20 blur-sm animate-pulse"
-                    ></div>
-
-                    <!-- Hover effect -->
-                    <div
-                      v-if="hoveredRating >= star && feedbackForm.rating < star"
-                      class="absolute inset-0 bg-yellow-300 rounded-full opacity-30 blur-sm animate-pulse"
-                    ></div>
-                  </button>
-
-                  <!-- Rating text display -->
-                  <div class="ml-4 text-sm text-gray-600">
-                    <span
-                      v-if="feedbackForm.rating > 0"
-                      class="font-medium text-green-600"
-                    >
-                      {{ feedbackForm.rating }}/5 stars
-                    </span>
-                    <span v-else class="text-gray-700">Click to rate</span>
                   </div>
-                </div>
-
-                <!-- Rating description -->
-                <div
-                  v-if="feedbackForm.rating > 0"
-                  class="mt-2 text-xs text-gray-500 animate-fade-in"
-                >
-                  <span v-if="feedbackForm.rating === 1">Poor</span>
-                  <span v-else-if="feedbackForm.rating === 2">Fair</span>
-                  <span v-else-if="feedbackForm.rating === 3">Good</span>
-                  <span v-else-if="feedbackForm.rating === 4">Very Good</span>
-                  <span v-else-if="feedbackForm.rating === 5">Excellent</span>
-                </div>
-              </div>
-              <div>
-                <textarea
-                  v-model="feedbackForm.message"
-                  rows="4"
-                  placeholder="Your Message"
-                  required
-                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-300 hover:border-green-400 focus:shadow-lg resize-none placeholder:text-gray-600"
-                ></textarea>
-              </div>
-
-              <!-- Image Upload Section -->
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-3">
-                  <font-awesome-icon
-                    icon="fa-solid fa-camera"
-                    class="text-green-600 mr-2"
-                  />
-                  Share Your Food Experience
-                  <span class="text-red-500">*</span>
-                </label>
-                <div class="space-y-3">
-                  <!-- File Input -->
-                  <div class="relative">
-                    <input
-                      @change="handleImageUpload"
-                      type="file"
-                      accept="image/*"
-                      class="hidden"
-                      ref="imageInput"
-                      id="feedback-image"
-                    />
-                    <label
-                      for="feedback-image"
-                      class="flex items-center justify-center w-full px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-green-400 hover:bg-green-50 transition-all duration-300"
-                    >
-                      <div class="text-center">
-                        <svg
-                          class="mx-auto h-8 w-8 text-gray-400 mb-2"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            stroke-width="2"
-                            d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-                          ></path>
-                        </svg>
-                        <span class="text-sm text-gray-700">
-                          <span
-                            class="font-medium text-green-600 hover:text-green-500"
-                            >Click to upload</span
-                          >
-                          or drag and drop
-                        </span>
-                        <p class="text-xs text-gray-600 mt-1">
-                          PNG, JPG, GIF up to 5MB
-                        </p>
-                      </div>
-                    </label>
-                  </div>
-
-                  <!-- Image Preview -->
-                  <div v-if="feedbackForm.image" class="relative">
-                    <div class="bg-gray-100 rounded-lg p-4">
-                      <div class="flex items-center space-x-3">
-                        <img
-                          :src="feedbackForm.image.preview"
-                          alt="Preview"
-                          class="w-16 h-16 object-cover rounded-lg border border-gray-300"
-                        />
-                        <div class="flex-1">
-                          <p class="text-sm font-medium text-gray-900">
-                            {{ feedbackForm.image.name }}
-                          </p>
-                          <p class="text-xs text-gray-500">
-                            {{ formatFileSize(feedbackForm.image.size) }}
-                          </p>
-                        </div>
-                        <button
-                          @click="removeImage"
-                          type="button"
-                          class="text-red-500 hover:text-red-700 transition-colors duration-200"
-                          title="Remove image"
-                        >
-                          <svg
-                            class="w-5 h-5"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              stroke-linecap="round"
-                              stroke-linejoin="round"
-                              stroke-width="2"
-                              d="M6 18L18 6M6 6l12 12"
-                            ></path>
-                          </svg>
-                        </button>
-                      </div>
+                  <div class="flex-1">
+                    <div class="font-semibold text-gray-800 text-sm">
+                      Countryside Steakhouse - Main Branch
                     </div>
+                    <div class="text-gray-600 text-xs">Facebook</div>
                   </div>
-                </div>
-              </div>
-              <button
-                type="submit"
-                :disabled="isSubmitting"
-                class="w-full bg-green-600 text-white py-3 rounded-lg font-thin hover:bg-green-500 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center transform hover:scale-[1.02] active:scale-[0.98] shadow-lg hover:shadow-xl cursor-pointer"
-              >
-                <span
-                  v-if="isSubmitting"
-                  class="loading loading-spinner loading-sm mr-2"
-                ></span>
-                <span v-if="isSubmitting" class="animate-pulse"
-                  >Sending...</span
-                >
-                <span v-else>Send Message</span>
-              </button>
-            </form>
+                </a>
 
-            <!-- Success/Error Messages -->
-            <div
-              v-if="feedbackMessage.show"
-              :class="[
-                'mt-4 p-4 rounded-lg',
-                feedbackMessage.type === 'success'
-                  ? 'bg-green-100 text-green-800 border border-green-200'
-                  : 'bg-red-100 text-red-800 border border-red-200',
-              ]"
-            >
-              {{ feedbackMessage.text }}
+                <!-- Silang Branch -->
+                <a
+                  href="https://www.facebook.com/CS.Silang"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="flex items-center p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-all duration-300 shadow-sm hover:shadow-md group"
+                >
+                  <div
+                    class="w-10 h-10 bg-green-600 rounded-full flex items-center justify-center mr-3 flex-shrink-0 group-hover:bg-green-700 transition-colors"
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="18"
+                      height="18"
+                      viewBox="0 0 24 24"
+                      class="fill-current text-white"
+                    >
+                      <path
+                        d="M9 8h-3v4h3v12h5v-12h3.642l.358-4h-4v-1.667
+              c0-.955.192-1.333 1.115-1.333h2.885v-5h-3.808
+              c-3.596 0-5.192 1.583-5.192 4.615v3.385z"
+                      />
+                    </svg>
+                  </div>
+                  <div class="flex-1">
+                    <div class="font-semibold text-gray-800 text-sm">
+                      Countryside Steakhouse - Silang Branch
+                    </div>
+                    <div class="text-gray-600 text-xs">Facebook</div>
+                  </div>
+                </a>
+
+                <!-- Tanza Branch -->
+                <a
+                  href="https://www.facebook.com/profile.php?id=100057313935213"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="flex items-center p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-all duration-300 shadow-sm hover:shadow-md group"
+                >
+                  <div
+                    class="w-10 h-10 bg-green-600 rounded-full flex items-center justify-center mr-3 flex-shrink-0 group-hover:bg-green-700 transition-colors"
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="18"
+                      height="18"
+                      viewBox="0 0 24 24"
+                      class="fill-current text-white"
+                    >
+                      <path
+                        d="M9 8h-3v4h3v12h5v-12h3.642l.358-4h-4v-1.667
+              c0-.955.192-1.333 1.115-1.333h2.885v-5h-3.808
+              c-3.596 0-5.192 1.583-5.192 4.615v3.385z"
+                      />
+                    </svg>
+                  </div>
+                  <div class="flex-1">
+                    <div class="font-semibold text-gray-800 text-sm">
+                      Countryside Steakhouse - Tanza
+                    </div>
+                    <div class="text-gray-600 text-xs">Facebook</div>
+                  </div>
+                </a>
+              </div>
             </div>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- Footer -->
-    <footer class="bg-orange-500 text-white py-12">
-      <div class="container mx-auto px-6">
-        <div class="flex flex-col md:flex-row justify-between items-center">
-          <div class="flex space-x-6 mb-4 md:mb-0">
-            <a href="#" class="hover:text-green-200 transition-colors"
-              >PRIVACY POLICY</a
+    <footer class="bg-orange-500 text-white p-8">
+      <div
+        class="container mx-auto flex flex-col sm:flex-row justify-between items-center sm:items-start space-y-8 sm:space-y-0 sm:space-x-8"
+      >
+        <!-- Logo + Description -->
+        <aside
+          class="flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-left space-x-0 sm:space-x-4 space-y-2 sm:space-y-0"
+        >
+          <img
+            src="/logo1.png"
+            alt="Countryside Steakhouse Logo"
+            class="w-14 h-14 object-contain"
+          />
+          <p>
+            <span class="font-bold text-lg block">Countryside Steakhouse</span>
+            Serving quality steaks since 1984
+            <font-awesome-icon icon="fa-solid fa-utensils" class="ml-1" />
+          </p>
+        </aside>
+
+        <!-- Follow Us Section -->
+        <nav class="flex flex-col items-center sm:items-start space-y-3">
+          <h6
+            class="footer-title text-sm text-white font-thin uppercase tracking-wide"
+          >
+            Follow Us
+          </h6>
+          <div class="flex space-x-6">
+            <!-- Twitter -->
+            <a
+              href="https://www.facebook.com/PNCountryside"
+              class="hover:text-green-200 transition-transform transform hover:scale-110"
             >
-            <a href="#" class="hover:text-green-200 transition-colors"
-              >PRIVACY POLICY</a
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="22"
+                height="22"
+                viewBox="0 0 24 24"
+                class="fill-current"
+              >
+                <path
+                  d="M24 4.557c-.883.392-1.832.656-2.828.775 
+              1.017-.609 1.798-1.574 2.165-2.724
+              -.951.564-2.005.974-3.127 1.195
+              -.897-.957-2.178-1.555-3.594-1.555
+              -3.179 0-5.515 2.966-4.797 6.045
+              -4.091-.205-7.719-2.165-10.148-5.144
+              -1.29 2.213-.669 5.108 1.523 6.574
+              -.806-.026-1.566-.247-2.229-.616
+              -.054 2.281 1.581 4.415 3.949 4.89
+              -.693.188-1.452.232-2.224.084
+              .626 1.956 2.444 3.379 4.6 3.419
+              -2.07 1.623-4.678 2.348-7.29 2.04
+              2.179 1.397 4.768 2.212 7.548 2.212
+              9.142 0 14.307-7.721 13.995-14.646
+              .962-.695 1.797-1.562 2.457-2.549z"
+                ></path>
+              </svg>
+            </a>
+
+            <!-- YouTube -->
+            <a
+              href="https://www.facebook.com/PNCountryside"
+              class="hover:text-green-200 transition-transform transform hover:scale-110"
             >
-            <a href="#" class="hover:text-green-200 transition-colors"
-              >CONTACT US</a
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="22"
+                height="22"
+                viewBox="0 0 24 24"
+                class="fill-current"
+              >
+                <path
+                  d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0
+              -3.897.266-4.356 2.62-4.385 8.816
+              .029 6.185.484 8.549 4.385 8.816
+              3.6.245 11.626.246 15.23 0
+              3.897-.266 4.356-2.62 4.385-8.816
+              -.029-6.185-.484-8.549-4.385-8.816zm-10.615
+              12.816v-8l8 3.993-8 4.007z"
+                ></path>
+              </svg>
+            </a>
+
+            <!-- Facebook -->
+            <a
+              href="https://www.facebook.com/PNCountryside"
+              class="hover:text-green-200 transition-transform transform hover:scale-110"
             >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="22"
+                height="22"
+                viewBox="0 0 24 24"
+                class="fill-current"
+              >
+                <path
+                  d="M9 8h-3v4h3v12h5v-12h3.642l.358-4h-4v-1.667
+              c0-.955.192-1.333 1.115-1.333h2.885v-5h-3.808
+              c-3.596 0-5.192 1.583-5.192 4.615v3.385z"
+                ></path>
+              </svg>
+            </a>
           </div>
-          <div class="text-center md:text-right">
-            <p class="text-sm">
-              © 2025 COUNTRYSIDE STEAKHOUSE. All rights reserved.
-            </p>
-          </div>
-        </div>
+        </nav>
+      </div>
+
+      <!-- Divider -->
+      <div class="border-t border-white/20 mt-8 pt-4 text-center text-sm">
+        © {{ new Date().getFullYear() }} Countryside Steakhouse. All rights
+        reserved.
       </div>
     </footer>
   </div>
@@ -1266,14 +1673,58 @@
 
 <script setup>
   import { useRouter } from 'vue-router';
-  import { ref, onMounted, onUnmounted, computed, nextTick } from 'vue';
-  import FoodpandaOrderModal from './FoodpandaOrderModal.vue';
-  import GrabfoodOrderModal from './GrabfoodOrderModal.vue';
-  import feedbackService from '../../services/feedbackService.js';
+  import { ref, onMounted, onUnmounted, computed, nextTick, watch } from 'vue';
+  import AnnouncementModal from './AnnouncementModal.vue';
+  import JobPositionsModal from './JobPositionsModal.vue';
+  import branchService from '../../services/branchService.js';
+  import menuService from '../../services/menuService.js';
+  import announcementService from '../../services/announcementService.js';
+  import { formatImageUrl, apiConfig } from '../../config/api.js';
+  import { Clock, Briefcase, Users, Megaphone } from 'lucide-vue-next';
+  import { useFeedbackStore } from '../../stores/feedbackStore.js';
+
+  // Backend base derived from api config (strip /api)
+  const API_BASE_URL = (apiConfig?.baseURL || '').replace(/\/?api\/?$/, '');
 
   const router = useRouter();
+  const feedbackStore = useFeedbackStore();
   const isScrolled = ref(false);
   const currentHeroIndex = ref(0);
+
+  // Mobile menu state
+  const isMobileMenuOpen = ref(false);
+
+  // Real data from API
+  const branches = ref([]);
+  const menuItems = ref([]);
+  const signatureDishes = ref([]);
+  const isLoadingBranches = ref(false);
+  const isLoadingMenu = ref(false);
+
+  // User interaction tracking for video autoplay
+  const hasUserInteracted = ref(false);
+
+  // Debounce mechanism to prevent rapid video changes
+  let videoChangeTimeout = null;
+
+  // Resolve backend public file URLs that may be relative (e.g., /uploads/..)
+  const resolvePublicUrl = (url) => {
+    if (!url) return url;
+
+    // Prefer shared formatter used across production views
+    const formatted = formatImageUrl(url);
+    if (formatted) return formatted;
+
+    // Fallbacks
+    if (url.startsWith('http')) return url;
+    if (API_BASE_URL) return `${API_BASE_URL}${url}`;
+    const protocol = window.location?.protocol || 'http:';
+    const host = window.location?.hostname || 'localhost';
+    const backendPort = (
+      import.meta.env.VITE_BACKEND_PORT || '5000'
+    ).toString();
+    return `${protocol}//${host}:${backendPort}${url}`;
+  };
 
   // Reels carousel state
   const currentReelIndex = ref(0);
@@ -1281,7 +1732,10 @@
 
   // Video play/pause state
   const isHeroVideoPlaying = ref(true);
-  const isDeliveryVideoPlaying = ref(true);
+
+  // Video volume state
+  const heroVideoVolume = ref(0.5); // Default 50% volume
+  const isHeroVideoMuted = ref(false); // Start unmuted
 
   // Auto-scroll state
   const isReelsAutoScrollActive = ref(true);
@@ -1313,6 +1767,27 @@
   // Computed property for current reel
   const currentReel = computed(() => reels[currentReelIndex.value].src);
 
+  // Computed properties for Quick Stats
+  const yearsOfExcellence = computed(() => {
+    const foundingYear = 1984;
+    const currentYear = new Date().getFullYear();
+    return currentYear - foundingYear;
+  });
+
+  const totalBranches = computed(() => {
+    return branches.value.length || 0;
+  });
+
+  const happyCustomersCount = computed(() => {
+    const totalRatings = feedbackStore.stats?.total_ratings || 0;
+    if (totalRatings === 0) return '1000+'; // Fallback to default
+    // Format the number with K for thousands
+    if (totalRatings >= 1000) {
+      return `${(totalRatings / 1000).toFixed(1)}K+`;
+    }
+    return `${totalRatings}+`;
+  });
+
   // Helper functions
   const getReelTitle = (index) => {
     return reels[index]?.title || `Reel ${index + 1}`;
@@ -1323,42 +1798,153 @@
   };
 
   // Reels carousel functions
-  const playReel = (index) => {
-    currentReelIndex.value = index;
-    if (videoPlayer.value) {
-      videoPlayer.value.load();
-      videoPlayer.value.play();
-      isHeroVideoPlaying.value = true;
+  const playReel = async (index) => {
+    hasUserInteracted.value = true; // Mark user interaction
+
+    // Clear any pending video changes
+    if (videoChangeTimeout) {
+      clearTimeout(videoChangeTimeout);
     }
+
+    // Debounce video changes
+    videoChangeTimeout = setTimeout(async () => {
+      currentReelIndex.value = index;
+      if (videoPlayer.value) {
+        // Wait for load to complete before attempting to play
+        videoPlayer.value.load();
+
+        // Wait for the video to be ready
+        await new Promise((resolve) => {
+          if (videoPlayer.value.readyState >= 2) {
+            resolve();
+          } else {
+            videoPlayer.value.addEventListener('canplay', resolve, {
+              once: true,
+            });
+          }
+        });
+
+        if (hasUserInteracted.value) {
+          try {
+            videoPlayer.value.muted = false; // Ensure unmuted
+            isHeroVideoMuted.value = false; // Update state
+            await videoPlayer.value.play();
+            isHeroVideoPlaying.value = true;
+          } catch (error) {
+            if (error.name !== 'AbortError') {
+              console.log('Video play failed:', error);
+            }
+            isHeroVideoPlaying.value = false;
+          }
+        } else {
+          isHeroVideoPlaying.value = false;
+        }
+      }
+    }, 100); // 100ms debounce
+
     // Pause auto-scroll when user manually navigates
     pauseReelsAutoScroll();
     // Resume auto-scroll after 10 seconds of inactivity
     setTimeout(resumeReelsAutoScroll, 10000);
   };
 
-  const nextReel = () => {
-    currentReelIndex.value = (currentReelIndex.value + 1) % reels.length;
-    if (videoPlayer.value) {
-      videoPlayer.value.load();
-      videoPlayer.value.play();
-      isHeroVideoPlaying.value = true;
+  const nextReel = async () => {
+    hasUserInteracted.value = true; // Mark user interaction
+
+    // Clear any pending video changes
+    if (videoChangeTimeout) {
+      clearTimeout(videoChangeTimeout);
     }
+
+    // Debounce video changes
+    videoChangeTimeout = setTimeout(async () => {
+      currentReelIndex.value = (currentReelIndex.value + 1) % reels.length;
+      if (videoPlayer.value) {
+        // Wait for load to complete before attempting to play
+        videoPlayer.value.load();
+
+        // Wait for the video to be ready
+        await new Promise((resolve) => {
+          if (videoPlayer.value.readyState >= 2) {
+            resolve();
+          } else {
+            videoPlayer.value.addEventListener('canplay', resolve, {
+              once: true,
+            });
+          }
+        });
+
+        if (hasUserInteracted.value) {
+          try {
+            videoPlayer.value.muted = false; // Ensure unmuted
+            isHeroVideoMuted.value = false; // Update state
+            await videoPlayer.value.play();
+            isHeroVideoPlaying.value = true;
+          } catch (error) {
+            if (error.name !== 'AbortError') {
+              console.log('Video play failed:', error);
+            }
+            isHeroVideoPlaying.value = false;
+          }
+        } else {
+          isHeroVideoPlaying.value = false;
+        }
+      }
+    }, 100); // 100ms debounce
+
     // Pause auto-scroll when user manually navigates
     pauseReelsAutoScroll();
     // Resume auto-scroll after 10 seconds of inactivity
     setTimeout(resumeReelsAutoScroll, 10000);
   };
 
-  const previousReel = () => {
-    currentReelIndex.value =
-      currentReelIndex.value === 0
-        ? reels.length - 1
-        : currentReelIndex.value - 1;
-    if (videoPlayer.value) {
-      videoPlayer.value.load();
-      videoPlayer.value.play();
-      isHeroVideoPlaying.value = true;
+  const previousReel = async () => {
+    hasUserInteracted.value = true; // Mark user interaction
+
+    // Clear any pending video changes
+    if (videoChangeTimeout) {
+      clearTimeout(videoChangeTimeout);
     }
+
+    // Debounce video changes
+    videoChangeTimeout = setTimeout(async () => {
+      currentReelIndex.value =
+        currentReelIndex.value === 0
+          ? reels.length - 1
+          : currentReelIndex.value - 1;
+      if (videoPlayer.value) {
+        // Wait for load to complete before attempting to play
+        videoPlayer.value.load();
+
+        // Wait for the video to be ready
+        await new Promise((resolve) => {
+          if (videoPlayer.value.readyState >= 2) {
+            resolve();
+          } else {
+            videoPlayer.value.addEventListener('canplay', resolve, {
+              once: true,
+            });
+          }
+        });
+
+        if (hasUserInteracted.value) {
+          try {
+            videoPlayer.value.muted = false; // Ensure unmuted
+            isHeroVideoMuted.value = false; // Update state
+            await videoPlayer.value.play();
+            isHeroVideoPlaying.value = true;
+          } catch (error) {
+            if (error.name !== 'AbortError') {
+              console.log('Video play failed:', error);
+            }
+            isHeroVideoPlaying.value = false;
+          }
+        } else {
+          isHeroVideoPlaying.value = false;
+        }
+      }
+    }, 100); // 100ms debounce
+
     // Pause auto-scroll when user manually navigates
     pauseReelsAutoScroll();
     // Resume auto-scroll after 10 seconds of inactivity
@@ -1366,57 +1952,80 @@
   };
 
   // Video play/pause toggle methods
-  const toggleHeroVideo = () => {
+  const toggleHeroVideo = async () => {
+    hasUserInteracted.value = true; // Mark user interaction
     if (videoPlayer.value) {
       if (isHeroVideoPlaying.value) {
         videoPlayer.value.pause();
         isHeroVideoPlaying.value = false;
       } else {
-        videoPlayer.value.play();
-        isHeroVideoPlaying.value = true;
+        try {
+          await videoPlayer.value.play();
+          isHeroVideoPlaying.value = true;
+        } catch (error) {
+          if (error.name !== 'AbortError') {
+            console.log('Video play failed:', error);
+          }
+          isHeroVideoPlaying.value = false;
+        }
       }
     }
   };
 
-  const toggleDeliveryVideo = () => {
-    const deliveryVideo =
-      document.querySelector('#deliveryVideo') ||
-      document.querySelector('video[ref="deliveryVideo"]');
-    if (deliveryVideo) {
-      if (isDeliveryVideoPlaying.value) {
-        deliveryVideo.pause();
-        isDeliveryVideoPlaying.value = false;
+  // Volume control functions for Hero Video
+  const setHeroVideoVolume = (volume) => {
+    heroVideoVolume.value = parseFloat(volume);
+    if (videoPlayer.value) {
+      videoPlayer.value.volume = heroVideoVolume.value;
+      // If volume is set above 0, automatically unmute
+      if (heroVideoVolume.value > 0) {
+        isHeroVideoMuted.value = false;
+        videoPlayer.value.muted = false;
       } else {
-        deliveryVideo.play();
-        isDeliveryVideoPlaying.value = true;
+        // If volume is set to 0, mute
+        isHeroVideoMuted.value = true;
+        videoPlayer.value.muted = true;
+      }
+    }
+  };
+
+  const toggleHeroVideoMute = () => {
+    isHeroVideoMuted.value = !isHeroVideoMuted.value;
+    if (videoPlayer.value) {
+      videoPlayer.value.muted = isHeroVideoMuted.value;
+      // When unmuting, ensure volume is set
+      if (!isHeroVideoMuted.value && heroVideoVolume.value === 0) {
+        heroVideoVolume.value = 0.5;
+        videoPlayer.value.volume = 0.5;
       }
     }
   };
 
   // Modal state
-  const isFoodpandaModalOpen = ref(false);
-  const isGrabfoodModalOpen = ref(false);
+  const isAnnouncementModalOpen = ref(false);
+  const isJobPositionsModalOpen = ref(false);
 
-  // Template refs
-  const imageInput = ref(null);
-
-  // Feedback form state
-  const feedbackForm = ref({
-    name: '',
-    email: '',
-    phone: '',
-    rating: 0,
-    message: '',
-    image: null,
+  // Announcements state
+  const activeAnnouncements = ref([]);
+  const hasActiveAnnouncements = computed(() => {
+    return (activeAnnouncements.value?.length || 0) > 0;
   });
 
-  const hoveredRating = ref(0);
-  const isSubmitting = ref(false);
-  const feedbackMessage = ref({
-    show: false,
-    type: '',
-    text: '',
-  });
+  // Watch for announcements changes to debug
+  watch(
+    () => isAnnouncementModalOpen.value,
+    (newVal) => {
+      console.log('Announcement modal state changed:', newVal);
+    }
+  );
+
+  watch(
+    () => activeAnnouncements.value,
+    (newVal) => {
+      console.log('Active announcements changed:', newVal);
+    },
+    { deep: true }
+  );
 
   // Hero images array
   const heroImages = [
@@ -1459,9 +2068,26 @@
   // Auto-scroll intervals
   let autoScrollInterval = null;
   let reelsAutoScrollInterval = null;
+  let scrollTimeout = null;
 
   const handleScroll = () => {
     isScrolled.value = window.scrollY > 50;
+
+    // Clear previous timeout
+    if (scrollTimeout) {
+      clearTimeout(scrollTimeout);
+    }
+
+    // Debounce video pause - pause immediately on scroll
+    if (videoPlayer.value && isHeroVideoPlaying.value) {
+      videoPlayer.value.pause();
+      isHeroVideoPlaying.value = false;
+    }
+
+    // Reset timeout for scroll end (if needed for future enhancements)
+    scrollTimeout = setTimeout(() => {
+      // Could add logic here to resume videos after scroll stops
+    }, 150);
   };
 
   // Carousel functions
@@ -1489,8 +2115,8 @@
 
   // Start reels auto-scrolling
   const startReelsAutoScroll = () => {
-    reelsAutoScrollInterval = setInterval(() => {
-      nextReel();
+    reelsAutoScrollInterval = setInterval(async () => {
+      await nextReel();
     }, 8000); // Change reel every 8 seconds
   };
 
@@ -1533,9 +2159,33 @@
     startReelsAutoScroll();
     preloadImages(); // Preload images on mount
 
+    // Fetch real data from API
+    fetchBranches();
+    fetchMenuItems();
+    fetchAnnouncements();
+
+    // Fetch feedback stats for happy customers count
+    feedbackStore.fetchOrderRatingStats();
+
+    // Add user interaction listener for video autoplay
+    const enableVideoAutoplay = () => {
+      hasUserInteracted.value = true;
+      document.removeEventListener('click', enableVideoAutoplay);
+      document.removeEventListener('touchstart', enableVideoAutoplay);
+    };
+
+    document.addEventListener('click', enableVideoAutoplay);
+    document.addEventListener('touchstart', enableVideoAutoplay);
+
+    // Add click outside handler for mobile menu
+    document.addEventListener('click', handleClickOutside);
+
     // Add video event listeners after component is mounted
     nextTick(() => {
       if (videoPlayer.value) {
+        videoPlayer.value.volume = heroVideoVolume.value;
+        videoPlayer.value.muted = false; // Ensure video is unmuted
+        isHeroVideoMuted.value = false; // Update state
         videoPlayer.value.addEventListener('play', () => {
           isHeroVideoPlaying.value = true;
         });
@@ -1550,17 +2200,49 @@
     window.removeEventListener('scroll', handleScroll);
     stopAutoScroll();
     stopReelsAutoScroll();
+
+    // Clear any pending video changes
+    if (videoChangeTimeout) {
+      clearTimeout(videoChangeTimeout);
+    }
+
+    // Clear scroll timeout
+    if (scrollTimeout) {
+      clearTimeout(scrollTimeout);
+    }
+
+    // Remove click outside handler
+    document.removeEventListener('click', handleClickOutside);
   });
 
   const goToLogin = () => {
     router.push('/login');
   };
 
-  // Smooth scroll to home section
-  const scrollToHome = () => {
-    const homeSection = document.getElementById('home');
-    if (homeSection) {
-      homeSection.scrollIntoView({
+  // Mobile menu functions
+  const toggleMobileMenu = () => {
+    isMobileMenuOpen.value = !isMobileMenuOpen.value;
+  };
+
+  const closeMobileMenu = () => {
+    isMobileMenuOpen.value = false;
+  };
+
+  // Click outside handler for mobile menu
+  const handleClickOutside = (event) => {
+    if (
+      isMobileMenuOpen.value &&
+      !event.target.closest('.mobile-menu-container')
+    ) {
+      closeMobileMenu();
+    }
+  };
+
+  // Smooth scroll to benefits section
+  const scrollToBenefits = () => {
+    const benefitsSection = document.getElementById('benefits');
+    if (benefitsSection) {
+      benefitsSection.scrollIntoView({
         behavior: 'smooth',
         block: 'start',
       });
@@ -1568,169 +2250,45 @@
   };
 
   // Modal functions
-  const openFoodpandaModal = () => {
-    isFoodpandaModalOpen.value = true;
-  };
-
-  const closeFoodpandaModal = () => {
-    isFoodpandaModalOpen.value = false;
-  };
-
-  const openGrabfoodModal = () => {
-    isGrabfoodModalOpen.value = true;
-  };
-
-  const closeGrabfoodModal = () => {
-    isGrabfoodModalOpen.value = false;
-  };
-
-  // Feedback submission method
-  const submitFeedback = async () => {
-    if (
-      !feedbackForm.value.name ||
-      !feedbackForm.value.email ||
-      !feedbackForm.value.message
-    ) {
-      showFeedbackMessage('error', 'Please fill in all required fields.');
-      return;
-    }
-
-    if (!feedbackForm.value.image || !feedbackForm.value.image.file) {
-      showFeedbackMessage(
-        'error',
-        'Please upload an image of your food experience.'
-      );
-      return;
-    }
-
-    isSubmitting.value = true;
-    feedbackMessage.value.show = false;
-
-    try {
-      // Create FormData for multipart/form-data submission
-      const formData = new FormData();
-      formData.append('name', feedbackForm.value.name);
-      formData.append('email', feedbackForm.value.email);
-      formData.append('phone', feedbackForm.value.phone || '');
-      formData.append('rating', feedbackForm.value.rating || '');
-      formData.append('message', feedbackForm.value.message);
-
-      // Add image if selected
-      if (feedbackForm.value.image && feedbackForm.value.image.file) {
-        formData.append('image', feedbackForm.value.image.file);
-      }
-
-      const response = await feedbackService.submitFeedback(formData);
-
-      if (response.success) {
-        showFeedbackMessage('success', response.message);
-        // Reset form
-        feedbackForm.value = {
-          name: '',
-          email: '',
-          phone: '',
-          rating: 0,
-          message: '',
-          image: null,
-        };
-        // Reset file input
-        if (imageInput.value) {
-          imageInput.value.value = '';
-        }
-      } else {
-        showFeedbackMessage(
-          'error',
-          response.message || 'Failed to submit feedback.'
-        );
-      }
-    } catch (error) {
-      console.error('Error submitting feedback:', error);
-      const errorMessage =
-        error.response?.data?.message ||
-        'Failed to submit feedback. Please try again.';
-      showFeedbackMessage('error', errorMessage);
-    } finally {
-      isSubmitting.value = false;
-    }
-  };
-
-  const showFeedbackMessage = (type, text) => {
-    feedbackMessage.value = {
-      show: true,
-      type,
-      text,
-    };
-
-    // Auto-hide success messages after 5 seconds
-    if (type === 'success') {
-      setTimeout(() => {
-        feedbackMessage.value.show = false;
-      }, 5000);
-    }
-  };
-
-  // Enhanced rating method with animation
-  const setRating = (rating) => {
-    feedbackForm.value.rating = rating;
-    // Add a subtle bounce effect
-    const stars = document.querySelectorAll('.star-rating svg');
-    stars.forEach((star, index) => {
-      if (index < rating) {
-        star.style.animation = 'starBounce 0.3s ease-out';
-        setTimeout(() => {
-          star.style.animation = '';
-        }, 300);
-      }
+  const openAnnouncementModal = () => {
+    console.log('Opening announcement modal...', {
+      isOpen: isAnnouncementModalOpen.value,
+      announcementsCount: activeAnnouncements.value.length,
+      announcements: activeAnnouncements.value,
     });
+    isAnnouncementModalOpen.value = true;
+    console.log('Modal state after opening:', isAnnouncementModalOpen.value);
   };
 
-  // Image upload handling
-  const handleImageUpload = (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    // Validate file type
-    if (!file.type.startsWith('image/')) {
-      showFeedbackMessage('error', 'Please select an image file.');
-      return;
-    }
-
-    // Validate file size (5MB limit)
-    if (file.size > 5 * 1024 * 1024) {
-      showFeedbackMessage('error', 'Image size must be less than 5MB.');
-      return;
-    }
-
-    // Create preview URL
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      feedbackForm.value.image = {
-        file: file,
-        name: file.name,
-        size: file.size,
-        type: file.type,
-        preview: e.target.result,
-      };
-    };
-    reader.readAsDataURL(file);
-  };
-
-  // Remove uploaded image
-  const removeImage = () => {
-    feedbackForm.value.image = null;
-    // Reset file input
-    if (imageInput.value) {
-      imageInput.value.value = '';
+  const closeAnnouncementModal = () => {
+    isAnnouncementModalOpen.value = false;
+    if (activeAnnouncements.value.length > 0) {
+      // Mark all shown announcements as seen
+      const seenIds = JSON.parse(
+        sessionStorage.getItem('seenAnnouncementIds') || '[]'
+      );
+      activeAnnouncements.value.forEach((announcement) => {
+        if (!seenIds.includes(announcement.id)) {
+          seenIds.push(announcement.id);
+        }
+      });
+      sessionStorage.setItem('seenAnnouncementIds', JSON.stringify(seenIds));
     }
   };
 
-  // Format file size for display
-  const formatFileSize = (bytes) => {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  const openJobPositionsFromAnnouncement = () => {
+    // Close announcement modal first to avoid overlap
+    closeAnnouncementModal();
+    // Then open the job positions modal
+    openJobPositionsModal();
+  };
+
+  const openJobPositionsModal = () => {
+    isJobPositionsModalOpen.value = true;
+  };
+
+  const closeJobPositionsModal = () => {
+    isJobPositionsModalOpen.value = false;
   };
 
   // Error handling for image loading
@@ -1743,7 +2301,193 @@
     heroImages[index].loaded = false;
   };
 
-  // Menu Categories and Items
+  // Fetch real data from API
+  const fetchBranches = async () => {
+    try {
+      isLoadingBranches.value = true;
+      const response = await branchService.getPublicBranches();
+
+      if (response.success) {
+        branches.value = response.data;
+      }
+    } catch (error) {
+      console.error('Error fetching branches:', error);
+      // Fallback to empty array or show error message
+      branches.value = [];
+    } finally {
+      isLoadingBranches.value = false;
+    }
+  };
+
+  // Fetch announcements
+  const fetchAnnouncements = async () => {
+    try {
+      console.log('Fetching announcements...');
+      const response = await announcementService.getActiveAnnouncements();
+      console.log('Announcements response:', response);
+
+      if (response.success && response.data && response.data.length > 0) {
+        console.log(`Found ${response.data.length} active announcements`);
+        // Resolve image URLs if they exist
+        const allAnnouncements = response.data.map((announcement) => ({
+          ...announcement,
+          image_url: announcement.image_url
+            ? resolvePublicUrl(announcement.image_url)
+            : null,
+        }));
+
+        // Sort announcements by display_order (ascending)
+        const sortedAnnouncements = allAnnouncements.sort((a, b) => {
+          const orderA =
+            a.display_order !== null && a.display_order !== undefined
+              ? a.display_order
+              : 999;
+          const orderB =
+            b.display_order !== null && b.display_order !== undefined
+              ? b.display_order
+              : 999;
+          return orderA - orderB;
+        });
+
+        console.log('Total announcements:', sortedAnnouncements.length);
+        console.log(
+          'Announcements sorted by display_order:',
+          sortedAnnouncements.map((a) => ({
+            id: a.id,
+            title: a.title,
+            display_order: a.display_order,
+          }))
+        );
+
+        // Show all active announcements (ordered by display_order)
+        if (sortedAnnouncements.length > 0) {
+          activeAnnouncements.value = sortedAnnouncements;
+
+          console.log(
+            'Showing all active announcements:',
+            activeAnnouncements.value.map((a) => a.title)
+          );
+          console.log('Modal will open in 1 second. Current state:', {
+            isAnnouncementModalOpen: isAnnouncementModalOpen.value,
+            announcementsCount: activeAnnouncements.value.length,
+          });
+          // Show modal after a short delay to let page load
+          setTimeout(() => {
+            console.log('Timeout triggered, opening modal now');
+            openAnnouncementModal();
+            // Force a re-check after a moment
+            setTimeout(() => {
+              console.log('Modal state check:', {
+                isOpen: isAnnouncementModalOpen.value,
+                announcements: activeAnnouncements.value,
+              });
+            }, 100);
+          }, 1000);
+        } else {
+          console.log('User has already seen all announcements');
+          activeAnnouncements.value = [];
+        }
+      } else {
+        console.log('No active announcements found');
+        activeAnnouncements.value = [];
+      }
+    } catch (error) {
+      console.error('Error fetching announcements:', error);
+      // Don't show error to user, just silently fail
+      activeAnnouncements.value = [];
+    }
+  };
+
+  const fetchMenuItems = async () => {
+    try {
+      isLoadingMenu.value = true;
+      const response = await menuService.getFeaturedMenuItems(10); // Get more items to filter
+
+      if (response.success) {
+        const items = Array.isArray(response.data) ? response.data : [];
+
+        // Sort items to prioritize promo items first
+        const sortedItems = items.sort((a, b) => {
+          // Items with active promos come first
+          const aHasPromo = a.promo_info && a.promo_info.is_active;
+          const bHasPromo = b.promo_info && b.promo_info.is_active;
+
+          if (aHasPromo && !bHasPromo) return -1;
+          if (!aHasPromo && bHasPromo) return 1;
+          return 0;
+        });
+
+        // Take only the first 4 items (prioritizing promos)
+        const selectedItems = sortedItems.slice(0, 4);
+
+        signatureDishes.value = selectedItems.map((item) => ({
+          name:
+            item.item_name ||
+            item.menu_item_name ||
+            item.name ||
+            'Unnamed Item',
+          description:
+            item.description ||
+            item.menu_item_description ||
+            'No description available',
+          price: parseFloat(item.selling_price || item.price || 0),
+          image:
+            resolvePublicUrl(item.image_url) ||
+            '/src/assets/crm/default-menu.png',
+          // Add promo information
+          hasPromo: item.promo_info && item.promo_info.is_active,
+          promoInfo: item.promo_info,
+          originalPrice: parseFloat(item.selling_price || item.price || 0),
+          // Calculate discounted price
+          discountedPrice:
+            item.promo_info && item.promo_info.is_active
+              ? calculateDiscountedPrice(
+                  parseFloat(item.selling_price || item.price || 0),
+                  item.promo_info
+                )
+              : null,
+        }));
+      }
+    } catch (error) {
+      console.error('Error fetching menu items:', error);
+      // Fallback to empty array or show error message
+      signatureDishes.value = [];
+    } finally {
+      isLoadingMenu.value = false;
+    }
+  };
+
+  // Calculate discounted price based on promo info
+  const calculateDiscountedPrice = (originalPrice, promoInfo) => {
+    if (!promoInfo || !promoInfo.is_active) return originalPrice;
+
+    if (promoInfo.discount_type === 'percentage') {
+      const discountAmount =
+        (originalPrice * parseFloat(promoInfo.discount_percentage)) / 100;
+      return originalPrice - discountAmount;
+    } else if (promoInfo.discount_type === 'fixed_amount') {
+      return originalPrice - parseFloat(promoInfo.discount_amount);
+    }
+
+    return originalPrice;
+  };
+
+  // Get directions to branch
+  const getDirections = (branch) => {
+    if (branch.latitude && branch.longitude) {
+      // Open in Google Maps with coordinates
+      const url = `https://www.google.com/maps?q=${branch.latitude},${branch.longitude}`;
+      window.open(url, '_blank');
+    } else if (branch.address) {
+      // Open in Google Maps with address
+      const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(branch.address)}`;
+      window.open(url, '_blank');
+    } else {
+      alert('Location information not available for this branch.');
+    }
+  };
+
+  // Menu Categories and Items (keeping for potential future use)
   const menuCategories = [
     'All',
     'Sizzling Plates',
@@ -1754,103 +2498,6 @@
   ];
 
   const selectedCategory = ref('All');
-
-  const menuItems = [
-    // Sizzling Plates
-    {
-      name: 'Sizzling Tenderloin Steak',
-      description: 'Tender beef served on a hot sizzling plate',
-      price: 299.99,
-      category: 'Sizzling Plates',
-      image: '/src/assets/crm/Sizzling Tenderloin Steak.png',
-    },
-    {
-      name: 'Sizzling T-Bone Steak',
-      description: 'Classic T-Bone steak with signature sizzle',
-      price: 349.99,
-      category: 'Sizzling Plates',
-      image: '/src/assets/crm/Sizzling T-Bone Steak1.png',
-    },
-    {
-      name: 'Sizzling Porksteak',
-      description: 'Juicy pork steak with special marinade',
-      price: 249.99,
-      category: 'Sizzling Plates',
-      image: '/src/assets/crm/Sizzling Picture.png',
-    },
-
-    // Steaks
-    {
-      name: 'Ribeye Steak',
-      description: 'Premium cut ribeye, perfectly grilled',
-      price: 499.99,
-      category: 'Steaks',
-      image: '/src/assets/crm/T-Bone Steak.png',
-    },
-
-    // Breakfast
-    {
-      name: 'Tapsilog',
-      description: 'Traditional Filipino breakfast with tapa',
-      price: 199.99,
-      category: 'Breakfast',
-      image: '/src/assets/crm/Silog Food.png',
-    },
-
-    // Sides
-    {
-      name: 'Chicken Wings',
-      description: 'Crispy and flavorful chicken wings',
-      price: 179.99,
-      category: 'Sides',
-      image: '/src/assets/crm/Menu 1.png',
-    },
-
-    // Beverages
-    {
-      name: 'Countryside Special Drink',
-      description: 'House special refreshing beverage',
-      price: 99.99,
-      category: 'Beverages',
-      image: '/src/assets/crm/Menu 2.png',
-    },
-  ];
-
-  // Computed property to filter menu items
-  const filteredMenuItems = computed(() => {
-    if (selectedCategory.value === 'All') {
-      return menuItems;
-    }
-    return menuItems.filter((item) => item.category === selectedCategory.value);
-  });
-
-  // Signature dishes for the teaser
-  const signatureDishes = [
-    {
-      name: 'Sizzling Tenderloin Steak',
-      description: 'Tender beef served on a hot sizzling plate',
-      price: 299.99,
-      image: '/src/assets/crm/Sizzling Tenderloin Steak.png',
-    },
-    {
-      name: 'Sizzling T-Bone Steak',
-      description: 'Classic T-Bone steak with signature sizzle',
-      price: 349.99,
-      image: '/src/assets/crm/Sizzling T-Bone Steak1.png',
-    },
-    {
-      name: 'Sizzling Porksteak',
-      description: 'Juicy pork steak with special marinade',
-      price: 249.99,
-      image: '/src/assets/crm/Sizzling Picture.png',
-    },
-    {
-      name: 'Ribeye Steak',
-      description: 'Premium cut ribeye, perfectly grilled',
-      price: 499.99,
-      image: '/src/assets/crm/T-Bone Steak.png',
-    },
-  ];
 </script>
 
 <style scoped>
@@ -2021,7 +2668,25 @@
   }
 
   .animate-fade-in-up {
-    animation: fadeInUp 0.6s ease-out;
+    animation: fadeInUp 0.6s ease-out forwards;
+    opacity: 0;
+  }
+
+  /* Image fade-in animation */
+  @keyframes imageFadeIn {
+    from {
+      opacity: 0;
+      transform: scale(0.95);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  .animate-image-fade-in {
+    animation: imageFadeIn 0.8s ease-out forwards;
+    opacity: 0;
   }
 
   .animate-slide-in-left {
@@ -2054,7 +2719,6 @@
   /* Enhanced focus states */
   button:focus,
   a:focus {
-    outline: 2px solid #f97316;
     outline-offset: 2px;
   }
 
@@ -2163,6 +2827,92 @@
   .hero-section {
     min-height: 100vh;
     position: relative;
+  }
+
+  /* Countryside background for Stores Section */
+  .countryside-bg {
+    background: linear-gradient(
+      135deg,
+      #f5f1e8 0%,
+      #ede8d8 25%,
+      #e8e0cc 50%,
+      #f0ead6 75%,
+      #f5f1e8 100%
+    );
+    background-size: 400% 400%;
+    animation: countrysideGradient 15s ease infinite;
+    position: relative;
+  }
+
+  .countryside-bg::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-image:
+      radial-gradient(
+        circle at 20% 30%,
+        rgba(139, 195, 74, 0.1) 0%,
+        transparent 50%
+      ),
+      radial-gradient(
+        circle at 80% 70%,
+        rgba(255, 152, 0, 0.08) 0%,
+        transparent 50%
+      ),
+      radial-gradient(
+        circle at 40% 80%,
+        rgba(76, 175, 80, 0.1) 0%,
+        transparent 50%
+      );
+    pointer-events: none;
+  }
+
+  @keyframes countrysideGradient {
+    0% {
+      background-position: 0% 50%;
+    }
+    50% {
+      background-position: 100% 50%;
+    }
+    100% {
+      background-position: 0% 50%;
+    }
+  }
+
+  /* Countryside card background - soft cream that complements the section */
+  .countryside-card-bg {
+    background: linear-gradient(135deg, #faf8f3 0%, #f7f4ed 50%, #faf8f3 100%);
+    border: 1px solid rgba(139, 195, 74, 0.1);
+    box-shadow:
+      0 4px 6px -1px rgba(0, 0, 0, 0.08),
+      0 2px 4px -1px rgba(0, 0, 0, 0.04);
+  }
+
+  .countryside-card-bg:hover {
+    box-shadow:
+      0 10px 15px -3px rgba(0, 0, 0, 0.1),
+      0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    border-color: rgba(139, 195, 74, 0.2);
+  }
+
+  /* Menu card background - soft cream that complements dark green section */
+  .menu-card-bg {
+    background: linear-gradient(135deg, #f9f7f2 0%, #f5f3ec 50%, #f9f7f2 100%);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow:
+      0 4px 6px -1px rgba(0, 0, 0, 0.15),
+      0 2px 4px -1px rgba(0, 0, 0, 0.1);
+  }
+
+  .menu-card-bg:hover {
+    box-shadow:
+      0 10px 15px -3px rgba(0, 0, 0, 0.2),
+      0 4px 6px -2px rgba(0, 0, 0, 0.15);
+    border-color: rgba(255, 255, 255, 0.3);
+    background: linear-gradient(135deg, #faf8f4 0%, #f6f4ee 50%, #faf8f4 100%);
   }
 
   /* Logo styling */
@@ -2295,5 +3045,124 @@
   .video-player-container button,
   .relative.rounded-2xl.overflow-hidden.shadow-2xl button {
     z-index: 30;
+  }
+
+  /* Shimmer Animation for Tailwind */
+  @keyframes shimmer {
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(100%);
+    }
+  }
+
+  /* Price Strikethrough Animation */
+  .line-through {
+    position: relative;
+  }
+
+  .line-through::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    width: 100%;
+    height: 2px;
+    background: #ef4444;
+    transform: translateY(-50%);
+    animation: strikeThrough 0.5s ease-out;
+  }
+
+  @keyframes strikeThrough {
+    0% {
+      width: 0;
+    }
+    100% {
+      width: 100%;
+    }
+  }
+
+  /* Horizontal Scroll Styles for Mobile */
+  .scrollbar-hide {
+    -ms-overflow-style: none; /* IE and Edge */
+    scrollbar-width: none; /* Firefox */
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none; /* Chrome, Safari and Opera */
+  }
+
+  /* Snap scrolling for better mobile experience */
+  .snap-x {
+    scroll-snap-type: x mandatory;
+  }
+
+  .snap-start {
+    scroll-snap-align: start;
+  }
+
+  .snap-mandatory {
+    scroll-snap-type: x mandatory;
+  }
+
+  /* Smooth scrolling for horizontal sections */
+  @media (max-width: 767px) {
+    .scrollbar-hide {
+      -webkit-overflow-scrolling: touch;
+      scroll-behavior: smooth;
+    }
+  }
+
+  /* Volume slider styling */
+  input[type='range'] {
+    -webkit-appearance: none;
+    appearance: none;
+    background: transparent;
+    cursor: pointer;
+  }
+
+  input[type='range']::-webkit-slider-track {
+    background: rgba(255, 255, 255, 0.2);
+    height: 4px;
+    border-radius: 2px;
+  }
+
+  input[type='range']::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    background: #f97316;
+    height: 12px;
+    width: 12px;
+    border-radius: 50%;
+    cursor: pointer;
+    margin-top: -4px;
+    transition: all 0.2s ease;
+  }
+
+  input[type='range']::-webkit-slider-thumb:hover {
+    background: #fb923c;
+    transform: scale(1.2);
+  }
+
+  input[type='range']::-moz-range-track {
+    background: rgba(255, 255, 255, 0.2);
+    height: 4px;
+    border-radius: 2px;
+  }
+
+  input[type='range']::-moz-range-thumb {
+    background: #f97316;
+    height: 12px;
+    width: 12px;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  input[type='range']::-moz-range-thumb:hover {
+    background: #fb923c;
+    transform: scale(1.2);
   }
 </style>

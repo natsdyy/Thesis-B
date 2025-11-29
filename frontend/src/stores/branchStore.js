@@ -21,6 +21,7 @@ export const useBranchStore = defineStore('branch', {
       state.branches.filter((branch) => branch.is_active),
     inactiveBranches: (state) =>
       state.branches.filter((branch) => !branch.is_active),
+    allBranches: (state) => state.branches,
 
     getBranchById: (state) => (id) => {
       return state.branches.find((branch) => branch.id === id);
@@ -118,6 +119,28 @@ export const useBranchStore = defineStore('branch', {
       }
     },
 
+    // Fetch all branches (both active and inactive) for employee assignment
+    async fetchAllBranches() {
+      this.setLoading(true);
+      this.clearError();
+
+      try {
+        const response = await axios.get(`${apiConfig.baseURL}/branches`, {
+          ...this.getAuthHeaders(),
+        });
+
+        this.branches = response.data;
+        return response.data;
+      } catch (error) {
+        this.setError(
+          error.response?.data?.error || 'Failed to fetch all branches'
+        );
+        throw error;
+      } finally {
+        this.setLoading(false);
+      }
+    },
+
     // Fetch branch by ID
     async fetchBranchById(id) {
       this.setLoading(true);
@@ -129,8 +152,10 @@ export const useBranchStore = defineStore('branch', {
           this.getAuthHeaders()
         );
 
-        this.currentBranch = response.data;
-        return response.data;
+        // Extract the actual branch data from the response wrapper
+        const branchData = response.data.success ? response.data.data : response.data;
+        this.currentBranch = branchData;
+        return branchData;
       } catch (error) {
         this.setError(error.response?.data?.error || 'Failed to fetch branch');
         throw error;

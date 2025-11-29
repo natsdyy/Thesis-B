@@ -1,14 +1,27 @@
 const { db } = require("../config/database");
+const {
+  getCurrentPhilippineDate,
+  formatForDatabase,
+} = require("../utils/timezoneUtils");
+const SILCredits = require("./SILCredits");
 
 class LeaveRequest {
   // Create a new leave request
   static async create(
-    { employee_id, from_date, to_date, leave_type, reason },
+    {
+      employee_id,
+      from_date,
+      to_date,
+      leave_type,
+      reason,
+      use_sil = false,
+      sil_days = 0,
+    },
     createdBy = null
   ) {
     try {
       // Check for overlapping approved leave requests (only current/future ones)
-      const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD format
+      const today = getCurrentPhilippineDate(); // YYYY-MM-DD in Asia/Manila
       const overlappingRequest = await db("leave_requests")
         .where("employee_id", employee_id)
         .whereIn("status", ["approved_by_manager", "approved_by_hr"])
@@ -62,10 +75,45 @@ class LeaveRequest {
         );
       }
 
-      // All employees start with pending status
-      // Department employees skip manager approval and go directly to HR
-      // Branch employees go through manager approval first
-      const initialStatus = "pending";
+      // Check if the employee is a manager to determine initial status
+      const employee = await db("employees")
+        .leftJoin("user_roles", "employees.role_id", "user_roles.role_id")
+        .select(
+          "employees.role_id",
+          "employees.branch_id",
+          "employees.department",
+          db.raw("user_roles.role as role"),
+          db.raw("user_roles.description as role_description")
+        )
+        .where("employees.id", employee_id)
+        .first();
+
+      if (!employee) {
+        throw new Error("Employee not found");
+      }
+
+      // Determine initial status based on role and type
+      let initialStatus = "pending";
+      let approvedByManager = null;
+      let managerApprovedAt = null;
+      let managerNotes = null;
+
+      // If employee is a branch manager, skip manager approval and go directly to HR
+      const isManager =
+        employee.role && employee.role.toLowerCase().includes("manager");
+      const isBranchEmployee = employee.branch_id !== null;
+
+      if (isManager && isBranchEmployee) {
+        // Branch managers skip manager approval step but still need HR approval
+        // Their requests go directly to "pending HR" status since they can't approve themselves
+        initialStatus = "approved_by_manager";
+        approvedByManager = null; // No self-approval
+        managerApprovedAt = null;
+        managerNotes =
+          "Manager leave request - bypassed manager approval, requires HR approval";
+      }
+      // Department employees (no branch_id) skip manager approval and go directly to HR
+      // Other branch employees go through normal manager approval first
 
       const [leaveRequest] = await db("leave_requests")
         .insert({
@@ -74,10 +122,15 @@ class LeaveRequest {
           to_date,
           leave_type,
           reason,
+          use_sil: use_sil,
+          sil_days: sil_days,
           status: initialStatus,
+          approved_by_manager: approvedByManager,
+          manager_approved_at: managerApprovedAt,
+          manager_notes: managerNotes,
           created_by: createdBy,
-          created_at: new Date(),
-          updated_at: new Date(),
+          created_at: formatForDatabase(),
+          updated_at: formatForDatabase(),
         })
         .returning("*");
 
@@ -115,6 +168,8 @@ class LeaveRequest {
           "lr.rejected_by",
           "lr.rejected_at",
           "lr.rejection_reason",
+          "lr.use_sil",
+          "lr.sil_days",
           "lr.created_at",
           "lr.updated_at",
           "e.first_name",
@@ -174,6 +229,8 @@ class LeaveRequest {
           "lr.rejected_by",
           "lr.rejected_at",
           "lr.rejection_reason",
+          "lr.use_sil",
+          "lr.sil_days",
           "lr.created_by",
           "lr.updated_by",
           "lr.created_at",
@@ -289,16 +346,21 @@ class LeaveRequest {
         throw new Error(`Leave request is already ${leaveRequest.status}`);
       }
 
-      // Allow employees to approve their own requests
+      // Prevent self-approval - employees cannot approve their own requests
+      if (leaveRequest.employee_id === managerId) {
+        throw new Error(
+          "You cannot approve your own leave request. Please have another manager or HR approve it."
+        );
+      }
 
       const [updated] = await db("leave_requests")
         .where("id", id)
         .update({
           status: "approved_by_manager",
           approved_by_manager: managerId,
-          manager_approved_at: new Date(),
+          manager_approved_at: formatForDatabase(),
           manager_notes: notes,
-          updated_at: new Date(),
+          updated_at: formatForDatabase(),
         })
         .returning("*");
 
@@ -318,7 +380,12 @@ class LeaveRequest {
         throw new Error("Leave request not found");
       }
 
-      // Allow employees to approve their own requests
+      // Prevent self-approval - employees cannot approve their own requests
+      if (leaveRequest.employee_id === hrId) {
+        throw new Error(
+          "You cannot approve your own leave request. HR staff requests must be approved by Board of Directors or Super Admin."
+        );
+      }
 
       // Check if this is a department employee (single approval) or branch employee (dual approval)
       if (leaveRequest.branch_id) {
@@ -342,9 +409,9 @@ class LeaveRequest {
         .update({
           status: "approved_by_hr",
           approved_by_hr: hrId,
-          hr_approved_at: new Date(),
+          hr_approved_at: formatForDatabase(),
           hr_notes: notes,
-          updated_at: new Date(),
+          updated_at: formatForDatabase(),
         })
         .returning("*");
 
@@ -372,16 +439,63 @@ class LeaveRequest {
         throw new Error("Cannot reject an already approved leave request");
       }
 
+      // Prevent self-rejection - employees cannot reject their own requests
+      if (leaveRequest.employee_id === rejectedById) {
+        throw new Error(
+          "You cannot reject your own leave request. Please have a manager or HR handle this."
+        );
+      }
+
       const [updated] = await db("leave_requests")
         .where("id", id)
         .update({
           status: "rejected",
           rejected_by: rejectedById,
-          rejected_at: new Date(),
+          rejected_at: formatForDatabase(),
           rejection_reason: rejectionReason,
-          updated_at: new Date(),
+          updated_at: formatForDatabase(),
         })
         .returning("*");
+
+      // Restore SIL credits if they were used
+      if (leaveRequest.use_sil && leaveRequest.sil_days > 0) {
+        try {
+          // Extract year from from_date (handle both Date objects and strings)
+          const fromDate =
+            leaveRequest.from_date instanceof Date
+              ? leaveRequest.from_date
+              : new Date(leaveRequest.from_date);
+          const currentYear = fromDate.getFullYear();
+
+          if (isNaN(currentYear)) {
+            throw new Error(
+              `Invalid from_date for year extraction: ${leaveRequest.from_date}`
+            );
+          }
+
+          await SILCredits.restoreCredits(
+            leaveRequest.employee_id,
+            currentYear,
+            parseFloat(leaveRequest.sil_days)
+          );
+
+          console.log(
+            `✅ Restored ${leaveRequest.sil_days} SIL credits for employee ${leaveRequest.employee_id}, year ${currentYear}`
+          );
+        } catch (silError) {
+          console.error(
+            "Error restoring SIL credits after rejection:",
+            silError.message,
+            {
+              leave_id: id,
+              employee_id: leaveRequest.employee_id,
+              from_date: leaveRequest.from_date,
+              sil_days: leaveRequest.sil_days,
+            }
+          );
+          // Don't fail the rejection if SIL restore fails, but log it
+        }
+      }
 
       return updated;
     } catch (error) {
@@ -408,7 +522,7 @@ class LeaveRequest {
         .update({
           ...updateData,
           updated_by: updatedBy,
-          updated_at: new Date(),
+          updated_at: formatForDatabase(),
         })
         .returning("*");
 
@@ -432,8 +546,8 @@ class LeaveRequest {
       }
 
       await db("leave_requests").where("id", id).update({
-        deleted_at: new Date(),
-        updated_at: new Date(),
+        deleted_at: formatForDatabase(),
+        updated_at: formatForDatabase(),
       });
 
       return true;
@@ -455,6 +569,8 @@ class LeaveRequest {
           "lr.leave_type",
           "lr.reason",
           "lr.status",
+          "lr.use_sil",
+          "lr.sil_days",
           "lr.created_at",
           "e.first_name",
           "e.last_name",
@@ -491,6 +607,8 @@ class LeaveRequest {
           "lr.leave_type",
           "lr.reason",
           "lr.status",
+          "lr.use_sil",
+          "lr.sil_days",
           "lr.created_at",
           "e.first_name",
           "e.last_name",
@@ -523,6 +641,8 @@ class LeaveRequest {
           "lr.leave_type",
           "lr.reason",
           "lr.status",
+          "lr.use_sil",
+          "lr.sil_days",
           "lr.manager_approved_at",
           "lr.manager_notes",
           "lr.created_at",

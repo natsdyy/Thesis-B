@@ -1,5 +1,5 @@
 <script setup>
-  import { ref, watch, computed, onMounted } from 'vue';
+  import { ref, watch, onMounted, onUnmounted } from 'vue';
   import {
     X,
     Search,
@@ -42,6 +42,8 @@
   const itemsPerPage = ref(10);
   const totalPages = ref(1);
   const totalTransactions = ref(0);
+  const lastRefreshTime = ref(null);
+  const autoRefreshInterval = ref(null);
 
   // Manager PIN verification
   const showManagerPinModal = ref(false);
@@ -160,7 +162,7 @@
 
   const filters = ref({
     search: '',
-    status: '', // pending | processing | completed | void
+    status: 'processing', // default to processing
     order_type: '', // dine_in | take_out
     date_from: '',
     date_to: '',
@@ -285,10 +287,12 @@
     emit('close');
   };
 
-  const fetchTransactions = async () => {
+  const fetchTransactions = async (showLoading = true) => {
     if (!context.currentBranch?.id) return;
-    loading.value = true;
+    if (showLoading) loading.value = true;
     try {
+      // Ensure date_from/date_to are in sync with date_range before fetching
+      applyDateRange();
       // Calculate offset for pagination
       const offset = (currentPage.value - 1) * itemsPerPage.value;
 
@@ -339,6 +343,8 @@
             time: formatTime(order.created_at),
             date: formatTransactionDate(order.created_at),
             amount: parseFloat(order.total_amount) || 0,
+            is_vat_exempt: Boolean(order.is_vat_exempt),
+            discount_type: order.discount_type || 'NONE',
             amount_paid: parseFloat(order.amount_paid) || 0,
             change_amount: parseFloat(order.change_amount) || 0,
             items: order.items || [],
@@ -359,6 +365,7 @@
             isLoss: isLoss,
             void_reason: order.void_reason,
             voided_at: order.voided_at,
+            remittance_id: order.remittance_id || null,
           };
         });
 
@@ -382,20 +389,23 @@
         totalTransactions.value = 0;
         totalPages.value = 1;
       }
+
+      // Update last refresh time
+      lastRefreshTime.value = new Date();
     } catch (e) {
       console.error('Failed to load POS transactions', e);
       transactions.value = [];
       totalTransactions.value = 0;
       totalPages.value = 1;
     } finally {
-      loading.value = false;
+      if (showLoading) loading.value = false;
     }
   };
 
   const clearFilters = () => {
     filters.value = {
       search: '',
-      status: '',
+      status: 'processing',
       order_type: '',
       date_from: '',
       date_to: '',
@@ -403,6 +413,47 @@
     };
     currentPage.value = 1;
     fetchTransactions();
+  };
+
+  // Auto-refresh functionality
+  const startAutoRefresh = () => {
+    // Clear existing interval
+    if (autoRefreshInterval.value) {
+      clearInterval(autoRefreshInterval.value);
+    }
+
+    // Set new interval (refresh every 30 seconds)
+    autoRefreshInterval.value = setInterval(() => {
+      if (props.show) {
+        fetchTransactions(false); // Silent refresh
+      }
+    }, 30000);
+  };
+
+  const stopAutoRefresh = () => {
+    if (autoRefreshInterval.value) {
+      clearInterval(autoRefreshInterval.value);
+      autoRefreshInterval.value = null;
+    }
+  };
+
+  // Manual refresh function
+  const refreshTransactions = () => {
+    fetchTransactions();
+  };
+
+  // Format last refresh time
+  const formatLastRefreshTime = () => {
+    if (!lastRefreshTime.value) return 'Never';
+    const now = new Date();
+    const diffMs = now - lastRefreshTime.value;
+    const diffSecs = Math.floor(diffMs / 1000);
+
+    if (diffSecs < 60) return `${diffSecs}s ago`;
+    const diffMins = Math.floor(diffSecs / 60);
+    if (diffMins < 60) return `${diffMins}m ago`;
+    const diffHours = Math.floor(diffMins / 60);
+    return `${diffHours}h ago`;
   };
 
   const nextPage = () => {
@@ -425,55 +476,91 @@
       const dlg = document.getElementById('pos_transaction_modal');
       if (val) {
         Object.assign(filters.value, props.initialFilter || {});
+        // Enforce defaults if not provided via initialFilter
+        if (!filters.value.status) filters.value.status = 'processing';
+        if (!filters.value.date_range) filters.value.date_range = 'today';
         currentPage.value = 1;
         fetchTransactions();
+        startAutoRefresh(); // Start auto-refresh when modal opens
         if (dlg?.showModal) dlg.showModal();
-      } else if (dlg?.close) {
-        dlg.close();
+      } else {
+        stopAutoRefresh(); // Stop auto-refresh when modal closes
+        if (dlg?.close) dlg.close();
       }
     }
   );
 
   onMounted(() => {
-    if (props.show) fetchTransactions();
+    if (props.show) {
+      fetchTransactions();
+      startAutoRefresh();
+    }
+  });
+
+  // Cleanup on unmount
+  onUnmounted(() => {
+    stopAutoRefresh();
   });
 
   // Date range helpers
-  const toYmd = (d) => {
-    const pad = (n) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const startOfDayISO = (d) => {
+    const s = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
+    return s.toISOString();
+  };
+  const endOfDayISO = (d) => {
+    const e = new Date(
+      d.getFullYear(),
+      d.getMonth(),
+      d.getDate(),
+      23,
+      59,
+      59,
+      999
+    );
+    return e.toISOString();
   };
 
   const applyDateRange = () => {
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     if (filters.value.date_range === 'today') {
-      filters.value.date_from = toYmd(today);
-      filters.value.date_to = toYmd(today);
+      filters.value.date_from = startOfDayISO(today);
+      filters.value.date_to = endOfDayISO(today);
     } else if (filters.value.date_range === 'this_week') {
       const day = today.getDay();
       const mondayOffset = day === 0 ? -6 : 1 - day;
       const weekStart = new Date(today);
       weekStart.setDate(today.getDate() + mondayOffset);
-      const weekEnd = new Date(weekStart);
-      weekEnd.setDate(weekStart.getDate() + 6);
-      filters.value.date_from = toYmd(weekStart);
-      filters.value.date_to = toYmd(weekEnd);
+      const weekEnd = new Date(today);
+      filters.value.date_from = startOfDayISO(weekStart);
+      filters.value.date_to = endOfDayISO(weekEnd);
     } else if (filters.value.date_range === 'this_month') {
       const start = new Date(today.getFullYear(), today.getMonth(), 1);
-      const end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-      filters.value.date_from = toYmd(start);
-      filters.value.date_to = toYmd(end);
+      const end = new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        today.getDate()
+      );
+      filters.value.date_from = startOfDayISO(start);
+      filters.value.date_to = endOfDayISO(end);
     } else if (filters.value.date_range === 'custom_month') {
       const base = filters.value.date_from
         ? new Date(filters.value.date_from)
         : new Date(today.getFullYear(), today.getMonth(), 1);
       const start = new Date(base.getFullYear(), base.getMonth(), 1);
       const end = new Date(base.getFullYear(), base.getMonth() + 1, 0);
-      filters.value.date_from = toYmd(start);
-      filters.value.date_to = toYmd(end);
-    } else {
-      // custom: keep inputs
+      filters.value.date_from = startOfDayISO(start);
+      filters.value.date_to = endOfDayISO(end);
+    } else if (filters.value.date_range === 'custom') {
+      // If user entered yyyy-mm-dd values, convert to ISO day bounds
+      if (filters.value.date_from) {
+        const d = new Date(filters.value.date_from);
+        filters.value.date_from = startOfDayISO(d);
+      }
+      if (filters.value.date_to) {
+        const d = new Date(filters.value.date_to);
+        filters.value.date_to = endOfDayISO(d);
+      }
     }
   };
 
@@ -628,13 +715,15 @@
 
     try {
       await posStore.completeOrder(posStore.selectedTransaction.id);
-      await fetchTransactions(); // Refresh the list
+
+      // Refresh the transaction list immediately
+      await fetchTransactions(false); // Silent refresh
 
       // Close modal and clear store
       showCompleteModal.value = false;
       posStore.clearSelectedTransaction();
 
-      // Refresh POS data only; do not reopen the transactions modal
+      // Refresh POS data
       emit('refresh');
 
       showSuccess('Order completed successfully');
@@ -723,6 +812,9 @@
         { refund_on_completed: isRefundReason && isOrderCompleted }
       );
 
+      // Refresh the transaction list immediately
+      await fetchTransactions(false); // Silent refresh
+
       // Close void modal and reopen transaction modal
       closeVoidModal();
       emit('reopen');
@@ -769,76 +861,115 @@
   <dialog id="pos_transaction_modal" class="modal">
     <div class="modal-box max-w-7xl max-h-[80vh] overflow-y-auto">
       <div class="flex items-center justify-between mb-4">
-        <h3 class="card-title text-primaryColor">
-          <ShoppingCart class="w-5 h-5 mr-2" />
-          Recent Transactions
-        </h3>
-        <button class="btn btn-ghost btn-sm" @click="closeModal">
-          <X class="w-4 h-4" />
-        </button>
+        <div>
+          <h3 class="card-title text-primaryColor">
+            <ShoppingCart class="w-5 h-5 mr-2" />
+            Recent Transactions
+          </h3>
+          <p class="text-xs text-gray-500 mt-1">
+            Last updated: {{ formatLastRefreshTime() }}
+          </p>
+        </div>
+        <div class="flex items-center gap-2">
+          <button
+            class="btn btn-ghost btn-sm"
+            @click="refreshTransactions"
+            :disabled="loading"
+            title="Refresh transactions"
+          >
+            <RefreshCcw class="w-4 h-4" :class="{ 'animate-spin': loading }" />
+          </button>
+          <button class="btn btn-ghost btn-sm" @click="closeModal">
+            <X class="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
-      <div class="grid grid-cols-1 sm:grid-cols-6 gap-2 mb-3">
-        <label class="input input-bordered flex items-center gap-2 col-span-2">
-          <Search class="w-4 h-4" />
-          <input
-            v-model="filters.search"
-            @keyup.enter="fetchTransactions"
-            type="text"
-            class="grow"
-            placeholder="Search order number or items"
-          />
-        </label>
+      <div
+        class="mb-3 flex flex-col sm:flex-row items-center justify-between gap-2"
+      >
+        <!-- Search -->
+        <div class="w-full sm:w-1/3">
+          <label class="input input-bordered flex items-center gap-2 w-full">
+            <Search class="w-4 h-4" />
+            <input
+              v-model="filters.search"
+              @keyup.enter="fetchTransactions"
+              type="text"
+              class="grow"
+              placeholder="Search order number or items"
+            />
+          </label>
+        </div>
 
-        <select
-          v-model="filters.status"
-          class="select select-bordered select-sm sm:select-md"
-        >
-          <option
-            v-for="status in statusOptions"
-            :key="status.value"
-            :value="status.value"
+        <!-- Filters -->
+        <div class="flex flex-wrap sm:flex-nowrap items-center gap-2">
+          <select
+            v-model="filters.status"
+            class="select select-bordered select-sm sm:select-md"
           >
-            {{ status.label }}
-          </option>
-        </select>
+            <option
+              v-for="status in statusOptions"
+              :key="status.value"
+              :value="status.value"
+            >
+              {{ status.label }}
+            </option>
+          </select>
 
-        <select
-          v-model="filters.order_type"
-          class="select select-bordered select-sm sm:select-md"
-        >
-          <option
-            v-for="type in orderTypeOptions"
-            :key="type.value"
-            :value="type.value"
+          <select
+            v-model="filters.order_type"
+            class="select select-bordered select-sm sm:select-md"
           >
-            {{ type.label }}
-          </option>
-        </select>
+            <option
+              v-for="type in orderTypeOptions"
+              :key="type.value"
+              :value="type.value"
+            >
+              {{ type.label }}
+            </option>
+          </select>
 
-        <select
-          v-model="filters.date_range"
-          @change="
-            applyDateRange();
-            fetchTransactions();
-          "
-          class="select select-bordered select-sm sm:select-md"
-        >
-          <option value="today">Today</option>
-          <option value="this_week">This Week</option>
-          <option value="this_month">This Month</option>
-          <option value="custom_month">Custom Month</option>
-          <option value="custom">Custom Range</option>
-        </select>
+          <select
+            v-model="filters.date_range"
+            @change="
+              applyDateRange();
+              fetchTransactions();
+            "
+            class="select select-bordered select-sm sm:select-md"
+          >
+            <option value="today">Today</option>
+            <option value="this_week">This Week</option>
+            <option value="this_month">This Month</option>
+            <option value="custom_month">Custom Month</option>
+            <option value="custom">Custom Range</option>
+          </select>
 
-        <label class="input input-bordered flex items-center gap-2">
-          <Calendar class="w-4 h-4" />
-          <input v-model="filters.date_from" type="date" class="grow" />
-        </label>
-        <label class="input input-bordered flex items-center gap-2">
-          <Calendar class="w-4 h-4" />
-          <input v-model="filters.date_to" type="date" class="grow" />
-        </label>
+          <label
+            v-if="filters.date_range === 'custom'"
+            class="input input-bordered flex items-center gap-2"
+          >
+            <Calendar class="w-4 h-4" />
+            <input
+              v-model="filters.date_from"
+              type="date"
+              class="grow"
+              placeholder="From"
+            />
+          </label>
+          <label
+            v-if="filters.date_range === 'custom'"
+            class="input input-bordered flex items-center gap-2"
+          >
+            <Calendar class="w-4 h-4" />
+            <input
+              v-model="filters.date_to"
+              type="date"
+              class="grow"
+              placeholder="To"
+            />
+          </label>
+        </div>
       </div>
 
       <div class="flex justify-end gap-2 mb-3">
@@ -855,13 +986,6 @@
         >
           <Filter class="w-4 h-4 mr-1" />
           Apply
-        </button>
-        <button
-          class="btn btn-outline btn-sm font-thin"
-          @click="exportTransactions"
-        >
-          <Download class="w-4 h-4 mr-1" />
-          Export
         </button>
       </div>
 
@@ -883,8 +1007,8 @@
                 <th>Date</th>
                 <th>Time</th>
                 <th>Amount</th>
-                <th>Paid Amount</th>
-                <th>Change</th>
+                <th>VAT-Exempt</th>
+                <th>SC/PWD</th>
                 <th>Cashier</th>
                 <th>Type</th>
                 <th>Status</th>
@@ -926,8 +1050,10 @@
                 <td class="whitespace-nowrap">
                   {{ transaction.time }}
                 </td>
-                <td>
-                  <div class="font-semibold text-primaryColor">
+                <td class="whitespace-nowrap">
+                  <div
+                    class="font-semibold text-primaryColor inline-flex items-center gap-1"
+                  >
                     <font-awesome-icon icon="fa-solid fa-peso-sign" />{{
                       isNaN(transaction.amount)
                         ? '0.00'
@@ -936,21 +1062,28 @@
                   </div>
                 </td>
                 <td>
-                  <div class="font-thin text-gray-600">
-                    <font-awesome-icon icon="fa-solid fa-peso-sign" />{{
-                      isNaN(transaction.amount_paid)
-                        ? '0.00'
-                        : transaction.amount_paid.toFixed(2)
-                    }}
+                  <div
+                    class="text-xs"
+                    :class="
+                      transaction.is_vat_exempt
+                        ? 'text-emerald-600'
+                        : 'text-gray-400'
+                    "
+                  >
+                    {{ transaction.is_vat_exempt ? 'Yes' : 'No' }}
                   </div>
                 </td>
                 <td>
-                  <div class="font-thin text-gray-600">
-                    <font-awesome-icon icon="fa-solid fa-peso-sign" />{{
-                      isNaN(transaction.change_amount)
-                        ? '0.00'
-                        : transaction.change_amount.toFixed(2)
-                    }}
+                  <div class="text-xs">
+                    <span
+                      v-if="
+                        transaction.discount_type &&
+                        transaction.discount_type !== 'NONE'
+                      "
+                      class="badge badge-xs bg-emerald-100 text-emerald-700 border border-emerald-200"
+                      >{{ transaction.discount_type }}</span
+                    >
+                    <span v-else class="text-gray-400">-</span>
                   </div>
                 </td>
                 <td>
@@ -1007,8 +1140,9 @@
                     <!-- Void Order Button (requires manager PIN) -->
                     <button
                       v-if="
-                        transaction.status === 'pending' ||
-                        transaction.status === 'processing'
+                        (transaction.status === 'pending' ||
+                          transaction.status === 'processing') &&
+                        !transaction.remittance_id
                       "
                       @click="handleVoidOrder(transaction)"
                       class="btn btn-xs btn-error text-error font-thin bg-error/20 shadow-none border-none"
@@ -1019,7 +1153,10 @@
 
                     <!-- Refund Order Button (requires manager PIN) -->
                     <button
-                      v-if="transaction.status === 'completed'"
+                      v-if="
+                        transaction.status === 'completed' &&
+                        !transaction.remittance_id
+                      "
                       @click="handleRefundOrder(transaction)"
                       class="btn btn-xs btn-warning text-warning font-thin bg-warning/20 shadow-none border-none"
                       title="Refund Order (Manager Required)"
@@ -1153,42 +1290,16 @@
 
       <!-- Transaction Details -->
       <div class="space-y-4 mb-6">
-        <div class="bg-gray-50 rounded-lg p-4">
-          <div class="grid grid-cols-2 gap-4 text-sm">
-            <div>
-              <span class="font-medium text-gray-600">Order Number:</span>
-              <p class="font-semibold">
-                {{ selectedTransaction?.order_number }}
-              </p>
-            </div>
-            <div>
-              <span class="font-medium text-gray-600">Amount:</span>
-              <p class="font-semibold">
-                <font-awesome-icon icon="fa-solid fa-peso-sign" />
-                {{ selectedTransaction?.amount?.toFixed(2) }}
-              </p>
-            </div>
-            <div>
-              <span class="font-medium text-gray-600">Action:</span>
-              <p class="font-semibold capitalize">{{ pendingAction }}</p>
-            </div>
-            <div>
-              <span class="font-medium text-gray-600">Status:</span>
-              <p class="font-semibold">{{ selectedTransaction?.status }}</p>
-            </div>
-          </div>
-        </div>
-
         <!-- Manager PIN Input -->
         <div class="space-y-2">
           <label class="text-sm font-medium text-gray-700">
-            Manager Employee ID:
+            Manager PIN:
           </label>
           <div class="relative">
             <input
               v-model="managerPinForm.employeeId"
               :type="showEmployeeId ? 'text' : 'password'"
-              placeholder="Enter manager employee ID"
+              placeholder="Enter your PIN"
               class="input input-bordered w-full input-sm sm:input-md pr-10"
               @keyup.enter="handleManagerPinVerification"
             />
@@ -1336,7 +1447,10 @@
                   {{ reason.label }}
                 </option>
               </optgroup>
-              <optgroup label="Loss Reasons ">
+              <optgroup
+                v-if="posStore.selectedTransaction?.status !== 'processing'"
+                label="Loss Reasons "
+              >
                 <option
                   v-for="reason in voidReasons.filter((r) => r.type === 'loss')"
                   :key="reason.value"
@@ -1599,14 +1713,14 @@
         <div class="flex gap-3 justify-end">
           <button
             @click="closeCompleteModal"
-            class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+            class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 cursor-pointer"
             :disabled="completeLoading"
           >
             Cancel
           </button>
           <button
             @click="confirmCompleteOrder"
-            class="px-4 py-2 text-sm font-medium text-white bg-green-600 border border-transparent rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            class="px-4 py-2 text-sm font-medium text-white bg-primaryColor border border-transparent rounded-lg hover:bg-primaryColor/80 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primaryColor disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             :disabled="completeLoading"
           >
             <span

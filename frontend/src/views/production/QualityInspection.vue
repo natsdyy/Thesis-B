@@ -34,7 +34,7 @@
   const searchQuery = ref('');
   const statusFilter = ref('');
   const resultFilter = ref('');
-  const dateFilter = ref('');
+  const dateFilter = ref('today'); // 'today', 'this_week', 'this_month', or ''
   const showCreateModal = ref(false);
   const showDetailsModal = ref(false);
   const selectedInspection = ref(null);
@@ -54,9 +54,8 @@
 
   // Form data
   const inspectionForm = ref({
-    sample_production_id: '',
     menu_item_id: '',
-    inspection_type: 'Sample Test',
+    inspection_type: 'Direct Inspection',
     inspection_date: new Date().toISOString().split('T')[0],
     inspection_time: '',
     taste_score: '',
@@ -75,15 +74,12 @@
   const inspectionRequirements = ref({});
 
   // Track inspection source/origin
-  const inspectionSource = ref(null); // 'menu_creation', 'direct', 'sample_based', etc.
+  const inspectionSource = ref(null); // 'menu_creation', 'direct', etc.
 
   // Access store data
   const loading = computed(() => productionStore.loading);
   const error = computed(() => productionStore.error);
   const qualityInspections = computed(() => productionStore.qualityInspections);
-  const sampleProductions = computed(() =>
-    productionStore.sampleProductions.filter((sp) => sp.status === 'Completed')
-  );
   const menuItems = computed(() => productionStore.menuItems || []);
   const qualityInspectionStats = computed(
     () => productionStore.qualityInspectionStats
@@ -108,14 +104,56 @@
         return 'Direct Menu Item Inspection';
       case 'direct_inspection':
         return 'Direct Menu Item Inspection';
-      case 'sample_based':
-        return 'Sample Production Inspection';
       case 'manual':
         return 'Manual Inspection Creation';
       default:
         return 'New Quality Inspection';
     }
   });
+
+  // Helper function to get date range based on filter
+  const getDateRange = (filter) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    switch (filter) {
+      case 'today': {
+        return {
+          start: new Date(today),
+          end: new Date(today),
+        };
+      }
+      case 'this_week': {
+        const startOfWeek = new Date(today);
+        const day = startOfWeek.getDay();
+        const diff = startOfWeek.getDate() - day;
+        startOfWeek.setDate(diff);
+
+        const endOfWeek = new Date(startOfWeek);
+        endOfWeek.setDate(startOfWeek.getDate() + 6);
+
+        return {
+          start: startOfWeek,
+          end: endOfWeek,
+        };
+      }
+      case 'this_month': {
+        const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+        const endOfMonth = new Date(
+          today.getFullYear(),
+          today.getMonth() + 1,
+          0
+        );
+
+        return {
+          start: startOfMonth,
+          end: endOfMonth,
+        };
+      }
+      default:
+        return null;
+    }
+  };
 
   // Computed properties
   const filteredInspections = computed(() => {
@@ -127,7 +165,6 @@
         (inspection) =>
           inspection.inspection_number.toLowerCase().includes(query) ||
           inspection.item_name?.toLowerCase().includes(query) ||
-          inspection.sample_batch_number?.toLowerCase().includes(query) ||
           inspection.findings?.toLowerCase().includes(query)
       );
     }
@@ -145,9 +182,16 @@
     }
 
     if (dateFilter.value) {
-      filtered = filtered.filter(
-        (inspection) => inspection.inspection_date === dateFilter.value
-      );
+      const dateRange = getDateRange(dateFilter.value);
+      if (dateRange) {
+        filtered = filtered.filter((inspection) => {
+          const inspectionDate = new Date(inspection.inspection_date);
+          inspectionDate.setHours(0, 0, 0, 0);
+          return (
+            inspectionDate >= dateRange.start && inspectionDate <= dateRange.end
+          );
+        });
+      }
     }
 
     return filtered.sort((a, b) => {
@@ -167,34 +211,6 @@
   const totalPages = computed(() => {
     return Math.ceil(filteredInspections.value.length / itemsPerPage.value);
   });
-
-  // Available sample productions for inspection
-  const availableSampleProductions = computed(() => {
-    return sampleProductions.value.filter((sample) => {
-      // Show samples that are completed and don't have a passed inspection
-      // Allow failed samples to be retested
-      const existingInspection = qualityInspections.value.find(
-        (inspection) =>
-          inspection.sample_production_id === sample.id &&
-          inspection.result === 'Pass'
-      );
-
-      // Only show completed sample productions that either:
-      // 1. Have no inspection yet, OR
-      // 2. Have failed inspection (for retesting), OR
-      // 3. Have "Retest Required" result
-      return sample.status === 'Completed' && !existingInspection;
-    });
-  });
-
-  // Check if a sample production has failed inspection
-  const hasFailedInspection = (sampleId) => {
-    return qualityInspections.value.some(
-      (inspection) =>
-        inspection.sample_production_id === sampleId &&
-        inspection.result === 'Fail'
-    );
-  };
 
   // Helper functions
   const formatDate = (dateString) => {
@@ -360,9 +376,8 @@
 
   const resetForm = () => {
     inspectionForm.value = {
-      sample_production_id: '',
       menu_item_id: '',
-      inspection_type: 'Sample Test',
+      inspection_type: 'Direct Inspection',
       inspection_date: new Date().toISOString().split('T')[0],
       inspection_time: '',
       taste_score: '',
@@ -382,7 +397,6 @@
     try {
       await Promise.all([
         productionStore.fetchQualityInspections(),
-        productionStore.fetchSampleProductions(),
         productionStore.fetchMenuItems(),
         productionStore.fetchQualityInspectionStats(),
         fetchInspectionTypes(),
@@ -428,10 +442,8 @@
 
     // Auto-determine source if not explicitly set
     if (!inspectionSource.value) {
-      if (menuItemId && !inspectionForm.value.sample_production_id) {
+      if (menuItemId) {
         inspectionSource.value = 'direct_inspection';
-      } else if (inspectionForm.value.sample_production_id) {
-        inspectionSource.value = 'sample_based';
       } else {
         inspectionSource.value = 'manual';
       }
@@ -570,7 +582,7 @@
       const cleanedFormData = {
         ...formData,
         // Convert empty strings to null for ID fields
-        sample_production_id: formData.sample_production_id || null,
+        sample_production_id: null, // No longer used
         menu_item_id: formData.menu_item_id || null,
         // Convert empty strings to null for numeric fields
         taste_score: formData.taste_score || null,
@@ -740,16 +752,6 @@
     }, 3000);
   };
 
-  // Watch for sample production selection to auto-set inspection type for retests
-  watch(
-    () => inspectionForm.value.sample_production_id,
-    (newSampleId) => {
-      if (newSampleId && hasFailedInspection(newSampleId)) {
-        inspectionForm.value.inspection_type = 'Retest';
-      }
-    }
-  );
-
   // Lifecycle
   onMounted(async () => {
     await fetchData();
@@ -794,7 +796,7 @@
 </script>
 
 <template>
-  <div class="container mx-auto p-2 sm:p-4 lg:p-6 max-w-6xl">
+  <div class="mx-auto p-2 sm:p-4 lg:p-6">
     <!-- Header -->
     <div class="text-center mb-4 sm:mb-6 lg:mb-8">
       <h1
@@ -803,8 +805,8 @@
         Quality Inspection & Testing
       </h1>
       <p class="text-sm sm:text-base text-black/50 px-2">
-        Perform quality inspections on sample productions and approve menu items
-        for production.
+        Perform quality inspections on menu items and approve them for
+        production.
       </p>
     </div>
 
@@ -948,8 +950,7 @@
                 Quality Inspections
               </h2>
               <p class="text-sm text-gray-600">
-                Review and manage quality inspection results for sample
-                productions.
+                Review and manage quality inspection results for menu items.
               </p>
             </div>
             <div class="flex gap-2">
@@ -987,12 +988,12 @@
                 <option value="Pending">Pending</option>
                 <option value="Retest Required">Retest Required</option>
               </select>
-              <input
-                v-model="dateFilter"
-                type="date"
-                class="input input-bordered"
-                placeholder="Filter by date"
-              />
+              <select v-model="dateFilter" class="select select-bordered">
+                <option value="">All Time</option>
+                <option value="today">Today</option>
+                <option value="this_week">This Week</option>
+                <option value="this_month">This Month</option>
+              </select>
             </div>
           </div>
 
@@ -1013,10 +1014,7 @@
                       {{ inspection.item_name }}
                     </h3>
                     <p class="text-sm text-gray-600 mb-2">
-                      {{
-                        inspection.sample_batch_number ||
-                        inspection.inspection_number
-                      }}
+                      {{ inspection.inspection_number }}
                     </p>
                     <div class="flex items-center gap-2 mb-3">
                       <component
@@ -1263,7 +1261,7 @@
                 {{
                   searchQuery || resultFilter || dateFilter
                     ? 'Try adjusting your filters'
-                    : 'Complete sample productions to create quality inspections'
+                    : 'Create quality inspections for menu items'
                 }}
               </p>
               <button
@@ -1348,14 +1346,6 @@
                   </div>
                 </div>
                 <div class="text-sm text-blue-700">
-                  <div class="flex justify-between mb-1">
-                    <span>Sample Tests:</span>
-                    <span class="font-medium">{{
-                      qualityInspections.filter(
-                        (i) => i.inspection_type === 'Sample Test'
-                      ).length
-                    }}</span>
-                  </div>
                   <div class="flex justify-between mb-1">
                     <span>Direct Inspections:</span>
                     <span class="font-medium">{{
@@ -1564,16 +1554,11 @@
             {{
               inspectionSource === 'menu_creation'
                 ? 'This inspection was initiated from the Menu Creation page for a specific menu item.'
-                : inspectionForm.inspection_type === 'Sample Test'
-                  ? 'This inspection is based on a sample production batch.'
-                  : inspectionForm.inspection_type === 'Direct Inspection'
-                    ? 'This is a direct quality inspection without sample production.'
-                    : inspectionForm.inspection_type === 'Spot Check'
-                      ? 'This is a quick spot check inspection for quality monitoring.'
-                      : inspectionForm.inspection_type ===
-                          'Complaint Investigation'
-                        ? 'This inspection is initiated due to a customer complaint.'
-                        : 'This is a quality inspection for the selected menu item.'
+                : inspectionForm.inspection_type === 'Spot Check'
+                  ? 'This is a quick spot check inspection for quality monitoring.'
+                  : inspectionForm.inspection_type === 'Complaint Investigation'
+                    ? 'This inspection is initiated due to a customer complaint.'
+                    : 'This is a quality inspection for the selected menu item.'
             }}
           </p>
         </div>
@@ -1582,41 +1567,8 @@
           <!-- Basic Information -->
           <div
             class="grid gap-3 sm:gap-4 bg-white border border-black/10 p-4 rounded-xl"
-            :class="
-              inspectionSource === 'menu_creation'
-                ? 'grid-cols-1'
-                : 'grid-cols-1 lg:grid-cols-2'
-            "
+            :class="grid - cols - 1"
           >
-            <!-- Sample Production Selection (hidden for menu_creation source) -->
-            <div
-              v-if="inspectionSource !== 'menu_creation'"
-              class="form-control"
-            >
-              <label class="label mb-1">
-                <span
-                  class="label-text text-black/70 font-medium text-sm sm:text-base"
-                  >Sample Production <span class="text-red-500">*</span></span
-                >
-              </label>
-              <select
-                v-model="inspectionForm.sample_production_id"
-                class="select select-sm sm:select-md select-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
-                :required="inspectionForm.inspection_type === 'Sample Test'"
-                placeholder="Select Sample Production"
-              >
-                <option value="" disabled>Select Sample Production</option>
-                <option
-                  v-for="sample in availableSampleProductions"
-                  :key="sample.id"
-                  :value="sample.id"
-                >
-                  {{ sample.item_name }} - {{ sample.sample_batch_number }}
-                  <span v-if="hasFailedInspection(sample.id)"> (Retest)</span>
-                </option>
-              </select>
-            </div>
-
             <!-- Menu Item Selection (hidden for menu_creation source) -->
             <div
               v-if="inspectionSource !== 'menu_creation'"
@@ -2021,18 +1973,6 @@
               </label>
               <div class="text-sm text-primaryColor font-semibold">
                 {{ selectedInspection.item_name }}
-              </div>
-            </div>
-
-            <div class="form-control">
-              <label class="label mb-1">
-                <span
-                  class="label-text text-black/70 font-medium text-sm sm:text-base"
-                  >Sample Batch</span
-                >
-              </label>
-              <div class="text-sm text-primaryColor font-semibold">
-                {{ selectedInspection.sample_batch_number }}
               </div>
             </div>
 

@@ -62,6 +62,11 @@
     sequence_order: 1,
   });
 
+  // Search functionality for ingredients
+  const ingredientSearchQuery = ref('');
+  const showIngredientDropdown = ref(false);
+  const selectedIngredientName = ref('');
+
   // Auto-populate ingredient details when selected
   const handleIngredientSelection = (inventoryItemId) => {
     if (!inventoryItemId) {
@@ -83,8 +88,48 @@
       const availableStock = selectedItem.quantity || 0;
       ingredientForm.value.quantity_required = Math.min(1, availableStock);
 
+      // Set selected ingredient name for display
+      selectedIngredientName.value = selectedItem.item_name;
+
       console.log('Populated form:', ingredientForm.value); // Debug log
     }
+  };
+
+  // Handle ingredient selection from search dropdown
+  const selectIngredient = (ingredient) => {
+    ingredientForm.value.inventory_item_id = ingredient.id;
+    selectedIngredientName.value = ingredient.item_name;
+    ingredientSearchQuery.value = ingredient.item_name;
+    showIngredientDropdown.value = false;
+
+    // Auto-populate ingredient details
+    handleIngredientSelection(ingredient.id);
+  };
+
+  // Handle search input changes
+  const handleIngredientSearch = (event) => {
+    ingredientSearchQuery.value = event.target.value;
+    showIngredientDropdown.value = true;
+
+    // Clear selection if search query doesn't match selected ingredient
+    if (
+      selectedIngredientName.value &&
+      !selectedIngredientName.value
+        .toLowerCase()
+        .includes(ingredientSearchQuery.value.toLowerCase())
+    ) {
+      ingredientForm.value.inventory_item_id = '';
+      selectedIngredientName.value = '';
+    }
+  };
+
+  // Clear ingredient search and selection
+  const clearIngredientSelection = () => {
+    ingredientForm.value.inventory_item_id = '';
+    selectedIngredientName.value = '';
+    ingredientSearchQuery.value = '';
+    showIngredientDropdown.value = false;
+    resetIngredientForm();
   };
 
   const ingredients = ref([]);
@@ -111,7 +156,7 @@
   // Local state
   const loading = ref(false);
   const currentPage = ref(1);
-  const recipesPerPage = ref(6);
+  const recipesPerPage = ref(8);
 
   // Modal state
   const modal = ref({ type: null, show: false, recipe: null });
@@ -173,6 +218,7 @@
   // Deleted recipes pagination
   const deletedPage = ref(1);
   const deletedPerPage = ref(8);
+  const showDeletedRecipes = ref(false);
   const paginatedDeletedRecipes = computed(() => {
     const start = (deletedPage.value - 1) * deletedPerPage.value;
     return deletedRecipes.value.slice(start, start + deletedPerPage.value);
@@ -213,15 +259,42 @@
     }, 0);
   });
 
+  // Suggested price range using 30-35% markup (PH guideline)
+  const suggestedPriceRange = computed(() => {
+    const cost = Number(totalCostPerBatch.value || 0);
+    return {
+      min: cost * 1.3,
+      max: cost * 1.35,
+    };
+  });
+
+  // Per serving calculations
+  const perServingCost = computed(() => {
+    const batchSize = parseFloat(
+      modal.value.recipe?.batch_size || recipeForm.value.batch_size || 0
+    );
+    if (!batchSize || batchSize <= 0) return null;
+    return totalCostPerBatch.value / batchSize;
+  });
+
+  const suggestedPerServingRange = computed(() => {
+    if (perServingCost.value == null) return null;
+    const cost = Number(perServingCost.value || 0);
+    return {
+      min: cost * 1.3,
+      max: cost * 1.35,
+    };
+  });
+
   // Filter inventory items to only show food-related ingredients (excluding expired)
   const foodIngredients = computed(() => {
     if (!itemTypes.value || itemTypes.value.length === 0) return [];
 
-    // Food-related category names: "Beverages" and "Materials"
-    const foodCategoryNames = ['Beverages', 'Materials'];
+    // Only include "Materials" category for recipe ingredients (exclude beverages)
+    const foodCategoryNames = ['Materials'];
 
     const filtered = itemTypes.value.filter((item) => {
-      // Only include food-related categories
+      // Only include Materials category (actual cooking ingredients)
       const isFoodCategory = foodCategoryNames.includes(item.category_name);
 
       // Exclude expired items
@@ -239,6 +312,18 @@
     });
 
     return filtered;
+  });
+
+  // Filtered ingredients based on search query
+  const filteredIngredients = computed(() => {
+    if (!ingredientSearchQuery.value.trim()) {
+      return foodIngredients.value;
+    }
+
+    const query = ingredientSearchQuery.value.toLowerCase().trim();
+    return foodIngredients.value.filter((ingredient) =>
+      ingredient.item_name.toLowerCase().includes(query)
+    );
   });
 
   // Methods
@@ -390,14 +475,26 @@
         return;
       }
     } else if (type === 'add-ingredient' && recipe) {
-      // For ingredient modal, preserve the current recipe context
-      modal.value = { type: originalType, show: true, recipe };
+      // For ingredient modal, preserve the current recipe context AND current ingredients
+      modal.value = {
+        type: originalType,
+        show: true,
+        recipe: {
+          ...recipe,
+          ingredients: ingredients.value, // Use current ingredients array, not the original recipe ingredients
+        },
+      };
     } else {
       modal.value = { type: originalType, show: true, recipe };
     }
 
     // Only populate form if not already handled by full recipe fetch
-    if (recipe && type !== 'view' && type !== 'edit') {
+    if (
+      recipe &&
+      type !== 'view' &&
+      type !== 'edit' &&
+      type !== 'add-ingredient'
+    ) {
       recipeForm.value = {
         recipe_name: recipe.recipe_name || '',
         description: recipe.description || '',
@@ -409,7 +506,7 @@
         cost_per_batch: recipe.cost_per_batch || '',
       };
 
-      // Load ingredients if editing
+      // Load ingredients if editing (but NOT for add-ingredient modal)
       console.log('Recipe data when opening modal:', recipe);
       console.log('Recipe ingredients:', recipe.ingredients);
       if (recipe.ingredients) {
@@ -506,6 +603,11 @@
       is_optional: false,
       sequence_order: ingredients.value.length + 1,
     };
+
+    // Reset search state
+    ingredientSearchQuery.value = '';
+    selectedIngredientName.value = '';
+    showIngredientDropdown.value = false;
   };
 
   // CRUD operations
@@ -849,6 +951,64 @@
     return num.toFixed(2);
   };
 
+  // Calculate per serving quantity
+  const getPerServingQuantity = (ingredient) => {
+    // Use batch size from modal recipe if available, otherwise from form
+    const batchSize = parseFloat(
+      modal.value.recipe?.batch_size || recipeForm.value.batch_size || 0
+    );
+    const quantity = parseFloat(ingredient.quantity_required || 0);
+    const unit = ingredient.unit || ingredient.unit_of_measure || 'units';
+
+    if (batchSize <= 0 || quantity <= 0) return null;
+
+    const perServing = quantity / batchSize;
+    return {
+      quantity: formatQuantity(perServing),
+      unit: unit,
+    };
+  };
+
+  // Get visible page numbers for smart pagination
+  const getVisiblePages = () => {
+    const current = currentPage.value;
+    const total = totalPages.value;
+
+    if (total <= 7) {
+      return Array.from({ length: total }, (_, i) => i + 1);
+    }
+
+    const pages = [];
+    const start = Math.max(1, current - 2);
+    const end = Math.min(total, current + 2);
+
+    for (let i = start; i <= end; i++) {
+      pages.push(i);
+    }
+
+    return pages;
+  };
+
+  // Get visible page numbers for deleted recipes pagination
+  const getDeletedVisiblePages = () => {
+    const current = deletedPage.value;
+    const total = totalDeletedPages.value;
+
+    if (total <= 7) {
+      return Array.from({ length: total }, (_, i) => i + 1);
+    }
+
+    const pages = [];
+    const start = Math.max(1, current - 2);
+    const end = Math.min(total, current + 2);
+
+    for (let i = start; i <= end; i++) {
+      pages.push(i);
+    }
+
+    return pages;
+  };
+
   // Helper function to check if ingredient is expiring soon
   const isIngredientExpiringSoon = (ingredient) => {
     if (!ingredient.expiry_date) return false;
@@ -902,7 +1062,7 @@
 </script>
 
 <template>
-  <div class="container mx-auto p-2 sm:p-4 lg:p-6 max-w-6xl">
+  <div class="mx-auto p-2 sm:p-4 lg:p-6">
     <!-- Header -->
     <div class="text-center mb-4 sm:mb-6 lg:mb-8">
       <h1
@@ -971,13 +1131,13 @@
         class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
       >
         <div class="stat-figure">
-          <BookOpen class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-info" />
+          <BookOpen class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-gray-600" />
         </div>
         <div class="stat-title text-black/50 text-xs sm:text-sm">
           Categories
         </div>
         <div
-          class="stat-value text-info text-lg sm:text-xl lg:text-2xl xl:text-3xl"
+          class="stat-value text-gray-600 text-lg sm:text-xl lg:text-2xl xl:text-3xl"
         >
           <span
             v-if="!statsLoading && recipeStats?.total_categories !== undefined"
@@ -1155,7 +1315,7 @@
         <!-- Recipe Grid -->
         <div
           v-else
-          class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5"
+          class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 lg:gap-5"
         >
           <div
             v-for="recipe in paginatedRecipes"
@@ -1168,10 +1328,12 @@
               class="flex items-start justify-between p-5 pb-3 border-b border-black/5"
             >
               <div class="min-w-0">
-                <h3 class="text-lg font-semibold text-primaryColor truncate">
+                <h3
+                  class="text-base sm:text-lg font-semibold text-primaryColor truncate"
+                >
                   {{ recipe.recipe_name }}
                 </h3>
-                <p class="mt-1 text-xs text-black/50 line-clamp-2">
+                <p class="mt-1 text-xs sm:text-sm text-black/50 line-clamp-2">
                   {{ recipe.description || 'No description available' }}
                 </p>
               </div>
@@ -1186,33 +1348,33 @@
             </div>
 
             <!-- Body -->
-            <div class="p-5 grid grid-cols-1 gap-3">
-              <div class="flex items-center justify-between text-sm">
-                <div class="flex items-center gap-2 text-black/60">
-                  <BookOpen class="w-4 h-4" />
+            <div class="p-4 sm:p-5 grid grid-cols-1 gap-2 sm:gap-3">
+              <div class="flex items-center justify-between text-xs sm:text-sm">
+                <div class="flex items-center gap-1 sm:gap-2 text-black/60">
+                  <BookOpen class="w-3 h-3 sm:w-4 sm:h-4" />
                   <span>Category</span>
                 </div>
-                <span class="font-medium text-black/70">{{
+                <span class="font-medium text-black/70 text-xs sm:text-sm">{{
                   recipe.category
                 }}</span>
               </div>
 
-              <div class="flex items-center justify-between text-sm">
-                <div class="flex items-center gap-2 text-black/60">
-                  <Scale class="w-4 h-4" />
+              <div class="flex items-center justify-between text-xs sm:text-sm">
+                <div class="flex items-center gap-1 sm:gap-2 text-black/60">
+                  <Scale class="w-3 h-3 sm:w-4 sm:h-4" />
                   <span>Batch Size</span>
                 </div>
-                <span class="font-medium text-black/70"
+                <span class="font-medium text-black/70 text-xs sm:text-sm"
                   >{{ recipe.batch_size }} {{ recipe.batch_unit }}</span
                 >
               </div>
 
-              <div class="flex items-center justify-between text-sm">
-                <div class="flex items-center gap-2 text-black/60">
-                  <PhilippinePeso class="w-4 h-4" />
+              <div class="flex items-center justify-between text-xs sm:text-sm">
+                <div class="flex items-center gap-1 sm:gap-2 text-black/60">
+                  <PhilippinePeso class="w-3 h-3 sm:w-4 sm:h-4" />
                   <span>Cost / batch</span>
                 </div>
-                <span class="font-semibold text-primaryColor"
+                <span class="font-semibold text-primaryColor text-xs sm:text-sm"
                   >₱{{ recipe.cost_per_batch || '0' }}</span
                 >
               </div>
@@ -1220,34 +1382,40 @@
 
             <!-- Footer actions -->
             <div class="px-5 pb-5" @click.stop>
-              <div class="grid grid-cols-4 gap-2">
+              <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 <button
                   @click="openModal('check-stock', recipe)"
-                  class="btn btn-xs bg-white text-black/70 border border-black/20 hover:bg-primaryColor/10 hover:border-primaryColor/40 rounded-lg shadow-none"
+                  class="btn btn-xs sm:btn-xs bg-white text-black/70 border border-black/20 hover:bg-primaryColor/10 hover:border-primaryColor/40 rounded-lg shadow-none"
                 >
-                  <Package class="w-4 h-4 mr-1 text-primaryColor" />
-                  Stock
+                  <Package
+                    class="w-3 h-3 sm:w-4 sm:h-4 mr-1 text-primaryColor"
+                  />
+                  <span class="hidden sm:inline">Stock</span>
+                  <span class="sm:hidden">S</span>
                 </button>
                 <button
                   @click="openModal('view', recipe)"
-                  class="btn btn-xs bg-white text-black/70 border border-black/20 hover:bg-primaryColor/10 hover:border-primaryColor/40 rounded-lg shadow-none"
+                  class="btn btn-xs sm:btn-xs bg-white text-black/70 border border-black/20 hover:bg-primaryColor/10 hover:border-primaryColor/40 rounded-lg shadow-none"
                 >
-                  <Eye class="w-4 h-4 mr-1 text-primaryColor" />
-                  View
+                  <Eye class="w-3 h-3 sm:w-4 sm:h-4 mr-1 text-primaryColor" />
+                  <span class="hidden sm:inline">View</span>
+                  <span class="sm:hidden">V</span>
                 </button>
                 <button
                   @click="openModal('edit', recipe)"
-                  class="btn btn-xs bg-white text-black/70 border border-black/20 hover:bg-primaryColor/10 hover:border-primaryColor/40 rounded-lg shadow-none"
+                  class="btn btn-xs sm:btn-xs bg-white text-black/70 border border-black/20 hover:bg-primaryColor/10 hover:border-primaryColor/40 rounded-lg shadow-none"
                 >
-                  <Edit class="w-4 h-4 mr-1 text-primaryColor" />
-                  Edit
+                  <Edit class="w-3 h-3 sm:w-4 sm:h-4 mr-1 text-primaryColor" />
+                  <span class="hidden sm:inline">Edit</span>
+                  <span class="sm:hidden">E</span>
                 </button>
                 <button
                   @click="showDeleteConfirmation(recipe)"
-                  class="btn btn-xs bg-white text-error border border-error/30 hover:bg-error/10 hover:border-error/50 rounded-lg shadow-none font-thin"
+                  class="btn btn-xs sm:btn-xs bg-white text-error border border-error/30 hover:bg-error/10 hover:border-error/50 rounded-lg shadow-none font-thin"
                 >
-                  <Trash2 class="w-4 h-4 mr-1" />
-                  Delete
+                  <Trash2 class="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                  <span class="hidden sm:inline">Delete</span>
+                  <span class="sm:hidden">D</span>
                 </button>
               </div>
             </div>
@@ -1255,22 +1423,130 @@
         </div>
 
         <!-- Pagination -->
-        <div v-if="totalPages > 1" class="flex justify-center mt-8">
-          <div class="btn-group">
+        <div
+          v-if="totalPages > 1"
+          class="flex flex-col sm:flex-row items-center justify-between mt-8 gap-4"
+        >
+          <!-- Page Info -->
+          <div class="text-sm text-black/60">
+            Showing {{ (currentPage - 1) * recipesPerPage + 1 }} to
+            {{ Math.min(currentPage * recipesPerPage, filteredRecipes.length) }}
+            of {{ filteredRecipes.length }} recipes
+          </div>
+
+          <!-- Pagination Controls -->
+          <div class="flex items-center gap-2">
+            <!-- First Page -->
+            <button
+              @click="currentPage = 1"
+              :disabled="currentPage === 1"
+              class="btn btn-sm text-primaryColor hover:bg-primaryColor/10 font-thin"
+              :class="{ 'opacity-50 cursor-not-allowed': currentPage === 1 }"
+              title="First page"
+            >
+              <span class="hidden sm:inline">First</span>
+              <span class="sm:hidden">««</span>
+            </button>
+
+            <!-- Previous Page -->
             <button
               @click="currentPage--"
               :disabled="currentPage === 1"
-              class="btn btn-sm"
+              class="btn btn-sm text-primaryColor hover:bg-primaryColor/10 font-thin"
+              :class="{ 'opacity-50 cursor-not-allowed': currentPage === 1 }"
+              title="Previous page"
             >
-              Previous
+              <span class="hidden sm:inline">Previous</span>
+              <span class="sm:hidden">‹</span>
             </button>
-            <button class="btn btn-sm">{{ currentPage }}</button>
+
+            <!-- Page Numbers -->
+            <div class="flex items-center gap-1">
+              <!-- Show page numbers with smart truncation -->
+              <template v-if="totalPages <= 7">
+                <!-- Show all pages if 7 or fewer -->
+                <button
+                  v-for="page in totalPages"
+                  :key="page"
+                  @click="currentPage = page"
+                  class="btn btn-sm font-thin"
+                  :class="{
+                    'bg-primaryColor text-white': currentPage === page,
+                    'text-primaryColor hover:bg-primaryColor/10':
+                      currentPage !== page,
+                  }"
+                >
+                  {{ page }}
+                </button>
+              </template>
+              <template v-else>
+                <!-- Smart pagination for many pages -->
+                <button
+                  v-if="currentPage > 3"
+                  @click="currentPage = 1"
+                  class="btn btn-sm text-primaryColor hover:bg-primaryColor/10 font-thin"
+                >
+                  1
+                </button>
+                <span v-if="currentPage > 4" class="px-2 text-black/40"
+                  >...</span
+                >
+
+                <button
+                  v-for="page in getVisiblePages()"
+                  :key="page"
+                  @click="currentPage = page"
+                  class="btn btn-sm font-thin"
+                  :class="{
+                    'bg-primaryColor text-white': currentPage === page,
+                    'text-primaryColor hover:bg-primaryColor/10':
+                      currentPage !== page,
+                  }"
+                >
+                  {{ page }}
+                </button>
+
+                <span
+                  v-if="currentPage < totalPages - 3"
+                  class="px-2 text-black/40"
+                  >...</span
+                >
+                <button
+                  v-if="currentPage < totalPages - 2"
+                  @click="currentPage = totalPages"
+                  class="btn btn-sm text-primaryColor hover:bg-primaryColor/10 font-thin"
+                >
+                  {{ totalPages }}
+                </button>
+              </template>
+            </div>
+
+            <!-- Next Page -->
             <button
               @click="currentPage++"
               :disabled="currentPage === totalPages"
-              class="btn btn-sm"
+              class="btn btn-sm text-primaryColor hover:bg-primaryColor/10 font-thin"
+              :class="{
+                'opacity-50 cursor-not-allowed': currentPage === totalPages,
+              }"
+              title="Next page"
             >
-              Next
+              <span class="hidden sm:inline">Next</span>
+              <span class="sm:hidden">›</span>
+            </button>
+
+            <!-- Last Page -->
+            <button
+              @click="currentPage = totalPages"
+              :disabled="currentPage === totalPages"
+              class="btn btn-sm text-primaryColor hover:bg-primaryColor/10 font-thin"
+              :class="{
+                'opacity-50 cursor-not-allowed': currentPage === totalPages,
+              }"
+              title="Last page"
+            >
+              <span class="hidden sm:inline">Last</span>
+              <span class="sm:hidden">»»</span>
             </button>
           </div>
         </div>
@@ -1283,11 +1559,20 @@
     >
       <div class="card-body p-3 sm:p-4 lg:p-6">
         <div class="flex items-center justify-between mb-4">
-          <h2
-            class="card-title text-primaryColor text-lg sm:text-xl lg:text-2xl"
-          >
-            Deleted Recipes
-          </h2>
+          <div class="flex items-center gap-3">
+            <h2
+              class="card-title text-primaryColor text-lg sm:text-xl lg:text-2xl"
+            >
+              Deleted Recipes
+            </h2>
+            <button
+              class="btn btn-sm text-primaryColor hover:bg-primaryColor/10 font-thin border border-primaryColor/30"
+              @click="showDeletedRecipes = !showDeletedRecipes"
+            >
+              <span v-if="!showDeletedRecipes">Show</span>
+              <span v-else>Hide</span>
+            </button>
+          </div>
           <button
             class="btn btn-xs bg-white text-black/70 border border-black/20 hover:bg-primaryColor/10 hover:border-primaryColor/40 rounded-lg shadow-none"
             @click="productionStore.fetchDeletedRecipes()"
@@ -1297,64 +1582,175 @@
           </button>
         </div>
 
-        <div v-if="deletedRecipes.length === 0" class="text-sm text-black/50">
-          No deleted recipes.
-        </div>
-        <div
-          v-else
-          class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5"
-        >
+        <div v-if="showDeletedRecipes">
+          <div v-if="deletedRecipes.length === 0" class="text-sm text-black/50">
+            No deleted recipes.
+          </div>
           <div
-            v-for="recipe in paginatedDeletedRecipes"
-            :key="`deleted-${recipe.id}`"
-            class="rounded-2xl border border-black/10 bg-white/90 p-4"
+            v-else
+            class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 lg:gap-5"
           >
-            <div class="flex items-center justify-between">
-              <div class="font-semibold text-primaryColor truncate">
-                {{ recipe.recipe_name }}
+            <div
+              v-for="recipe in paginatedDeletedRecipes"
+              :key="`deleted-${recipe.id}`"
+              class="rounded-2xl border border-black/10 bg-white/90 p-4"
+            >
+              <div class="flex items-center justify-between">
+                <div class="font-semibold text-primaryColor truncate">
+                  {{ recipe.recipe_name }}
+                </div>
+                <span class="badge badge-xs border-none bg-error/20 text-error">
+                  Deleted
+                </span>
               </div>
-              <span class="badge badge-xs border-none bg-error/20 text-error">
-                Deleted
-              </span>
-            </div>
-            <div class="text-xs text-black/50 mt-1">
-              {{ recipe.category }} • Batch: {{ recipe.batch_size }}
-              {{ recipe.batch_unit }}
-            </div>
-            <div class="mt-3 flex justify-end">
-              <button
-                class="btn btn-xs bg-white text-black/70 border border-black/20 hover:bg-primaryColor/10 hover:border-primaryColor/40 rounded-lg shadow-none"
-                @click.stop="() => handleRestoreRecipe(recipe)"
-                :disabled="loading"
-              >
-                <span
-                  v-if="loading"
-                  class="loading loading-spinner loading-xs mr-1"
-                ></span>
-                {{ loading ? 'Restoring...' : 'Restore' }}
-              </button>
+              <div class="text-xs text-black/50 mt-1">
+                {{ recipe.category }} • Batch: {{ recipe.batch_size }}
+                {{ recipe.batch_unit }}
+              </div>
+              <div class="mt-3 flex justify-end">
+                <button
+                  class="btn btn-xs bg-white text-black/70 border border-black/20 hover:bg-primaryColor/10 hover:border-primaryColor/40 rounded-lg shadow-none"
+                  @click.stop="() => handleRestoreRecipe(recipe)"
+                  :disabled="loading"
+                >
+                  <span
+                    v-if="loading"
+                    class="loading loading-spinner loading-xs mr-1"
+                  ></span>
+                  {{ loading ? 'Restoring...' : 'Restore' }}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
 
-        <!-- Deleted pagination -->
-        <div v-if="totalDeletedPages > 1" class="flex justify-center mt-6">
-          <div class="btn-group">
-            <button
-              @click="deletedPage--"
-              :disabled="deletedPage === 1"
-              class="btn btn-sm"
-            >
-              Previous
-            </button>
-            <button class="btn btn-sm">{{ deletedPage }}</button>
-            <button
-              @click="deletedPage++"
-              :disabled="deletedPage === totalDeletedPages"
-              class="btn btn-sm"
-            >
-              Next
-            </button>
+          <!-- Deleted pagination -->
+          <div
+            v-if="totalDeletedPages > 1"
+            class="flex flex-col sm:flex-row items-center justify-between mt-6 gap-4"
+          >
+            <!-- Page Info -->
+            <div class="text-sm text-black/60">
+              Showing {{ (deletedPage - 1) * deletedPerPage + 1 }} to
+              {{
+                Math.min(deletedPage * deletedPerPage, deletedRecipes.length)
+              }}
+              of {{ deletedRecipes.length }} deleted recipes
+            </div>
+
+            <!-- Pagination Controls -->
+            <div class="flex items-center gap-2">
+              <!-- First Page -->
+              <button
+                @click="deletedPage = 1"
+                :disabled="deletedPage === 1"
+                class="btn btn-sm text-primaryColor hover:bg-primaryColor/10 font-thin"
+                :class="{ 'opacity-50 cursor-not-allowed': deletedPage === 1 }"
+                title="First page"
+              >
+                <span class="hidden sm:inline">First</span>
+                <span class="sm:hidden">««</span>
+              </button>
+
+              <!-- Previous Page -->
+              <button
+                @click="deletedPage--"
+                :disabled="deletedPage === 1"
+                class="btn btn-sm text-primaryColor hover:bg-primaryColor/10 font-thin"
+                :class="{ 'opacity-50 cursor-not-allowed': deletedPage === 1 }"
+                title="Previous page"
+              >
+                <span class="hidden sm:inline">Previous</span>
+                <span class="sm:hidden">‹</span>
+              </button>
+
+              <!-- Page Numbers -->
+              <div class="flex items-center gap-1">
+                <template v-if="totalDeletedPages <= 7">
+                  <button
+                    v-for="page in totalDeletedPages"
+                    :key="page"
+                    @click="deletedPage = page"
+                    class="btn btn-sm font-thin"
+                    :class="{
+                      'bg-primaryColor text-white': deletedPage === page,
+                      'text-primaryColor hover:bg-primaryColor/10':
+                        deletedPage !== page,
+                    }"
+                  >
+                    {{ page }}
+                  </button>
+                </template>
+                <template v-else>
+                  <button
+                    v-if="deletedPage > 3"
+                    @click="deletedPage = 1"
+                    class="btn btn-sm text-primaryColor hover:bg-primaryColor/10 font-thin"
+                  >
+                    1
+                  </button>
+                  <span v-if="deletedPage > 4" class="px-2 text-black/40"
+                    >...</span
+                  >
+
+                  <button
+                    v-for="page in getDeletedVisiblePages()"
+                    :key="page"
+                    @click="deletedPage = page"
+                    class="btn btn-sm font-thin"
+                    :class="{
+                      'bg-primaryColor text-white': deletedPage === page,
+                      'text-primaryColor hover:bg-primaryColor/10':
+                        deletedPage !== page,
+                    }"
+                  >
+                    {{ page }}
+                  </button>
+
+                  <span
+                    v-if="deletedPage < totalDeletedPages - 3"
+                    class="px-2 text-black/40"
+                    >...</span
+                  >
+                  <button
+                    v-if="deletedPage < totalDeletedPages - 2"
+                    @click="deletedPage = totalDeletedPages"
+                    class="btn btn-sm text-primaryColor hover:bg-primaryColor/10 font-thin"
+                  >
+                    {{ totalDeletedPages }}
+                  </button>
+                </template>
+              </div>
+
+              <!-- Next Page -->
+              <button
+                @click="deletedPage++"
+                :disabled="deletedPage === totalDeletedPages"
+                class="btn btn-sm text-primaryColor hover:bg-primaryColor/10 font-thin"
+                :class="{
+                  'opacity-50 cursor-not-allowed':
+                    deletedPage === totalDeletedPages,
+                }"
+                title="Next page"
+              >
+                <span class="hidden sm:inline">Next</span>
+                <span class="sm:hidden">›</span>
+              </button>
+
+              <!-- Last Page -->
+              <button
+                @click="deletedPage = totalDeletedPages"
+                :disabled="deletedPage === totalDeletedPages"
+                class="btn btn-sm text-primaryColor hover:bg-primaryColor/10 font-thin"
+                :class="{
+                  'opacity-50 cursor-not-allowed':
+                    deletedPage === totalDeletedPages,
+                }"
+                title="Last page"
+              >
+                <span class="hidden sm:inline">Last</span>
+                <span class="sm:hidden">»»</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -1466,7 +1862,7 @@
                   Cost per Batch
                 </span>
                 <span class="text-xs text-gray-500 ml-2">
-                  (Auto-calculated from ingredients)
+                  (Auto-calculated)
                 </span>
               </label>
               <div class="relative">
@@ -1476,16 +1872,34 @@
                   readonly
                   class="input input-sm sm:input-md input-bordered w-full bg-gray-50 border-primaryColor/30 text-black/70 cursor-not-allowed"
                 />
-                <div
-                  class="absolute right-3 top-1/2 transform -translate-y-1/2"
-                >
-                  <span class="text-primaryColor font-semibold">₱</span>
-                </div>
               </div>
               <div class="text-xs text-gray-500 mt-1">
                 Total cost based on {{ ingredients.length }} ingredient{{
                   ingredients.length !== 1 ? 's' : ''
                 }}
+              </div>
+              <!-- Suggested Price Indicator (30–35% markup, per serving only) -->
+              <div
+                class="mt-2 p-2 rounded-lg bg-green-50 border border-green-200"
+              >
+                <div
+                  v-if="
+                    recipeForm.batch_size &&
+                    parseFloat(recipeForm.batch_size) > 0 &&
+                    suggestedPerServingRange
+                  "
+                  class="text-xs text-green-800"
+                >
+                  <span class="font-medium"
+                    >Suggested price per serving (30–35% markup):</span
+                  >
+                  ₱{{ formatCurrency(suggestedPerServingRange.min) }} – ₱{{
+                    formatCurrency(suggestedPerServingRange.max)
+                  }}
+                </div>
+                <div v-else class="text-[11px] text-green-700">
+                  Set batch size to see suggested price per serving.
+                </div>
               </div>
             </div>
 
@@ -1588,16 +2002,24 @@
                   </div>
                   <div class="text-sm text-base-content/70 mb-1">
                     <span class="font-medium"
-                      >{{ ingredient.quantity_required }}
-                      {{ ingredient.unit_of_measure }}</span
+                      >{{ formatQuantity(ingredient.quantity_required) }}
+                      {{ ingredient.unit || ingredient.unit_of_measure }}</span
                     >
                     <span
                       v-if="ingredient.cost_per_unit"
                       class="ml-2 text-primaryColor"
                     >
                       • ₱{{ ingredient.cost_per_unit }} per
-                      {{ ingredient.unit_of_measure }}
+                      {{ ingredient.unit || ingredient.unit_of_measure }}
                     </span>
+                  </div>
+                  <div
+                    v-if="getPerServingQuantity(ingredient)"
+                    class="text-xs text-base-content/60 bg-base-200 px-2 py-1 rounded"
+                  >
+                    Per serving:
+                    {{ getPerServingQuantity(ingredient).quantity }}
+                    {{ getPerServingQuantity(ingredient).unit }}
                   </div>
                   <div
                     v-if="ingredient.preparation_notes"
@@ -1698,7 +2120,7 @@
 
     <!-- Add Ingredient Modal -->
     <dialog id="add_ingredient_modal" class="modal">
-      <div class="modal-box max-w-md">
+      <div class="modal-box max-w-md max-h-[80vh] overflow-y-auto">
         <h3 class="font-bold text-lg mb-6 text-primaryColor">Add Ingredient</h3>
         <form @submit.prevent="addIngredient" class="space-y-6">
           <!-- Ingredient Selection -->
@@ -1713,23 +2135,77 @@
                 >(Food ingredients only)</span
               >
             </label>
-            <select
-              v-model="ingredientForm.inventory_item_id"
-              @change="
-                handleIngredientSelection(ingredientForm.inventory_item_id)
-              "
-              class="select select-sm sm:select-md select-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
-              required
-            >
-              <option value="">Select ingredient</option>
-              <option
-                v-for="itemType in foodIngredients"
-                :key="itemType.id"
-                :value="itemType.id"
+            <!-- Searchable Ingredient Dropdown -->
+            <div class="relative">
+              <input
+                v-model="ingredientSearchQuery"
+                @input="handleIngredientSearch"
+                @focus="showIngredientDropdown = true"
+                @blur="setTimeout(() => (showIngredientDropdown = false), 200)"
+                type="text"
+                placeholder="Search and select ingredient..."
+                class="input input-sm sm:input-md input-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
+                required
+              />
+
+              <!-- Clear button -->
+              <button
+                v-if="ingredientSearchQuery || selectedIngredientName"
+                @click="clearIngredientSelection"
+                type="button"
+                class="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
               >
-                {{ itemType.item_name }}
-              </option>
-            </select>
+                <X class="w-4 h-4" />
+              </button>
+
+              <!-- Dropdown Results -->
+              <div
+                v-if="showIngredientDropdown && filteredIngredients.length > 0"
+                class="absolute z-50 w-full mt-1 bg-white border border-primaryColor/30 rounded-lg shadow-lg max-h-60 overflow-y-auto"
+              >
+                <div
+                  v-for="ingredient in filteredIngredients"
+                  :key="ingredient.id"
+                  @click="selectIngredient(ingredient)"
+                  class="px-3 py-2 hover:bg-primaryColor/10 cursor-pointer text-sm border-b border-gray-100 last:border-b-0"
+                >
+                  <div class="font-medium text-black/80">
+                    {{ ingredient.item_name }}
+                  </div>
+                  <div class="text-xs text-gray-500">
+                    Stock: {{ ingredient.quantity || 0 }}
+                    {{ ingredient.unit_of_measure || 'units' }} • ₱{{
+                      ingredient.unit_cost || 0
+                    }}
+                    per {{ ingredient.unit_of_measure || 'unit' }}
+                  </div>
+                </div>
+              </div>
+
+              <!-- No results message -->
+              <div
+                v-if="
+                  showIngredientDropdown &&
+                  ingredientSearchQuery &&
+                  filteredIngredients.length === 0
+                "
+                class="absolute z-50 w-full mt-1 bg-white border border-primaryColor/30 rounded-lg shadow-lg p-3 text-center text-sm text-gray-500"
+              >
+                No ingredients found for "{{ ingredientSearchQuery }}"
+              </div>
+
+              <!-- Loading state -->
+              <div
+                v-if="
+                  showIngredientDropdown &&
+                  !ingredientSearchQuery &&
+                  foodIngredients.length === 0
+                "
+                class="absolute z-50 w-full mt-1 bg-white border border-primaryColor/30 rounded-lg shadow-lg p-3 text-center text-sm text-gray-500"
+              >
+                Loading ingredients...
+              </div>
+            </div>
 
             <!-- Loading state -->
             <div v-if="loading" class="text-xs text-blue-500 mt-1">
@@ -1760,18 +2236,11 @@
                 <div class="flex justify-between">
                   <span class="font-medium">Cost per Unit:</span>
                   <span class="ml-1 font-bold">
-                    ₱{{ ingredientForm.cost_per_unit || '0.00' }}
-                  </span>
-                </div>
-                <div class="flex justify-between">
-                  <span class="font-medium">Total Value:</span>
-                  <span class="ml-1 font-bold">
-                    ₱{{
-                      (
-                        (getSelectedIngredientStock() || 0) *
-                        (ingredientForm.cost_per_unit || 0)
-                      ).toFixed(2)
-                    }}
+                    <font-awesome-icon
+                      icon="fa-solid fa-peso-sign"
+                      class="mr-1"
+                    />
+                    {{ ingredientForm.cost_per_unit || '0.00' }}
                   </span>
                 </div>
                 <!-- Expiry Date Information -->
@@ -1879,11 +2348,6 @@
                 >
                   Quantity <span class="text-red-500">*</span>
                 </span>
-                <span class="text-xs text-gray-500 ml-2">
-                  (Max:
-                  {{ Number(getSelectedIngredientStock()).toFixed(2) || 0 }}
-                  {{ ingredientForm.unit || 'units' }})
-                </span>
               </label>
               <input
                 v-model="ingredientForm.quantity_required"
@@ -1941,7 +2405,6 @@
                 <span class="text-black/70 font-medium text-sm sm:text-base">
                   Unit <span class="text-red-500">*</span>
                 </span>
-                <span class="text-xs text-gray-500 ml-2">(From inventory)</span>
               </label>
               <input
                 v-model="ingredientForm.unit"
@@ -1969,7 +2432,8 @@
               type="number"
               step="0.01"
               placeholder="0.00"
-              class="input input-sm sm:input-md input-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
+              class="input input-sm sm:input-md input-bordered w-full bg-gray-50 border-primaryColor/30 text-black/70 cursor-not-allowed"
+              readonly
             />
           </div>
 
@@ -1986,7 +2450,7 @@
             </div>
             <div class="text-xs text-green-700">
               <span class="font-medium">{{
-                ingredientForm.quantity_required
+                formatQuantity(ingredientForm.quantity_required)
               }}</span>
               {{ ingredientForm.unit }} × ₱{{ ingredientForm.cost_per_unit }} =
               <span class="font-bold"
@@ -1997,6 +2461,29 @@
                   ).toFixed(2)
                 }}</span
               >
+            </div>
+            <!-- Per Serving Calculation -->
+            <div
+              v-if="
+                recipeForm.batch_size && parseFloat(recipeForm.batch_size) > 0
+              "
+              class="text-xs text-green-600 mt-2 pt-2 border-t border-green-300"
+            >
+              <div class="font-medium mb-1">Per Serving Breakdown:</div>
+              <div>
+                <span class="font-medium">{{
+                  formatQuantity(
+                    ingredientForm.quantity_required /
+                      parseFloat(recipeForm.batch_size)
+                  )
+                }}</span>
+                {{ ingredientForm.unit }} per serving
+                <span class="text-green-700">
+                  ({{ formatQuantity(ingredientForm.quantity_required) }}
+                  {{ ingredientForm.unit }} ÷
+                  {{ recipeForm.batch_size }} servings)
+                </span>
+              </div>
             </div>
           </div>
 
@@ -2152,16 +2639,18 @@
                       {{ ingredient.ingredient_name || 'Unknown Ingredient' }}
                     </div>
                     <div class="text-sm text-base-content/70">
-                      {{ ingredient.quantity_required }}
+                      {{ formatQuantity(ingredient.quantity_required) }}
                       {{
                         ingredient.unit || ingredient.unit_of_measure || 'units'
                       }}
                     </div>
-                    <div class="text-xs text-base-content/60">
-                      ₱{{
-                        (ingredient.cost_per_unit || 0) *
-                        ingredient.quantity_required
-                      }}
+                    <div
+                      v-if="getPerServingQuantity(ingredient)"
+                      class="text-xs text-base-content/60 bg-base-200 px-2 py-1 rounded mt-1"
+                    >
+                      Per serving:
+                      {{ getPerServingQuantity(ingredient).quantity }}
+                      {{ getPerServingQuantity(ingredient).unit }}
                     </div>
                   </div>
                   <div class="text-right">
@@ -2187,6 +2676,29 @@
               <span class="font-bold text-lg text-primaryColor">
                 ₱{{ modal.recipe?.total_estimated_cost || 0 }}
               </span>
+            </div>
+            <!-- Suggested Price Per Serving (30–35% markup) -->
+            <div
+              class="mt-2 p-2 rounded-lg bg-green-50 border border-green-200"
+            >
+              <div
+                v-if="
+                  modal.recipe?.batch_size &&
+                  parseFloat(modal.recipe?.batch_size) > 0 &&
+                  suggestedPerServingRange
+                "
+                class="text-xs text-green-800"
+              >
+                <span class="font-medium"
+                  >Suggested price per serving (30–35% markup):</span
+                >
+                ₱{{ formatCurrency(suggestedPerServingRange.min) }} – ₱{{
+                  formatCurrency(suggestedPerServingRange.max)
+                }}
+              </div>
+              <div v-else class="text-[11px] text-green-700">
+                Batch size required to compute suggested price per serving.
+              </div>
             </div>
           </div>
 
@@ -2268,6 +2780,16 @@
                     {{
                       ingredient.unit_of_measure || ingredient.unit || 'units'
                     }}
+                  </span>
+                </div>
+                <div
+                  v-if="getPerServingQuantity(ingredient)"
+                  class="text-xs text-primaryColor/70 mt-1"
+                >
+                  Per serving:
+                  <span class="font-medium">
+                    {{ getPerServingQuantity(ingredient).quantity }}
+                    {{ getPerServingQuantity(ingredient).unit }}
                   </span>
                 </div>
                 <div class="text-xs mt-1">

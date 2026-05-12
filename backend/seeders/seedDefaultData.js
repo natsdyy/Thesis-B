@@ -379,11 +379,28 @@ async function createDefaultUsers() {
     }
 
     const adminUser = {
-      name: "System Administrator",
+      first_name: "System",
+      last_name: "Administrator",
       email: "admin@countryside.com",
       password: "admin123",
       role_id: superAdminRole.role_id,
       department: "Admin",
+      phone_number: "09123456789",
+      address: "Main Office",
+      postal_code: "1000",
+      civil_status: "Single",
+      sex: "Male",
+      birthday: "1990-01-01",
+      age: 34,
+      citizenship: "Filipino",
+      employee_type: "Full-time",
+      pagibig_number: "000000000001",
+      sss_number: "0000000001",
+      philhealth_number: "000000000001",
+      emergency_contact_name: "Admin Support",
+      emergency_relationship: "Other",
+      emergency_contact_number: "09123456789",
+      emergency_contact_address: "Main Office",
     };
 
     try {
@@ -391,7 +408,7 @@ async function createDefaultUsers() {
 
       if (!existingUser) {
         const newUser = await Employee.create(adminUser);
-        console.log(`✅ Created system administrator: ${adminUser.name}`);
+        console.log(`✅ Created system administrator: ${adminUser.first_name} ${adminUser.last_name}`);
 
         console.log("\n🔑 System Administrator Credentials:");
         console.log("Email: admin@countryside.com");

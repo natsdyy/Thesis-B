@@ -745,7 +745,8 @@ class Employee {
         throw error;
       }
 
-      throw new Error("Failed to create employee. Please try again.");
+      console.error("FULL DATABASE ERROR:", error);
+      throw new Error(`Failed to create employee: ${error.message}`);
     }
   }
 

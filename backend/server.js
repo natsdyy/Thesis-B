@@ -130,12 +130,14 @@ const corsConfig = {
     );
     const isRailwayOrigin = /^https:\/\/.*\.up\.railway\.app$/.test(origin);
     const isLocalhost = /^http:\/\/localhost(:\d+)?$/.test(origin);
+    const isCustomDomain = /countryside-steakhouse\.site$/.test(origin);
 
     if (
       allowList.includes(origin) ||
       isLanDevOrigin ||
       isRailwayOrigin ||
-      isLocalhost
+      isLocalhost ||
+      isCustomDomain
     ) {
       console.log(`CORS allowed origin: ${origin}`);
       return callback(null, true);
@@ -146,11 +148,21 @@ const corsConfig = {
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization",
+    "X-Requested-With",
+    "Accept",
+    "Origin",
+    "Access-Control-Allow-Headers",
+    "Access-Control-Request-Method",
+    "Access-Control-Request-Headers"
+  ],
   optionsSuccessStatus: 204,
 };
 
 app.use(cors(corsConfig));
+app.options("*", cors(corsConfig));
 app.use(express.json());
 // Serve uploads with proper CORS headers and content-type detection
 app.use(

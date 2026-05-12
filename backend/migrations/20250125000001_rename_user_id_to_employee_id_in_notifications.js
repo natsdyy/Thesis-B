@@ -2,11 +2,19 @@
  * @param { import("knex").Knex } knex
  * @returns { Promise<void> }
  */
-exports.up = function (knex) {
+exports.up = async function (knex) {
+  const hasUserId = await knex.schema.hasColumn("notifications", "user_id");
+  
+  if (!hasUserId) {
+    console.log("Notifications table already has employee_id or missing user_id. Skipping rename.");
+    return;
+  }
+
   return knex.schema.alterTable("notifications", function (table) {
     // Drop the existing index on user_id
-    table.dropIndex("user_id");
-    table.dropIndex(["user_id", "is_read"]);
+    // We use raw SQL for drop index if exists to be safe
+    table.dropIndex("user_id").catch(() => {});
+    table.dropIndex(["user_id", "is_read"]).catch(() => {});
 
     // Rename user_id column to employee_id
     table.renameColumn("user_id", "employee_id");
@@ -26,11 +34,16 @@ exports.up = function (knex) {
  * @param { import("knex").Knex } knex
  * @returns { Promise<void> }
  */
-exports.down = function (knex) {
+exports.down = async function (knex) {
+  const hasEmployeeId = await knex.schema.hasColumn("notifications", "employee_id");
+  const hasUserId = await knex.schema.hasColumn("notifications", "user_id");
+
+  if (!hasEmployeeId || hasUserId) return;
+
   return knex.schema.alterTable("notifications", function (table) {
     // Drop the indexes on employee_id
-    table.dropIndex("employee_id");
-    table.dropIndex(["employee_id", "is_read"]);
+    table.dropIndex("employee_id").catch(() => {});
+    table.dropIndex(["employee_id", "is_read"]).catch(() => {});
 
     // Rename employee_id back to user_id
     table.renameColumn("employee_id", "user_id");

@@ -5,14 +5,20 @@
 exports.up = async function up(knex) {
   await knex.transaction(async (trx) => {
     const permissionName = "announcements:delete";
+    const permissionKey = "announcements:delete";
+    const module = "crm";
 
     let permission = await trx("user_permissions")
-      .where({ permission_name: permissionName })
+      .where({ permission_key: permissionKey })
       .first();
 
     if (!permission) {
       const inserted = await trx("user_permissions")
-        .insert({ permission_name: permissionName })
+        .insert({
+          permission_name: permissionName,
+          permission_key: permissionKey,
+          module: module,
+        })
         .returning(["permission_id"]);
       permission = Array.isArray(inserted) ? inserted[0] : inserted;
     }
@@ -85,7 +91,7 @@ exports.up = async function up(knex) {
 exports.down = async function down(knex) {
   await knex.transaction(async (trx) => {
     const permission = await trx("user_permissions")
-      .where({ permission_name: "announcements:delete" })
+      .where({ permission_key: "announcements:delete" })
       .first();
 
     if (!permission) {

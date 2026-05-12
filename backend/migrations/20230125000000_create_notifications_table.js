@@ -64,7 +64,7 @@ exports.up = function (knex) {
     table.timestamp("deleted_at").nullable().comment("Soft delete timestamp");
 
     // Indexes for performance
-    -+table.index("employee_id");
+    table.index("employee_id");
     table.index("department");
     table.index("is_read");
     table.index("notification_type");

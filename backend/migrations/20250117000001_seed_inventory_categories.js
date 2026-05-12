@@ -3,7 +3,7 @@
  * @returns { Promise<void> }
  */
 exports.up = async function (knex) {
-  // Insert inventory categories
+  // Define categories
   const categoryData = [
     {
       name: "Materials",
@@ -27,17 +27,35 @@ exports.up = async function (knex) {
     },
   ];
 
-  const insertedCategories = await knex("inventory_categories")
-    .insert(categoryData)
-    .returning("*");
+  // Insert categories one by one and handle conflicts
+  for (const cat of categoryData) {
+    const existing = await knex("inventory_categories")
+      .where("name", cat.name)
+      .first();
+    
+    if (!existing) {
+      await knex("inventory_categories").insert(cat);
+    } else {
+      await knex("inventory_categories")
+        .where("id", existing.id)
+        .update({
+          description: cat.description,
+          is_active: cat.is_active,
+          deleted_at: null // Ensure it's not soft-deleted
+        });
+    }
+  }
 
-  // Create a mapping of category names to IDs
+  // Fetch all categories to build a reliable map
+  const categories = await knex("inventory_categories").select("id", "name");
   const categoryMap = {};
-  insertedCategories.forEach((cat) => {
+  categories.forEach((cat) => {
     categoryMap[cat.name] = cat.id;
   });
 
-  // Insert inventory item types
+  console.log("Category Map:", categoryMap);
+
+  // Define item types
   const itemTypeData = [
     // Materials
     {
@@ -210,7 +228,35 @@ exports.up = async function (knex) {
     },
   ];
 
-  await knex("inventory_item_types").insert(itemTypeData);
+  // Insert item types one by one and handle conflicts
+  for (const type of itemTypeData) {
+    if (!type.category_id) {
+        console.warn(`Missing category_id for item type: ${type.name}`);
+        continue;
+    }
+
+    const existing = await knex("inventory_item_types")
+      .where({
+          category_id: type.category_id,
+          name: type.name
+      })
+      .first();
+
+    if (!existing) {
+      await knex("inventory_item_types").insert(type);
+    } else {
+      await knex("inventory_item_types")
+        .where("id", existing.id)
+        .update({
+          description: type.description,
+          unit_of_measure: type.unit_of_measure,
+          requires_expiry: type.requires_expiry,
+          requires_batch: type.requires_batch,
+          is_active: type.is_active,
+          deleted_at: null
+        });
+    }
+  }
 };
 
 /**
@@ -218,6 +264,8 @@ exports.up = async function (knex) {
  * @returns { Promise<void> }
  */
 exports.down = async function (knex) {
+  // We don't want to delete data that might be referenced by other tables
+  // in a real system, but for development seeding rollback:
   await knex("inventory_item_types").del();
   await knex("inventory_categories").del();
 };

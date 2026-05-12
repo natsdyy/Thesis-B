@@ -11,12 +11,16 @@ exports.up = async function up(knex) {
       DO $$
       DECLARE
         seq_name text;
+        max_id bigint;
       BEGIN
-        -- Find the sequence attached to pos_sales_orders.id dynamically
         SELECT pg_get_serial_sequence('pos_sales_orders', 'id') INTO seq_name;
-
         IF seq_name IS NOT NULL THEN
-          PERFORM setval(seq_name, COALESCE((SELECT MAX(id) FROM pos_sales_orders), 0));
+          SELECT MAX(id) FROM pos_sales_orders INTO max_id;
+          IF max_id IS NOT NULL THEN
+            EXECUTE format('SELECT setval(%L, %s, true)', seq_name, max_id);
+          ELSE
+            EXECUTE format('SELECT setval(%L, 1, false)', seq_name);
+          END IF;
         END IF;
       END
       $$;
@@ -27,11 +31,16 @@ exports.up = async function up(knex) {
       DO $$
       DECLARE
         seq_name text;
+        max_id bigint;
       BEGIN
         SELECT pg_get_serial_sequence('pos_order_items', 'id') INTO seq_name;
-
         IF seq_name IS NOT NULL THEN
-          PERFORM setval(seq_name, COALESCE((SELECT MAX(id) FROM pos_order_items), 0));
+          SELECT MAX(id) FROM pos_order_items INTO max_id;
+          IF max_id IS NOT NULL THEN
+            EXECUTE format('SELECT setval(%L, %s, true)', seq_name, max_id);
+          ELSE
+            EXECUTE format('SELECT setval(%L, 1, false)', seq_name);
+          END IF;
         END IF;
       END
       $$;

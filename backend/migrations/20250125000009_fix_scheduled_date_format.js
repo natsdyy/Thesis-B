@@ -2,25 +2,14 @@
  * @param { import("knex").Knex } knex
  * @returns { Promise<void> }
  */
-exports.up = function (knex) {
-  return knex.schema.alterTable("sample_productions", function (table) {
-    // First, let's update existing data to remove timezone info from scheduled_date
-    // This will be handled in the data migration below
-  });
-};
+exports.up = async function (knex) {
+  const hasTable = await knex.schema.hasTable("sample_productions");
+  if (!hasTable) {
+    console.log("Table sample_productions does not exist. Skipping migration.");
+    return;
+  }
 
-/**
- * @param { import("knex").Knex } knex
- * @returns { Promise<void> }
- */
-exports.down = function (knex) {
-  // No rollback needed as we're just fixing data format
-  return Promise.resolve();
-};
-
-// Data migration to fix existing scheduled_date values
-exports.seed = async function (knex) {
-  // Get all sample productions with datetime scheduled_date
+  // Data migration to fix existing scheduled_date values
   const samples = await knex("sample_productions")
     .select("id", "scheduled_date")
     .whereNotNull("scheduled_date");
@@ -37,4 +26,13 @@ exports.seed = async function (knex) {
       });
     }
   }
+};
+
+/**
+ * @param { import("knex").Knex } knex
+ * @returns { Promise<void> }
+ */
+exports.down = function (knex) {
+  // No rollback needed as we're just fixing data format
+  return Promise.resolve();
 };

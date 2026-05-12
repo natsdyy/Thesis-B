@@ -3,15 +3,12 @@
  * @returns { Promise<void> }
  */
 exports.up = async function up(knex) {
-  // Set conservative timeouts to avoid hanging on locked schema
-  try {
-    await knex.raw("SET lock_timeout = '5s'");
-    await knex.raw("SET statement_timeout = '30s'");
-  } catch (_) {
-    // ignore if not supported
-  }
+  const hasColumn = await knex.schema.hasColumn(
+    "supplier_products",
+    "item_type_id"
+  );
 
-  try {
+  if (!hasColumn) {
     await knex.schema.alterTable("supplier_products", (table) => {
       table
         .integer("item_type_id")
@@ -22,15 +19,6 @@ exports.up = async function up(knex) {
         .onDelete("SET NULL");
       table.index("item_type_id");
     });
-  } catch (err) {
-    // If column already exists, ignore (Postgres duplicate_column: 42701)
-    if (
-      err &&
-      (err.code === "42701" || /column .* already exists/i.test(err.message))
-    ) {
-      return;
-    }
-    throw err;
   }
 };
 
@@ -39,19 +27,14 @@ exports.up = async function up(knex) {
  * @returns { Promise<void> }
  */
 exports.down = async function down(knex) {
-  try {
+  const hasColumn = await knex.schema.hasColumn(
+    "supplier_products",
+    "item_type_id"
+  );
+
+  if (hasColumn) {
     await knex.schema.alterTable("supplier_products", (table) => {
-      table.dropIndex(["item_type_id"]);
       table.dropColumn("item_type_id");
     });
-  } catch (err) {
-    // If column doesn't exist, ignore
-    if (
-      err &&
-      (/column .* does not exist/i.test(err.message) || err.code === "42703")
-    ) {
-      return;
-    }
-    throw err;
   }
 };

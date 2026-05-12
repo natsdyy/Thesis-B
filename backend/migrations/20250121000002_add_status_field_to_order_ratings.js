@@ -4,14 +4,16 @@
  */
 
 exports.up = async function (knex) {
-  await knex.schema.alterTable("order_ratings", (table) => {
-    table.string("status").defaultTo("new");
-  });
+  if (!(await knex.schema.hasColumn("order_ratings", "status"))) {
+    await knex.schema.alterTable("order_ratings", (table) => {
+      table.string("status").defaultTo("new");
+    });
 
-  // Add index for the status field for better query performance
-  await knex.schema.alterTable("order_ratings", (table) => {
-    table.index("status");
-  });
+    // Add index for the status field for better query performance
+    await knex.schema.alterTable("order_ratings", (table) => {
+      table.index("status");
+    });
+  }
 };
 
 exports.down = async function (knex) {

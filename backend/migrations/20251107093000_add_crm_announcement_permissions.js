@@ -5,30 +5,46 @@
  */
 exports.up = async function up(knex) {
   await knex.transaction(async (trx) => {
-    const permissionNames = [
-      "announcements:create",
-      "announcements:update",
-      "announcements:delete",
+    const permissionsToAdd = [
+      {
+        name: "announcements:create",
+        key: "announcements:create",
+        module: "crm",
+      },
+      {
+        name: "announcements:update",
+        key: "announcements:update",
+        module: "crm",
+      },
+      {
+        name: "announcements:delete",
+        key: "announcements:delete",
+        module: "crm",
+      },
     ];
 
     const permissionIdMap = {};
 
-    for (const name of permissionNames) {
+    for (const p of permissionsToAdd) {
       const existing = await trx("user_permissions")
-        .where({ permission_name: name })
+        .where({ permission_key: p.key })
         .first();
 
       if (existing) {
-        permissionIdMap[name] = existing.permission_id;
+        permissionIdMap[p.name] = existing.permission_id;
         continue;
       }
 
       const inserted = await trx("user_permissions")
-        .insert({ permission_name: name })
+        .insert({
+          permission_name: p.name,
+          permission_key: p.key,
+          module: p.module,
+        })
         .returning(["permission_id"]);
 
       const permissionRow = Array.isArray(inserted) ? inserted[0] : inserted;
-      permissionIdMap[name] = permissionRow.permission_id;
+      permissionIdMap[p.name] = permissionRow.permission_id;
     }
 
     const roles = await trx("user_roles")
@@ -92,7 +108,10 @@ exports.up = async function up(knex) {
     };
 
     for (const role of crmAdminRoles) {
-      await assignPermissions(role, permissionNames);
+      await assignPermissions(
+        role,
+        permissionsToAdd.map((p) => p.name)
+      );
     }
 
     const managerPermissions = ["announcements:create", "announcements:update"];
@@ -109,15 +128,15 @@ exports.up = async function up(knex) {
  */
 exports.down = async function down(knex) {
   await knex.transaction(async (trx) => {
-    const permissionNames = [
+    const permissionKeys = [
       "announcements:create",
       "announcements:update",
       "announcements:delete",
     ];
 
     const permissions = await trx("user_permissions").whereIn(
-      "permission_name",
-      permissionNames
+      "permission_key",
+      permissionKeys
     );
 
     if (!permissions || permissions.length === 0) {

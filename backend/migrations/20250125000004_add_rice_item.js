@@ -1,9 +1,18 @@
 /**
  * Migration to add rice item with kg unit
  */
-exports.up = function (knex) {
+exports.up = async function (knex) {
+  // Look up Materials category ID
+  const materialsCategory = await knex("inventory_categories")
+    .where("name", "Materials")
+    .first();
+
+  if (!materialsCategory) {
+    throw new Error("Materials category not found. Please run inventory seeding migration first.");
+  }
+
   return knex("inventory_item_types").insert({
-    category_id: 5, // Materials category
+    category_id: materialsCategory.id,
     name: "Rice",
     description: "White rice for food production",
     unit_of_measure: "kg",

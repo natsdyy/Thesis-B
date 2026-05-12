@@ -2,21 +2,23 @@
  * @param { import("knex").Knex } knex
  * @returns { Promise<void> }
  */
-exports.up = function (knex) {
-  return knex.schema.alterTable("sample_productions", function (table) {
-    // Add failure tracking fields
-    table
-      .string("failure_reason", 100)
-      .nullable()
-      .comment("Categorized reason for production failure");
-    table
-      .decimal("quantity_lost", 10, 2)
-      .nullable()
-      .comment("Quantity lost during failed production");
+exports.up = async function (knex) {
+  if (await knex.schema.hasTable("sample_productions")) {
+    return knex.schema.alterTable("sample_productions", function (table) {
+      // Add failure tracking fields
+      table
+        .string("failure_reason", 100)
+        .nullable()
+        .comment("Categorized reason for production failure");
+      table
+        .decimal("quantity_lost", 10, 2)
+        .nullable()
+        .comment("Quantity lost during failed production");
 
-    // Add index for failure analysis
-    table.index("failure_reason", "idx_sample_productions_failure_reason");
-  });
+      // Add index for failure analysis
+      table.index("failure_reason", "idx_sample_productions_failure_reason");
+    });
+  }
 };
 
 /**

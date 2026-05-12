@@ -347,7 +347,8 @@ if (isRailway && process.env.SENDGRID_API_KEY && !process.env.SMTP_PASS) {
   emailServiceReady = true;
 } else {
   // Start verification
-  verifyTransporter();
+  // verifyTransporter();
+  console.log("📧 Email verification skipped by request.");
 }
 
 class EmailService {

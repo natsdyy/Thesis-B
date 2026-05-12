@@ -1,7 +1,7 @@
 require("dotenv").config();
 
 const DEFAULT_REMOTE_DB_URL =
-  "postgresql://postgres:yDKELokUDEzzoeMtKvcMBqRgHoesRrsK@turntable.proxy.rlwy.net:57197/railway";
+  "postgresql://postgres:[YOUR-PASSWORD]@db.iwkmvxqeryhvkytgvwri.supabase.co:5432/postgres";
 
 // Local default points to the restored offline copy
 const DEFAULT_LOCAL_DB_URL =

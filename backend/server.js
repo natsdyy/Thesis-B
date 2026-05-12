@@ -128,11 +128,12 @@ const corsConfig = {
     const isLanDevOrigin = /^http:\/\/192\.168\.\d+\.\d+:(8080|80)$/.test(
       origin
     );
-    const isRailwayOrigin = /^https:\/\/.*\.up\.railway\.app$/.test(origin);
+    const isRailwayOrigin = origin && origin.endsWith(".up.railway.app");
     const isLocalhost = /^http:\/\/localhost(:\d+)?$/.test(origin);
-    const isCustomDomain = /countryside-steakhouse\.site$/.test(origin);
+    const isCustomDomain = origin && (origin.includes("countryside-steakhouse.site") || origin.includes("countryside-steakhouse.site"));
 
     if (
+      !origin ||
       allowList.includes(origin) ||
       isLanDevOrigin ||
       isRailwayOrigin ||
@@ -144,7 +145,7 @@ const corsConfig = {
     }
 
     console.log(`CORS blocked origin: ${origin}`);
-    return callback(new Error("Not allowed by CORS"));
+    return callback(null, false);
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],

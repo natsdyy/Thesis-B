@@ -428,9 +428,19 @@ app.get("/api/test-email", async (req, res) => {
   }
 });
 
-// Catch-all handler: send back React's index.html file for any non-API routes
+// Catch-all handler: send back Vue's index.html file for any non-API routes, OR a fallback message if it doesn't exist.
 app.get("*", (req, res) => {
-  res.sendFile(require("path").join(frontendPath, "index.html"));
+  const fs = require("fs");
+  const indexPath = require("path").join(frontendPath, "index.html");
+  if (fs.existsSync(indexPath)) {
+    res.sendFile(indexPath);
+  } else {
+    res.status(200).json({ 
+      message: "Countryside Steakhouse API is running.", 
+      status: "online",
+      frontend: "Frontend is decoupled and hosted separately."
+    });
+  }
 });
 
 // Database health check

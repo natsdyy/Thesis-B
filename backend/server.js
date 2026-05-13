@@ -131,6 +131,10 @@ const corsConfig = {
     const isRailwayOrigin = origin && origin.endsWith(".up.railway.app");
     const isLocalhost = /^http:\/\/localhost(:\d+)?$/.test(origin);
     const isCustomDomain = origin && (origin.includes("countryside-steakhouse.site") || origin.includes("countryside-steakhouse.site"));
+    
+    // Explicitly allow the exact production origins reported in the error
+    const isProductionOrigin = origin === "https://www.countryside-steakhouse.site" || 
+                               origin === "https://countryside-steakhouse.site";
 
     if (
       !origin ||
@@ -138,7 +142,8 @@ const corsConfig = {
       isLanDevOrigin ||
       isRailwayOrigin ||
       isLocalhost ||
-      isCustomDomain
+      isCustomDomain ||
+      isProductionOrigin
     ) {
       console.log(`CORS allowed origin: ${origin}`);
       return callback(null, true);
@@ -157,13 +162,18 @@ const corsConfig = {
     "Origin",
     "Access-Control-Allow-Headers",
     "Access-Control-Request-Method",
-    "Access-Control-Request-Headers"
+    "Access-Control-Request-Headers",
+    "Cache-Control",
+    "Pragma",
+    "Expires"
   ],
   optionsSuccessStatus: 204,
+  preflightContinue: false
 };
 
-app.use(cors(corsConfig));
+// Handle preflight requests for all routes
 app.options("*", cors(corsConfig));
+app.use(cors(corsConfig));
 app.use(express.json());
 // Serve uploads with proper CORS headers and content-type detection
 app.use(

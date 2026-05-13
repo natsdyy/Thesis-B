@@ -15,7 +15,7 @@ function resolveBaseURL() {
     }
     // For production domain, use the production backend
     if (window.location.origin.includes('countryside-steakhouse.site')) {
-      return 'https://www.countryside-steakhouse.site/api';
+      return 'https://thesis-b-productioncountryside.up.railway.app/api';
     }
     // For Railway production deployment, use the current origin
     if (window.location.origin.includes('railway.app')) {
@@ -23,7 +23,7 @@ function resolveBaseURL() {
     }
     // For production environment, use the production backend
     if (window.location.origin.includes('countrysides.up.railway.app')) {
-      return 'https://www.countryside-steakhouse.site/api';
+      return 'https://thesis-b-productioncountryside.up.railway.app/api';
     }
     // For other environments, use window origin
     return `${window.location.origin.replace(/\/$/, '')}/api`;
@@ -110,11 +110,11 @@ export const formatImageUrl = (imageUrl) => {
       }
       // For countryside-steakhouse.site domain
       else if (window.location.origin.includes('countryside-steakhouse.site')) {
-        backendUrl = 'https://www.countryside-steakhouse.site';
+        backendUrl = 'https://thesis-b-productioncountryside.up.railway.app';
       }
-      // For Railway production deployment, use the production domain
+      // For Railway production deployment, use the production backend
       else if (window.location.origin.includes('countrysides.up.railway.app')) {
-        backendUrl = 'https://www.countryside-steakhouse.site';
+        backendUrl = 'https://thesis-b-productioncountryside.up.railway.app';
       }
       // For other Railway deployments, use the current origin
       else if (window.location.origin.includes('railway.app')) {

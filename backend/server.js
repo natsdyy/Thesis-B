@@ -73,7 +73,7 @@ const app = express();
 const PORT = process.env.PORT || process.env.BACKEND_PORT || 5000;
 
 // Middleware
-// Enhanced CORS to allow localhost, LAN dev origins, and Railway deployment
+// Robust CORS configuration for development and production
 const rawCorsOrigin = process.env.CORS_ORIGIN || "";
 const envOrigins = rawCorsOrigin
   .split(",")
@@ -104,93 +104,76 @@ const defaultAllowedOrigins = [
 
 const allowList = [...defaultAllowedOrigins, ...envOrigins];
 
-// Development-friendly CORS configuration
-const corsConfig = {
-  origin: (origin, callback) => {
-    // Allow non-browser requests or same-origin (no Origin header)
-    if (!origin) return callback(null, true);
-
-    // In development, be more permissive
-    if (process.env.NODE_ENV !== "production") {
-      // Allow localhost with any port
-      if (/^http:\/\/localhost(:\d+)?$/.test(origin)) {
-        console.log(`CORS allowed localhost origin: ${origin}`);
-        return callback(null, true);
-      }
-
-      // Allow LAN development origins
-      if (/^http:\/\/192\.168\.\d+\.\d+:(8080|80|5000)$/.test(origin)) {
-        console.log(`CORS allowed LAN origin: ${origin}`);
-        return callback(null, true);
-      }
-    }
-
-    const isLanDevOrigin = /^http:\/\/192\.168\.\d+\.\d+:(8080|80)$/.test(
-      origin
-    );
-    const isRailwayOrigin = origin && origin.endsWith(".up.railway.app");
-    const isLocalhost = /^http:\/\/localhost(:\d+)?$/.test(origin);
-    const isCustomDomain = origin && (origin.includes("countryside-steakhouse.site") || origin.includes("countryside-steakhouse.site"));
-    
-    // Explicitly allow the exact production origins reported in the error
-    const isProductionOrigin = origin === "https://www.countryside-steakhouse.site" || 
-                               origin === "https://countryside-steakhouse.site";
-
-    if (
-      !origin ||
-      allowList.includes(origin) ||
-      isLanDevOrigin ||
-      isRailwayOrigin ||
-      isLocalhost ||
-      isCustomDomain ||
-      isProductionOrigin
-    ) {
-      console.log(`CORS allowed origin: ${origin}`);
-      return callback(null, true);
-    }
-
-    console.log(`CORS blocked origin: ${origin}`);
-    return callback(null, false);
-  },
-  credentials: true,
-  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: [
-    "Content-Type",
-    "Authorization",
-    "X-Requested-With",
-    "Accept",
-    "Origin",
-    "Access-Control-Allow-Headers",
-    "Access-Control-Request-Method",
-    "Access-Control-Request-Headers",
-    "Cache-Control",
-    "Pragma",
-    "Expires"
-  ],
-  optionsSuccessStatus: 204,
-  preflightContinue: false
-};
-
-// Manual CORS fallback to guarantee headers (especially for preflights)
-app.use((req, res, next) => {
-  const origin = req.headers.origin;
-  if (origin && origin.includes("countryside-steakhouse.site")) {
-    res.header("Access-Control-Allow-Origin", origin);
-    res.header("Access-Control-Allow-Credentials", "true");
-    res.header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
-    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Accept, Origin, Cache-Control, Pragma, Expires");
+/**
+ * Robust check to see if an origin is allowed.
+ * Handles case-insensitivity, trailing slashes, and common domain patterns.
+ */
+const isOriginAllowed = (origin) => {
+  if (!origin) return true; // Allow non-browser requests (like Postman or server-to-server)
+  
+  const normalizedOrigin = origin.toLowerCase().trim().replace(/\/$/, "");
+  
+  // 1. Direct match in allowList
+  if (allowList.some(allowed => allowed.toLowerCase().trim().replace(/\/$/, "") === normalizedOrigin)) {
+    return true;
   }
   
-  // Intercept OPTIONS method
-  if (req.method === "OPTIONS") {
-    return res.status(204).end();
+  // 2. Pattern matches for our known domains
+  if (
+    normalizedOrigin.includes("countryside-steakhouse.site") || 
+    normalizedOrigin.includes("railway.app") || 
+    normalizedOrigin.includes("localhost") || 
+    normalizedOrigin.includes("127.0.0.1") ||
+    normalizedOrigin.includes("192.168")
+  ) {
+    return true;
   }
+    
+  return false;
+};
+
+// 1. Manual CORS Middleware (Guarantees headers for all requests, especially preflights)
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  
+  if (isOriginAllowed(origin)) {
+    // We use the incoming origin if it's allowed, otherwise fallback to "*" 
+    // (though browser security prefers the explicit origin for credentials)
+    res.header("Access-Control-Allow-Origin", origin || "*");
+    res.header("Access-Control-Allow-Credentials", "true");
+    res.header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
+    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Accept, Origin, Cache-Control, Pragma, Expires, Access-Control-Allow-Headers, Access-Control-Request-Method, Access-Control-Request-Headers");
+    res.header("Access-Control-Max-Age", "86400"); // 24 hours cache for preflight
+    
+    // Immediately handle preflight requests
+    if (req.method === "OPTIONS") {
+      return res.status(204).end();
+    }
+  } else if (origin) {
+    // Log blocked origins for debugging (visible in Railway logs)
+    console.warn(`[CORS] Blocked origin: ${origin}`);
+  }
+  
   next();
 });
 
-// Handle preflight requests for all routes using standard package
-app.options("*", cors(corsConfig));
+// 2. Standard CORS Package Middleware (Redundant but safe as a secondary layer)
+const corsConfig = {
+  origin: (origin, callback) => {
+    if (isOriginAllowed(origin)) {
+      callback(null, true);
+    } else {
+      callback(null, false);
+    }
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept", "Origin"],
+  optionsSuccessStatus: 204
+};
+
 app.use(cors(corsConfig));
+
 app.use(express.json());
 // Serve uploads with proper CORS headers and content-type detection
 app.use(

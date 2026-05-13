@@ -171,7 +171,24 @@ const corsConfig = {
   preflightContinue: false
 };
 
-// Handle preflight requests for all routes
+// Manual CORS fallback to guarantee headers (especially for preflights)
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && origin.includes("countryside-steakhouse.site")) {
+    res.header("Access-Control-Allow-Origin", origin);
+    res.header("Access-Control-Allow-Credentials", "true");
+    res.header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
+    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Accept, Origin, Cache-Control, Pragma, Expires");
+  }
+  
+  // Intercept OPTIONS method
+  if (req.method === "OPTIONS") {
+    return res.status(204).end();
+  }
+  next();
+});
+
+// Handle preflight requests for all routes using standard package
 app.options("*", cors(corsConfig));
 app.use(cors(corsConfig));
 app.use(express.json());

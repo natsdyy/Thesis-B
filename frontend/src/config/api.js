@@ -1,35 +1,42 @@
 // API Configuration that supports both offline (local) and online modes
 
 function resolveBaseURL() {
-  // Highest priority: explicit Vite env override
+  // Highest priority: explicit Vite env override (useful for production and specific builds)
   const fromEnv = import.meta.env.VITE_API_BASE_URL;
   if (fromEnv && typeof fromEnv === 'string' && fromEnv.trim().length > 0) {
+    console.log('Using API URL from environment:', fromEnv.trim());
     return fromEnv.trim();
   }
 
-  // For local development, always use localhost to avoid CORS issues
+  // Fallback logic for automatic resolution based on window.location
   if (typeof window !== 'undefined' && window.location?.origin) {
-    // In dev, always use localhost:8080 to ensure proxy works
-    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname.includes('192.168')) {
+    const origin = window.location.origin;
+    
+    // Local development
+    if (origin.includes('localhost') || origin.includes('127.0.0.1') || origin.includes('192.168')) {
       return 'http://localhost:8080/api';
     }
-    // For production domain, use the production backend
-    if (window.location.origin.includes('countryside-steakhouse.site')) {
+    
+    // Custom production domain
+    if (origin.includes('countryside-steakhouse.site')) {
       return 'https://thesis-b-productioncountryside.up.railway.app/api';
     }
-    // For Railway production deployment, use the current origin
-    if (window.location.origin.includes('railway.app')) {
-      return `${window.location.origin}/api`;
+    
+    // Railway specific handling
+    if (origin.includes('railway.app')) {
+      // If we're on a railway subdomain but it's not the primary one, 
+      // try to point to the production backend explicitly
+      if (origin.includes('countrysides')) {
+        return 'https://thesis-b-productioncountryside.up.railway.app/api';
+      }
+      return `${origin}/api`;
     }
-    // For production environment, use the production backend
-    if (window.location.origin.includes('countrysides.up.railway.app')) {
-      return 'https://thesis-b-productioncountryside.up.railway.app/api';
-    }
-    // For other environments, use window origin
-    return `${window.location.origin.replace(/\/$/, '')}/api`;
+    
+    // Generic fallback: use current origin
+    return `${origin.replace(/\/$/, '')}/api`;
   }
 
-  // Fallback for local development/offline
+  // Absolute fallback
   return 'http://localhost:8080/api';
 }
 

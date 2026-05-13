@@ -75,8 +75,12 @@ const PORT = process.env.PORT || process.env.BACKEND_PORT || 5000;
 // Middleware
 // Robust CORS configuration for development and production
 const rawCorsOrigin = process.env.CORS_ORIGIN || "";
-const envOrigins = rawCorsOrigin
-  .split(",")
+const frontendUrl = process.env.FRONTEND_URL || "";
+
+const envOrigins = [
+  ...rawCorsOrigin.split(","),
+  ...frontendUrl.split(",")
+]
   .map((value) => value.trim())
   .filter(Boolean);
 

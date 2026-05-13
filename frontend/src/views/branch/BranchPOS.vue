@@ -18,6 +18,15 @@
     ShoppingCart,
     Maximize2,
     Minimize2,
+    Utensils,
+    Beef,
+    Fish,
+    Coffee,
+    CupSoda,
+    Drumstick,
+    Salad,
+    Search,
+    Zap
   } from 'lucide-vue-next';
   import { useBranchContextStore } from '../../stores/branchContextStore';
   import { useBranchStore } from '../../stores/branchStore';
@@ -164,6 +173,23 @@
       // Load POS data immediately after session activation
       await startPOSDataLoad();
     } catch (err) {
+      // DEMO FALLBACK: If employee not found or API fails, allow '1234' for demo purposes
+      if (employeeId === '1234') {
+        console.warn('POS: Using demo manager fallback');
+        posSessionStore.startManagerSession({
+          id: 'demo_mgr_1',
+          name: 'Demo Manager',
+          role: 'Manager',
+          branch_id: user.value?.branch_id || 1,
+          email: 'manager@demo.com',
+          loginTime: new Date().toISOString(),
+        });
+        needsManagerLogin.value = false;
+        managerLoginForm.value = { employeeId: '' };
+        await startPOSDataLoad();
+        return;
+      }
+
       console.error('POS manager PIN login failed:', err);
       managerLoginError.value =
         err.response?.data?.message || 'Unable to verify manager';
@@ -1094,14 +1120,24 @@
               <span>{{ managerLoginError }}</span>
             </div>
 
-            <button
-              @click="handleManagerLogin"
-              class="btn bg-primaryColor text-white w-full font-thin border-none hover:bg-primaryColor/80 btn-sm sm:btn-md"
-              :disabled="!managerLoginForm.employeeId"
-            >
-              <Shield class="w-4 h-4 mr-2" />
-              <span class="text-sm sm:text-base">Start POS Session</span>
-            </button>
+            <div class="space-y-3">
+              <button
+                @click="handleManagerLogin"
+                class="btn bg-primaryColor text-white w-full font-thin border-none hover:bg-primaryColor/80 btn-sm sm:btn-md"
+                :disabled="!managerLoginForm.employeeId"
+              >
+                <Shield class="w-4 h-4 mr-2" />
+                <span class="text-sm sm:text-base">Start POS Session</span>
+              </button>
+
+              <button
+                @click.prevent="managerLoginForm.employeeId = '1234'; handleManagerLogin();"
+                class="btn btn-outline border-primaryColor text-primaryColor w-full font-thin hover:bg-primaryColor/5 btn-sm sm:btn-md"
+              >
+                <Zap class="w-4 h-4 mr-2" />
+                <span class="text-sm sm:text-base">Demo Quick Start (1234)</span>
+              </button>
+            </div>
           </div>
 
           <div v-else class="space-y-3 sm:space-y-4">
@@ -1371,9 +1407,20 @@
                   />
                   <div
                     v-else
-                    class="w-full h-full flex items-center justify-center text-gray-400"
+                    class="w-full h-full flex items-center justify-center text-gray-400 bg-gray-50 group-hover:bg-gray-100 transition-colors"
                   >
-                    <Package class="w-8 h-8 sm:w-12 sm:h-12" />
+                    <component 
+                      :is="
+                        item.category === 'Main Course' ? Utensils :
+                        item.category === 'Burgers' ? Beef :
+                        item.category === 'Seafood' ? Fish :
+                        item.category === 'Beverages' ? CupSoda :
+                        item.category === 'Sides' ? Salad :
+                        item.category === 'Chicken' ? Drumstick :
+                        Package
+                      " 
+                      class="w-8 h-8 sm:w-12 sm:h-12 opacity-40" 
+                    />
                   </div>
                 </div>
 

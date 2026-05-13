@@ -11,6 +11,19 @@
     XCircle,
     Clock,
     QrCode,
+    ShieldCheck,
+    Users,
+    Banknote,
+    Package,
+    Factory,
+    HeartHandshake,
+    Store,
+    CreditCard,
+    Copy,
+    Check,
+    Zap,
+    LogIn,
+    Key,
   } from 'lucide-vue-next';
   import { nextTick } from 'vue';
   import { QrcodeStream } from 'vue-qrcode-reader';
@@ -401,6 +414,53 @@
   const showPassword = ref(false);
   const errorMessage = ref('');
   const isLoading = ref(false);
+  const showDemoModal = ref(false);
+  const copyStatus = ref({}); // Track copy status for visual feedback
+
+  // Demo credentials for quick access
+  const demoCredentials = [
+    { label: 'Super Admin', email: 'admin@countryside.com', password: 'admin123', color: 'bg-amber-500', icon: ShieldCheck, type: 'admin' },
+    { label: 'HR Admin', email: 'hr@countryside.com', password: 'demo123', color: 'bg-blue-500', icon: Users, type: 'hr' },
+    { label: 'Finance Admin', email: 'finance@countryside.com', password: 'demo123', color: 'bg-green-500', icon: Banknote, type: 'finance' },
+    { label: 'Supply Chain', email: 'supply@countryside.com', password: 'demo123', color: 'bg-purple-500', icon: Package, type: 'supply' },
+    { label: 'Production', email: 'production@countryside.com', password: 'demo123', color: 'bg-orange-500', icon: Factory, type: 'production' },
+    { label: 'CRM Admin', email: 'crm@countryside.com', password: 'demo123', color: 'bg-pink-500', icon: HeartHandshake, type: 'crm' },
+    { label: 'Branch Manager', email: 'branch@countryside.com', password: 'demo123', color: 'bg-teal-500', icon: Store, subtitle: 'POS & Inventory', type: 'branch' },
+    { label: 'Branch Cashier', email: 'cashier@countryside.com', password: 'demo123', color: 'bg-cyan-500', icon: CreditCard, subtitle: 'POS Access', type: 'branch' },
+  ];
+
+  const copyToClipboard = async (text, id) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      copyStatus.value[id] = true;
+      setTimeout(() => {
+        copyStatus.value[id] = false;
+      }, 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  };
+
+  const fillDemoCredentials = (cred) => {
+    email.value = cred.email;
+    password.value = cred.password;
+    errorMessage.value = '';
+    showDemoModal.value = false;
+  };
+
+  const quickStartPOS = async (cred) => {
+    email.value = cred.email;
+    password.value = cred.password;
+    showDemoModal.value = false;
+    
+    // Trigger login
+    await login();
+    
+    // If login successful, redirect to POS specifically
+    if (authStore.isAuthenticated && authStore.userDepartment === 'Branch') {
+      router.push('/pos');
+    }
+  };
 
   const togglePasswordVisibility = () => {
     showPassword.value = !showPassword.value;
@@ -577,7 +637,7 @@
       @click="goBackHome"
       class="absolute top-8 left-8 text-gray-600 hover:text-gray-800 transition-colors z-10 cursor-pointer items-center space-x-2 hover:bg-white/20 rounded-lg px-3 py-2 flex"
     >
-      <ArrowLeft class="w-5 h-5" />
+      <ArrowLeft class="w-5 h-5"></ArrowLeft>
       <span class="text-sm font-medium hidden lg:inline">Back to Home</span>
     </button>
 
@@ -936,12 +996,12 @@
 
     <!-- Desktop Layout -->
     <div
-      class="relative z-10 bg-white rounded-lg shadow-lg overflow-hidden max-w-4xl w-full max-h-[600px] hidden lg:flex"
+      class="relative z-10 bg-white rounded-lg shadow-lg overflow-hidden max-w-4xl w-full max-h-[800px] hidden lg:flex"
     >
       <!-- Left Side - Logo/Branding -->
       <div
         class="w-1/2 flex items-center bg-secondaryColor justify-center p-6 lg:p-8 h-full"
-        style="height: 600px"
+        style="height: 800px"
       >
         <img
           src="/logo1.png"
@@ -1132,6 +1192,26 @@
                 </router-link>
               </p>
             </div>
+
+            <!-- Demo Access Button -->
+            <div class="mt-8 border-t border-gray-100 pt-6">
+              <button
+                type="button"
+                @click="showDemoModal = true"
+                class="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-xl border-2 border-dashed border-gray-200 text-gray-500 hover:border-primaryColor hover:text-primaryColor hover:bg-primaryColor/5 transition-all duration-300 group font-poppins text-sm font-semibold cursor-pointer"
+              >
+                <div class="bg-gray-100 group-hover:bg-primaryColor/10 p-1.5 rounded-lg transition-colors">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                  </svg>
+                </div>
+                <span>Quick Access Demo Accounts</span>
+                <div class="flex-1"></div>
+                <kbd class="hidden sm:inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-gray-400 bg-white border border-gray-200 rounded-md">
+                  <span>⌘</span><span>D</span>
+                </kbd>
+              </button>
+            </div>
           </form>
         </div>
       </div>
@@ -1282,8 +1362,8 @@
                 @click="togglePasswordVisibility"
                 class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0"
               >
-                <Eye v-if="showPassword" class="w-5 h-5" />
-                <EyeOff v-else class="w-5 h-5" />
+                <Eye v-if="showPassword" class="w-5 h-5"></Eye>
+                <EyeOff v-else class="w-5 h-5"></EyeOff>
               </button>
             </label>
           </div>
@@ -1337,6 +1417,20 @@
               </router-link>
             </p>
           </div>
+
+          <!-- Demo Access Button (Mobile) -->
+          <div class="mt-8 pt-4">
+            <button
+              type="button"
+              @click="showDemoModal = true"
+              class="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-xl border border-gray-200 text-gray-500 hover:text-primaryColor hover:bg-primaryColor/5 transition-all duration-300 font-poppins text-sm font-medium cursor-pointer"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+              </svg>
+              <span>Demo Credentials</span>
+            </button>
+          </div>
         </form>
       </div>
 
@@ -1370,7 +1464,7 @@
             ></div>
 
             <!-- Icon -->
-            <QrCode class="w-6 h-6 relative z-10" />
+            <QrCode class="w-6 h-6 relative z-10"></QrCode>
 
             <!-- Glow effect -->
             <div
@@ -1380,6 +1474,119 @@
         </div>
       </div>
     </div>
+
+    <dialog :open="showDemoModal" class="modal modal-bottom sm:modal-middle bg-black/40 backdrop-blur-sm transition-all duration-300" :class="{ 'modal-open': showDemoModal }">
+      <div class="modal-box w-11/12 max-w-6xl p-0 overflow-hidden bg-white rounded-3xl shadow-2xl demo-modal-wide">
+        <!-- Modal Header -->
+        <div class="bg-primaryColor p-6 text-white relative">
+          <div class="flex items-center gap-3 mb-2">
+            <div class="p-2 bg-white/20 rounded-xl">
+              <Key class="w-6 h-6"></Key>
+            </div>
+            <h3 class="text-2xl font-bold font-poppins">System Demo Access</h3>
+          </div>
+          <p class="text-white/80 font-roboto text-sm">Select a role to explore the system with pre-configured permissions.</p>
+          
+          <button @click="showDemoModal = false" class="absolute top-6 right-6 p-2 hover:bg-white/20 rounded-xl transition-colors cursor-pointer">
+            <XCircle class="w-6 h-6"></XCircle>
+          </button>
+        </div>
+
+        <!-- Modal Body -->
+        <div class="p-6 overflow-y-auto max-h-[75vh]">
+          <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+            <div
+              v-for="cred in demoCredentials"
+              :key="cred.email"
+              class="group bg-gray-50 border border-gray-100 rounded-2xl p-5 hover:border-primaryColor/30 hover:bg-white hover:shadow-lg transition-all duration-300 relative overflow-hidden"
+            >
+              <!-- Background Accent -->
+              <div class="absolute -right-4 -top-4 w-16 h-16 opacity-5 group-hover:opacity-10 transition-opacity rounded-full" :class="cred.color"></div>
+              
+              <div class="flex flex-col gap-4">
+                <div class="flex items-center gap-4">
+                  <div class="p-3 rounded-2xl shadow-sm border border-gray-100 group-hover:scale-110 transition-transform bg-white shrink-0" :class="`text-${cred.color.split('-')[1]}-600`">
+                    <component :is="cred.icon" class="w-7 h-7"></component>
+                  </div>
+                  <div class="flex flex-col">
+                    <span class="text-lg font-bold text-gray-800 font-poppins leading-tight whitespace-nowrap">{{ cred.label }}</span>
+                    <span v-if="cred.subtitle" class="text-[11px] font-bold uppercase tracking-widest bg-primaryColor/10 text-primaryColor px-2.5 py-1 rounded-full w-fit mt-1">
+                      {{ cred.subtitle }}
+                    </span>
+                  </div>
+                </div>
+                
+                <div class="flex-1 min-w-0">
+                  <!-- Email/Password Info -->
+                  <div class="space-y-3">
+                    <div class="flex items-center justify-between gap-4 p-3 bg-white rounded-2xl border border-gray-100 group-hover:border-primaryColor/10 shadow-sm transition-all">
+                      <div class="flex flex-col">
+                        <span class="text-[11px] text-gray-400 uppercase font-bold tracking-wider">Email Address</span>
+                        <span class="text-xs text-gray-700 font-medium whitespace-nowrap">{{ cred.email }}</span>
+                      </div>
+                      <button @click="copyToClipboard(cred.email, cred.email)" class="p-2.5 hover:bg-gray-100 rounded-xl transition-colors text-gray-400 hover:text-primaryColor cursor-pointer shrink-0" title="Copy Email">
+                        <Copy v-if="!copyStatus[cred.email]" class="w-4 h-4"></Copy>
+                        <Check v-else class="w-4 h-4 text-success"></Check>
+                      </button>
+                    </div>
+                    
+                    <div class="flex items-center justify-between gap-4 p-3 bg-white rounded-2xl border border-gray-100 group-hover:border-primaryColor/10 shadow-sm transition-all">
+                      <div class="flex flex-col">
+                        <span class="text-[11px] text-gray-400 uppercase font-bold tracking-wider">System Password</span>
+                        <span class="text-xs text-gray-700 font-mono font-medium whitespace-nowrap">{{ cred.password }}</span>
+                      </div>
+                      <button @click="copyToClipboard(cred.password, cred.email + '_pw')" class="p-2.5 hover:bg-gray-100 rounded-xl transition-colors text-gray-400 hover:text-primaryColor cursor-pointer shrink-0" title="Copy Password">
+                        <Copy v-if="!copyStatus[cred.email + '_pw']" class="w-4 h-4"></Copy>
+                        <Check v-else class="w-4 h-4 text-success"></Check>
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- Actions -->
+                  <div class="grid grid-cols-2 gap-2 mt-4">
+                    <button
+                      @click="fillDemoCredentials(cred)"
+                      class="flex items-center justify-center gap-2 py-2 px-3 bg-white border border-gray-200 rounded-xl text-xs font-semibold text-gray-700 hover:border-primaryColor hover:text-primaryColor transition-all cursor-pointer"
+                    >
+                      Auto Fill
+                    </button>
+                    
+                    <button
+                      v-if="cred.type === 'branch'"
+                      @click="quickStartPOS(cred)"
+                      class="flex items-center justify-center gap-2 py-2 px-3 bg-primaryColor text-white rounded-xl text-xs font-semibold hover:bg-primaryColor/90 transition-all shadow-md shadow-primaryColor/20 cursor-pointer"
+                    >
+                      <Zap class="w-3 h-3"></Zap>
+                      Start POS
+                    </button>
+                    
+                    <button
+                      v-else
+                      @click="fillDemoCredentials(cred); login()"
+                      class="flex items-center justify-center gap-2 py-2 px-3 bg-gray-900 text-white rounded-xl text-xs font-semibold hover:bg-black transition-all shadow-md cursor-pointer"
+                    >
+                      <LogIn class="w-3 h-3"></LogIn>
+                      Login
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-gray-50 p-4 border-t border-gray-100 flex items-center justify-between rounded-b-3xl">
+          <div class="flex items-center gap-2 text-xs text-gray-500">
+            <span class="w-2 h-2 bg-success rounded-full animate-pulse"></span>
+            Database Connected (Supabase Local)
+          </div>
+          <button @click="showDemoModal = false" class="btn btn-ghost btn-sm font-poppins capitalize">Close</button>
+        </div>
+      </div>
+      <form method="dialog" class="modal-backdrop" @click="showDemoModal = false">
+        <button>close</button>
+      </form>
+    </dialog>
   </div>
 </template>
 
@@ -1527,6 +1734,19 @@
     max-height: calc(100vh - 1rem);
   }
 
+  /* Force wider modal for demo access */
+  .demo-modal-wide {
+    max-width: 90vw !important;
+    width: 1200px !important;
+  }
+
+  @media (max-width: 640px) {
+    .demo-modal-wide {
+      width: 95vw !important;
+      max-width: 95vw !important;
+    }
+  }
+
   @media (min-width: 640px) {
     .modal-box {
       margin: 1rem;
@@ -1628,5 +1848,29 @@
     .modal-box > *:last-child {
       margin-bottom: 0;
     }
+  }
+
+  /* Slide-fade transition for demo credentials panel */
+  .slide-fade-enter-active {
+    transition: all 0.3s ease-out;
+  }
+  .slide-fade-leave-active {
+    transition: all 0.2s ease-in;
+  }
+  .slide-fade-enter-from {
+    opacity: 0;
+    transform: translateY(-10px);
+    max-height: 0;
+  }
+  .slide-fade-leave-to {
+    opacity: 0;
+    transform: translateY(-10px);
+    max-height: 0;
+  }
+  .slide-fade-enter-to,
+  .slide-fade-leave-from {
+    opacity: 1;
+    transform: translateY(0);
+    max-height: 500px;
   }
 </style>

@@ -595,6 +595,24 @@
         </div>
       </div>
     </section>
+    
+    <!-- Thesis Project Disclaimer Bar -->
+    <div class="bg-amber-50 border-y border-amber-100 py-3 sm:py-4">
+      <div class="container mx-auto px-4">
+        <div class="flex flex-col md:flex-row items-center justify-center gap-2 md:gap-4 text-center md:text-left">
+          <div class="flex items-center text-amber-600">
+            <AlertCircle class="w-5 h-5 mr-2 shrink-0" />
+            <span class="font-bold text-xs sm:text-sm uppercase tracking-wider">Project Notice</span>
+          </div>
+          <div class="h-4 w-px bg-amber-200 hidden md:block"></div>
+          <p class="text-xs sm:text-sm text-gray-700 leading-relaxed">
+            This is a <strong>Thesis Sample Project</strong> only (NOT the official site). 
+            Owned by <a href="https://vibebuilds.site" target="_blank" class="text-orange-600 font-semibold hover:underline">vibebuilds.site</a>. 
+            Contact: <a href="mailto:charleslouiealvran@gmail.com" class="text-orange-600 font-semibold hover:underline">charleslouiealvran@gmail.com</a>
+          </p>
+        </div>
+      </div>
+    </div>
 
     <!-- About the Countryside Section -->
     <section class="py-12 sm:py-16 lg:py-20 bg-white">
@@ -1663,8 +1681,8 @@
       </div>
 
       <!-- Divider -->
-      <div class="border-t border-white/20 mt-8 pt-4 text-center text-sm">
-        © {{ new Date().getFullYear() }} Countryside Steakhouse. All rights
+      <div class="border-t border-white/10 mt-8 pt-4 text-center text-[10px] text-white/50">
+        © {{ new Date().getFullYear() }} Countryside Steakhouse (Thesis Project). All rights
         reserved.
       </div>
     </footer>
@@ -1680,7 +1698,7 @@
   import menuService from '../../services/menuService.js';
   import announcementService from '../../services/announcementService.js';
   import { formatImageUrl, apiConfig } from '../../config/api.js';
-  import { Clock, Briefcase, Users, Megaphone } from 'lucide-vue-next';
+  import { Clock, Briefcase, Users, Megaphone, AlertCircle } from 'lucide-vue-next';
   import { useFeedbackStore } from '../../stores/feedbackStore.js';
 
   // Backend base derived from api config (strip /api)

@@ -366,7 +366,7 @@ async function assignDefaultPermissions() {
 
 async function createDefaultUsers() {
   try {
-    console.log("🌱 Creating default system administrator...");
+    console.log("🌱 Creating default system administrator and demo accounts...");
 
     const roles = await Roles.getAll();
     const superAdminRole = roles.find(
@@ -378,57 +378,272 @@ async function createDefaultUsers() {
       return [];
     }
 
-    const adminUser = {
-      first_name: "System",
-      last_name: "Administrator",
-      email: "admin@countryside.com",
-      password: "admin123",
-      role_id: superAdminRole.role_id,
-      department: "Admin",
-      phone_number: "09123456789",
-      address: "Main Office",
-      postal_code: "1000",
-      civil_status: "Single",
-      sex: "Male",
-      birthday: "1990-01-01",
-      age: 34,
-      citizenship: "Filipino",
-      employee_type: "Full-time",
-      pagibig_number: "000000000001",
-      sss_number: "0000000001",
-      philhealth_number: "000000000001",
-      emergency_contact_name: "Admin Support",
-      emergency_relationship: "Other",
-      emergency_contact_number: "09123456789",
-      emergency_contact_address: "Main Office",
-    };
+    // ─── Define all demo accounts ───────────────────────────────────
+    const demoAccounts = [
+      // Super Admin (original)
+      {
+        first_name: "System",
+        last_name: "Administrator",
+        email: "admin@countryside.com",
+        password: "admin123",
+        role_id: superAdminRole.role_id,
+        department: "Admin",
+        phone_number: "09123456789",
+        address: "Main Office",
+        postal_code: "1000",
+        civil_status: "Single",
+        sex: "Male",
+        birthday: "1990-01-01",
+        age: 34,
+        citizenship: "Filipino",
+        employee_type: "Full-time",
+        pagibig_number: "000000000001",
+        sss_number: "0000000001",
+        philhealth_number: "000000000001",
+        emergency_contact_name: "Admin Support",
+        emergency_relationship: "Other",
+        emergency_contact_number: "09123456789",
+        emergency_contact_address: "Main Office",
+      },
+      // HR Admin
+      {
+        first_name: "HR",
+        last_name: "Demo",
+        email: "hr@countryside.com",
+        password: "demo123",
+        roleLookup: { role: "Admin", department: "Human Resource" },
+        department: "Human Resource",
+        phone_number: "09234567890",
+        address: "Main Office",
+        postal_code: "1000",
+        civil_status: "Single",
+        sex: "Female",
+        birthday: "1992-03-15",
+        age: 32,
+        citizenship: "Filipino",
+        employee_type: "Full-time",
+        pagibig_number: "000000000002",
+        sss_number: "0000000002",
+        philhealth_number: "000000000002",
+        emergency_contact_name: "HR Support",
+        emergency_relationship: "Other",
+        emergency_contact_number: "09234567890",
+        emergency_contact_address: "Main Office",
+      },
+      // Finance Admin
+      {
+        first_name: "Finance",
+        last_name: "Demo",
+        email: "finance@countryside.com",
+        password: "demo123",
+        roleLookup: { role: "Admin", department: "Finance" },
+        department: "Finance",
+        phone_number: "09345678901",
+        address: "Main Office",
+        postal_code: "1000",
+        civil_status: "Single",
+        sex: "Male",
+        birthday: "1991-06-20",
+        age: 33,
+        citizenship: "Filipino",
+        employee_type: "Full-time",
+        pagibig_number: "000000000003",
+        sss_number: "0000000003",
+        philhealth_number: "000000000003",
+        emergency_contact_name: "Finance Support",
+        emergency_relationship: "Other",
+        emergency_contact_number: "09345678901",
+        emergency_contact_address: "Main Office",
+      },
+      // Supply Chain Admin
+      {
+        first_name: "Supply",
+        last_name: "Demo",
+        email: "supply@countryside.com",
+        password: "demo123",
+        roleLookup: { role: "Admin", department: "Supply Chain" },
+        department: "Supply Chain",
+        phone_number: "09456789012",
+        address: "Main Office",
+        postal_code: "1000",
+        civil_status: "Married",
+        sex: "Male",
+        birthday: "1988-09-10",
+        age: 36,
+        citizenship: "Filipino",
+        employee_type: "Full-time",
+        pagibig_number: "000000000004",
+        sss_number: "0000000004",
+        philhealth_number: "000000000004",
+        emergency_contact_name: "SCM Support",
+        emergency_relationship: "Other",
+        emergency_contact_number: "09456789012",
+        emergency_contact_address: "Main Office",
+      },
+      // Production Admin
+      {
+        first_name: "Production",
+        last_name: "Demo",
+        email: "production@countryside.com",
+        password: "demo123",
+        roleLookup: { role: "Admin", department: "Production" },
+        department: "Production",
+        phone_number: "09567890123",
+        address: "Main Office",
+        postal_code: "1000",
+        civil_status: "Single",
+        sex: "Female",
+        birthday: "1993-12-05",
+        age: 31,
+        citizenship: "Filipino",
+        employee_type: "Full-time",
+        pagibig_number: "000000000005",
+        sss_number: "0000000005",
+        philhealth_number: "000000000005",
+        emergency_contact_name: "Production Support",
+        emergency_relationship: "Other",
+        emergency_contact_number: "09567890123",
+        emergency_contact_address: "Main Office",
+      },
+      // CRM Admin
+      {
+        first_name: "CRM",
+        last_name: "Demo",
+        email: "crm@countryside.com",
+        password: "demo123",
+        roleLookup: { role: "Admin", department: "Customer Relationship" },
+        department: "Customer Relationship",
+        phone_number: "09678901234",
+        address: "Main Office",
+        postal_code: "1000",
+        civil_status: "Single",
+        sex: "Female",
+        birthday: "1994-04-18",
+        age: 30,
+        citizenship: "Filipino",
+        employee_type: "Full-time",
+        pagibig_number: "000000000006",
+        sss_number: "0000000006",
+        philhealth_number: "000000000006",
+        emergency_contact_name: "CRM Support",
+        emergency_relationship: "Other",
+        emergency_contact_number: "09678901234",
+        emergency_contact_address: "Main Office",
+      },
+      // Branch Manager (Main Branch) - for POS & Inventory access
+      {
+        first_name: "Branch",
+        last_name: "Manager",
+        email: "branch@countryside.com",
+        password: "demo123",
+        roleLookup: { role: "Manager", department: "Branch" },
+        department: "Branch",
+        branch_id: 1, // Main Branch
+        phone_number: "09789012345",
+        address: "Main Branch",
+        postal_code: "1000",
+        civil_status: "Married",
+        sex: "Male",
+        birthday: "1989-07-22",
+        age: 35,
+        citizenship: "Filipino",
+        employee_type: "Full-time",
+        pagibig_number: "000000000007",
+        sss_number: "0000000007",
+        philhealth_number: "000000000007",
+        emergency_contact_name: "Branch Support",
+        emergency_relationship: "Spouse",
+        emergency_contact_number: "09789012345",
+        emergency_contact_address: "Main Branch",
+      },
+      // Branch Cashier (Main Branch) - for POS access
+      {
+        first_name: "Branch",
+        last_name: "Cashier",
+        email: "cashier@countryside.com",
+        password: "demo123",
+        roleLookup: { role: "Cashier", department: "Branch" },
+        department: "Branch",
+        branch_id: 1, // Main Branch
+        phone_number: "09890123456",
+        address: "Main Branch",
+        postal_code: "1000",
+        civil_status: "Single",
+        sex: "Female",
+        birthday: "1996-11-30",
+        age: 28,
+        citizenship: "Filipino",
+        employee_type: "Full-time",
+        pagibig_number: "000000000008",
+        sss_number: "0000000008",
+        philhealth_number: "000000000008",
+        emergency_contact_name: "Cashier Support",
+        emergency_relationship: "Parent",
+        emergency_contact_number: "09890123456",
+        emergency_contact_address: "Main Branch",
+      },
+    ];
 
-    try {
-      const existingUser = await Employee.findByEmail(adminUser.email);
+    const createdUsers = [];
 
-      if (!existingUser) {
-        const newUser = await Employee.create(adminUser);
-        console.log(`✅ Created system administrator: ${adminUser.first_name} ${adminUser.last_name}`);
+    for (const account of demoAccounts) {
+      try {
+        // Resolve role_id for non-Super Admin accounts
+        if (account.roleLookup) {
+          const matchedRole = roles.find(
+            (r) =>
+              r.role.toLowerCase() === account.roleLookup.role.toLowerCase() &&
+              r.department.toLowerCase() === account.roleLookup.department.toLowerCase()
+          );
+          if (!matchedRole) {
+            console.log(
+              `⚠️  Role ${account.roleLookup.role} - ${account.roleLookup.department} not found. Skipping ${account.email}`
+            );
+            continue;
+          }
+          account.role_id = matchedRole.role_id;
+          delete account.roleLookup;
+        }
 
-        console.log("\n🔑 System Administrator Credentials:");
-        console.log("Email: admin@countryside.com");
-        console.log("Password: admin123");
-        console.log("Role: Super Admin (Full System Access)");
-        console.log(
-          "\n⚠️  Security Notice: Change default password immediately after first login!"
+        const existingUser = await Employee.findByEmail(account.email);
+
+        if (!existingUser) {
+          const newUser = await Employee.create(account);
+          createdUsers.push(newUser);
+          console.log(
+            `✅ Created demo account: ${account.first_name} ${account.last_name} (${account.email})`
+          );
+        } else {
+          console.log(`⏭️  Account already exists: ${account.email}`);
+        }
+      } catch (error) {
+        console.error(
+          `❌ Error creating account ${account.email}:`,
+          error.message
         );
-
-        return [newUser];
-      } else {
-        console.log(
-          `⏭️  System administrator already exists: ${adminUser.email}`
-        );
-        return [];
       }
-    } catch (error) {
-      console.error(`❌ Error creating system administrator:`, error.message);
-      return [];
     }
+
+    // Print all demo credentials
+    console.log("\n═══════════════════════════════════════════════════════════════");
+    console.log("🔑 DEMO LOGIN CREDENTIALS (saved locally)");
+    console.log("═══════════════════════════════════════════════════════════════");
+    console.log("┌──────────────────────────────┬──────────────────────────────┬──────────┐");
+    console.log("│ Role                         │ Email                        │ Password │");
+    console.log("├──────────────────────────────┼──────────────────────────────┼──────────┤");
+    console.log("│ Super Admin                  │ admin@countryside.com        │ admin123 │");
+    console.log("│ HR Admin                     │ hr@countryside.com           │ demo123  │");
+    console.log("│ Finance Admin                │ finance@countryside.com      │ demo123  │");
+    console.log("│ Supply Chain Admin            │ supply@countryside.com       │ demo123  │");
+    console.log("│ Production Admin              │ production@countryside.com   │ demo123  │");
+    console.log("│ CRM Admin                    │ crm@countryside.com          │ demo123  │");
+    console.log("│ Branch Manager (Main)         │ branch@countryside.com       │ demo123  │");
+    console.log("│ Branch Cashier (Main)         │ cashier@countryside.com      │ demo123  │");
+    console.log("└──────────────────────────────┴──────────────────────────────┴──────────┘");
+    console.log("⚠️  These are demo accounts for evaluation purposes only.");
+    console.log("═══════════════════════════════════════════════════════════════\n");
+
+    return createdUsers;
   } catch (error) {
     console.error("❌ Error creating default users:", error);
     throw error;

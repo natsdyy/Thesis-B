@@ -12,7 +12,7 @@ console.log(
 );
 
 // Import database configuration and models
-const { testConnection, runMigrations } = require("./config/database");
+const { db, testConnection, runMigrations } = require("./config/database");
 const Employee = require("./models/Employee");
 
 // Import routes
@@ -343,14 +343,7 @@ cron.schedule("0 1 * * *", autoExpireJob);
 // Swagger documentation
 app.use("/api-docs", serve, setup);
 
-// Health check endpoint
-app.get("/api/health", (req, res) => {
-  res.json({
-    success: true,
-    message: "Server is running",
-    timestamp: new Date().toISOString(),
-  });
-});
+// (Duplicate /api/health removed — already defined above)
 
 // Debug endpoint for Railway environment variables
 app.get("/api/debug-env", (req, res) => {
@@ -415,21 +408,6 @@ app.get("/api/test-email", async (req, res) => {
   }
 });
 
-// Catch-all handler: send back Vue's index.html file for any non-API routes, OR a fallback message if it doesn't exist.
-app.get("*", (req, res) => {
-  const fs = require("fs");
-  const indexPath = require("path").join(frontendPath, "index.html");
-  if (fs.existsSync(indexPath)) {
-    res.sendFile(indexPath);
-  } else {
-    res.status(200).json({ 
-      message: "Countryside Steakhouse API is running.", 
-      status: "online",
-      frontend: "Frontend is decoupled and hosted separately."
-    });
-  }
-});
-
 // Database health check
 app.get("/api/health/db", async (req, res) => {
   try {
@@ -445,6 +423,21 @@ app.get("/api/health/db", async (req, res) => {
       message: "Database connection failed",
       error: error.message,
       timestamp: new Date().toISOString(),
+    });
+  }
+});
+
+// Catch-all handler: send back Vue's index.html file for any non-API routes, OR a fallback message if it doesn't exist.
+app.get("*", (req, res) => {
+  const fs = require("fs");
+  const indexPath = require("path").join(frontendPath, "index.html");
+  if (fs.existsSync(indexPath)) {
+    res.sendFile(indexPath);
+  } else {
+    res.status(200).json({ 
+      message: "Countryside Steakhouse API is running.", 
+      status: "online",
+      frontend: "Frontend is decoupled and hosted separately."
     });
   }
 });

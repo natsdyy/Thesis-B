@@ -1038,7 +1038,7 @@
   });
 
   const getApiBaseUrl = () => {
-    const apiUrl = apiConfig.baseURL || import.meta.env.VITE_API_URL || '';
+    const apiUrl = apiConfig.baseURL || '';
     return apiUrl ? apiUrl.replace(/\/$/, '') : '';
   };
 
@@ -1426,7 +1426,7 @@
 
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = apiConfig.baseURL || import.meta.env.VITE_API_URL || '';
+      const apiUrl = apiConfig.baseURL || '';
       const uploadFormData = new FormData();
       uploadFormData.append('image', file);
 
@@ -1487,7 +1487,7 @@
 
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = apiConfig.baseURL || import.meta.env.VITE_API_URL || '';
+      const apiUrl = apiConfig.baseURL || '';
       const uploadFormData = new FormData();
       uploadFormData.append('video', file);
 

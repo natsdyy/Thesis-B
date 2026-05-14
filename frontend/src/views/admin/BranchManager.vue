@@ -1252,7 +1252,7 @@
       const url = await (
         await import('../../services/branchService')
       ).default.uploadImage(file);
-      const base = import.meta.env.VITE_API_URL || '';
+      const base = apiConfig.baseURL || '';
       branchForm.value.image_url = url.startsWith('http')
         ? url
         : `${base}${url}`;

@@ -341,7 +341,7 @@
     try {
       loading.value = true;
       const token = localStorage.getItem('token');
-      const apiUrl = apiConfig.baseURL || import.meta.env.VITE_API_URL || '';
+      const apiUrl = apiConfig.baseURL || '';
       const response = await fetch(`${apiUrl}/announcements`, {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -400,7 +400,7 @@
     try {
       saving.value = true;
       const token = localStorage.getItem('token');
-      const apiUrl = apiConfig.baseURL || import.meta.env.VITE_API_URL || '';
+      const apiUrl = apiConfig.baseURL || '';
       const endpoint = editingAnnouncement.value
         ? `/announcements/${editingAnnouncement.value.id}`
         : '/announcements';
@@ -460,7 +460,7 @@
     try {
       saving.value = true;
       const token = localStorage.getItem('token');
-      const apiUrl = apiConfig.baseURL || import.meta.env.VITE_API_URL || '';
+      const apiUrl = apiConfig.baseURL || '';
       const response = await fetch(
         `${apiUrl}/announcements/${deletingAnnouncement.value.id}`,
         {

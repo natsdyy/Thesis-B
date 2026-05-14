@@ -4,7 +4,7 @@ class AnnouncementService {
   // Get active announcements for public display
   async getActiveAnnouncements() {
     try {
-      const apiUrl = apiConfig.baseURL || import.meta.env.VITE_API_URL || '';
+      const apiUrl = apiConfig.baseURL || '';
       const url = `${apiUrl}/announcements/public/active`;
       
       const response = await fetch(url);
@@ -40,7 +40,7 @@ class AnnouncementService {
   async getAllAnnouncements() {
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = apiConfig.baseURL || import.meta.env.VITE_API_URL || '';
+      const apiUrl = apiConfig.baseURL || '';
       const response = await fetch(`${apiUrl}/announcements`, {
         headers: {
           Authorization: `Bearer ${token}`,

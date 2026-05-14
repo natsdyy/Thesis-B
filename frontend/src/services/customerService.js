@@ -1,4 +1,5 @@
-const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+import { apiConfig } from '../config/api';
+const API_BASE_URL = apiConfig.baseURL;
 
 class CustomerService {
   // Get all customers with filters

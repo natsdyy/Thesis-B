@@ -262,6 +262,19 @@
   const { isSuperAdmin, isBoardDirector, isChairman, userDepartment, user } =
     authStore;
 
+  // Map department names for normalization (handles DB vs Route Meta differences)
+  const departmentMapping = {
+    'SUPPLY CHAIN': 'SCM',
+    'CUSTOMER RELATIONSHIP': 'CRM',
+    'ADMIN': 'ADMINISTRATION',
+  };
+
+  const normalizeDepartment = (dept) => {
+    if (!dept) return null;
+    const normalized = String(dept).trim().toUpperCase();
+    return departmentMapping[normalized] || normalized;
+  };
+
   const availableMenus = computed(() => {
     // Super Admin (includes Chairman): see all departments except attendance items
     if (isSuperAdmin) {
@@ -358,17 +371,27 @@
     } else if (userDepartment) {
       // Regular users see only their department, excluding super admin only items
       const filteredMenus = {};
+      const normUserDept = normalizeDepartment(userDepartment);
+
       Object.keys(menusByDepartment).forEach((dept) => {
+        const normDept = normalizeDepartment(dept);
+
         const departmentMenus = menusByDepartment[dept].filter((menu) => {
           // Exclude super admin only items
           if (menu.superAdminOnly) return false;
 
           // Exclude manager-only items for non-managers
-          if (menu.managerOnly && user.role !== 'Manager') return false;
+          // Allow 'Admin' role (departmental admins) to see manager items
+          if (
+            menu.managerOnly &&
+            user.role !== 'Manager' &&
+            user.role !== 'Admin'
+          )
+            return false;
 
           // Hide attendance for Administration (no attendance for admins)
           if (
-            dept === 'Administration' &&
+            normDept === 'ADMINISTRATION' &&
             (menu.name === 'My Attendance' ||
               (typeof menu.route === 'string' &&
                 /\/attendance(\b|\/)/.test(menu.route)))
@@ -378,13 +401,14 @@
 
           return true;
         });
+
         if (departmentMenus.length > 0) {
-          filteredMenus[dept] = departmentMenus;
+          filteredMenus[normDept] = departmentMenus;
         }
       });
 
-      return userDepartment && filteredMenus[userDepartment]
-        ? { [userDepartment]: filteredMenus[userDepartment] }
+      return normUserDept && filteredMenus[normUserDept]
+        ? { [normUserDept]: filteredMenus[normUserDept] }
         : {};
     }
     return {};

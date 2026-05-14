@@ -640,6 +640,15 @@ router.beforeEach(async (to, from, next) => {
       next('/super-admin');
       return;
     }
+
+    // Redirect Managers and Admins to their departmental dashboard
+    if (userRole === 'Manager' || userRole === 'Admin') {
+      const userDashboard = getUserDashboardRoute(userDepartment, userRole);
+      if (userDashboard !== '/dashboard') {
+        next(userDashboard);
+        return;
+      }
+    }
   }
 
   next();

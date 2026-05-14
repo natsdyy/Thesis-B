@@ -340,14 +340,15 @@ const router = createRouter({
 
 // Map department names for normalization (handles DB vs Route Meta differences)
 const departmentMapping = {
-  'Supply Chain': 'SCM',
-  'Customer Relationship': 'CRM',
-  'Admin': 'Administration'
+  'SUPPLY CHAIN': 'SCM',
+  'CUSTOMER RELATIONSHIP': 'CRM',
+  'ADMIN': 'ADMINISTRATION'
 };
 
 function normalizeDepartment(dept) {
   if (!dept) return null;
-  return departmentMapping[dept] || dept;
+  const normalized = String(dept).trim().toUpperCase();
+  return departmentMapping[normalized] || normalized;
 }
 
 // Helper function to check department access
@@ -357,21 +358,30 @@ function canAccessDepartment(userRole, userDepartment, routeDepartment) {
     return true;
   }
 
+  const normUserDept = normalizeDepartment(userDepartment);
+  const normRouteDept = normalizeDepartment(routeDepartment);
+
   // Board of Directors can access Administration department
   if (
     userRole === 'Board of Directors' &&
-    normalizeDepartment(routeDepartment) === 'Administration'
+    normRouteDept === 'ADMINISTRATION'
   ) {
     return true;
   }
 
   // Allow access to HR routes for all users (for attendance records)
-  if (normalizeDepartment(routeDepartment) === 'Human Resource') {
+  if (normRouteDept === 'HUMAN RESOURCE') {
     return true;
   }
 
   // Users can access their own department routes (both Staff and Manager)
-  return normalizeDepartment(userDepartment) === normalizeDepartment(routeDepartment);
+  const isMatch = normUserDept === normRouteDept;
+  
+  if (!isMatch) {
+    console.warn(`Department mismatch: User Dept [${userDepartment} -> ${normUserDept}] vs Route Dept [${routeDepartment} -> ${normRouteDept}]`);
+  }
+  
+  return isMatch;
 }
 
 // Helper function to check admin access
@@ -637,20 +647,20 @@ function getUserDashboardRoute(userDepartment) {
   const dept = normalizeDepartment(userDepartment);
 
   const departmentRoutes = {
-    'Human Resource': '/hr/attendance',
-    Finance: '/finance/attendance',
+    'HUMAN RESOURCE': '/hr/attendance',
+    'FINANCE': '/finance/attendance',
     'SCM': '/scm/attendance',
-    'Supply Chain': '/scm/attendance',
-    Production: '/production/attendance',
+    'SUPPLY CHAIN': '/scm/attendance',
+    'PRODUCTION': '/production/attendance',
     'CRM': '/crm/attendance',
-    'Customer Relationship': '/crm/attendance',
-    Branch: '/branch/dashboard',
-    System: '/admin/dashboard',
-    Admin: '/admin/dashboard',
-    Administration: '/admin/organizational-chart', // Board members go to org chart
+    'CUSTOMER RELATIONSHIP': '/crm/attendance',
+    'BRANCH': '/branch/dashboard',
+    'SYSTEM': '/admin/dashboard',
+    'ADMIN': '/admin/dashboard',
+    'ADMINISTRATION': '/admin/organizational-chart', // Board members go to org chart
   };
 
-  return departmentRoutes[dept] || departmentRoutes[userDepartment] || '/dashboard';
+  return departmentRoutes[dept] || '/dashboard';
 }
 
 export default router;

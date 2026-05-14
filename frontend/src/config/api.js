@@ -2,42 +2,50 @@
 
 function resolveBaseURL() {
   // Highest priority: explicit Vite env override (useful for production and specific builds)
-  const fromEnv = import.meta.env.VITE_API_BASE_URL;
-  if (fromEnv && typeof fromEnv === 'string' && fromEnv.trim().length > 0) {
-    console.log('Using API URL from environment:', fromEnv.trim());
-    return fromEnv.trim();
-  }
-
-  // Fallback logic for automatic resolution based on window.location
-  if (typeof window !== 'undefined' && window.location?.origin) {
-    const origin = window.location.origin;
-    
-    // Local development
-    if (origin.includes('localhost') || origin.includes('127.0.0.1') || origin.includes('192.168')) {
-      return 'http://localhost:8080/api';
-    }
-    
-    // Custom production domain
-    if (origin.includes('countryside-steakhouse.site')) {
-      return 'https://thesis-b-productioncountryside.up.railway.app/api';
-    }
-    
-    // Railway specific handling
-    if (origin.includes('railway.app')) {
-      // If we're on a railway subdomain but it's not the primary one, 
-      // try to point to the production backend explicitly
-      if (origin.includes('countrysides')) {
-        return 'https://thesis-b-productioncountryside.up.railway.app/api';
+  let url = import.meta.env.VITE_API_BASE_URL;
+  
+  if (url && typeof url === 'string' && url.trim().length > 0) {
+    url = url.trim();
+    console.log('Using API URL from environment:', url);
+  } else {
+    // Fallback logic for automatic resolution based on window.location
+    if (typeof window !== 'undefined' && window.location?.origin) {
+      const origin = window.location.origin;
+      
+      // Local development
+      if (origin.includes('localhost') || origin.includes('127.0.0.1') || origin.includes('192.168')) {
+        url = 'http://localhost:8080/api';
       }
-      return `${origin}/api`;
+      // Custom production domain
+      else if (origin.includes('countryside-steakhouse.site')) {
+        url = 'https://thesis-b-productioncountryside.up.railway.app/api';
+      }
+      // Railway specific handling
+      else if (origin.includes('railway.app')) {
+        // If we're on a railway subdomain but it's not the primary one, 
+        // try to point to the production backend explicitly
+        if (origin.includes('countrysides')) {
+          url = 'https://thesis-b-productioncountryside.up.railway.app/api';
+        } else {
+          url = `${origin}/api`;
+        }
+      }
+      else {
+        // Generic fallback: use current origin
+        url = `${origin.replace(/\/$/, '')}/api`;
+      }
+    } else {
+      // Absolute fallback
+      url = 'http://localhost:8080/api';
     }
-    
-    // Generic fallback: use current origin
-    return `${origin.replace(/\/$/, '')}/api`;
   }
 
-  // Absolute fallback
-  return 'http://localhost:8080/api';
+  // CRITICAL: Ensure the URL always ends with /api (but not //api)
+  if (url && !url.endsWith('/api') && !url.endsWith('/api/')) {
+    url = `${url.replace(/\/$/, '')}/api`;
+  }
+  
+  return url;
 }
 
 const baseURL = resolveBaseURL();

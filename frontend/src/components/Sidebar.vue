@@ -259,9 +259,6 @@
   const router = useRouter();
 
   // Computed properties
-  const { isSuperAdmin, isBoardDirector, isChairman, userDepartment, user } =
-    authStore;
-
   // Map department names for normalization (handles DB vs Route Meta differences)
   const departmentMapping = {
     'SUPPLY CHAIN': 'SCM',
@@ -276,6 +273,8 @@
   };
 
   const availableMenus = computed(() => {
+    const { isSuperAdmin, isBoardDirector, isChairman, userDepartment, user } = authStore;
+
     // Super Admin (includes Chairman): see all departments except attendance items
     if (isSuperAdmin) {
       // Super Admin sees all departments EXCEPT any attendance-related items
@@ -384,8 +383,8 @@
           // Allow 'Admin' role (departmental admins) to see manager items
           if (
             menu.managerOnly &&
-            user.role !== 'Manager' &&
-            user.role !== 'Admin'
+            user?.role !== 'Manager' &&
+            user?.role !== 'Admin'
           )
             return false;
 

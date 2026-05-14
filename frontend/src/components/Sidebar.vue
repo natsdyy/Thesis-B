@@ -57,13 +57,16 @@
               <label
                 :for="`dept-collapse-${department}`"
                 class="collapse-title px-2 py-3 cursor-pointer hover:bg-white/10 rounded-lg transition-colors duration-200 flex items-center justify-between min-h-0"
-                style="position: relative; z-index: 1"
               >
                 <div class="flex items-center space-x-3">
-                  <component
-                    :is="departmentIcons[department]"
-                    class="w-5 h-5 text-white"
-                  />
+                  <div
+                    class="w-5 flex items-center justify-center flex-shrink-0"
+                  >
+                    <component
+                      :is="departmentIcons[department]"
+                      class="w-5 h-5 text-white"
+                    />
+                  </div>
                   <span class="text-white font-medium">{{ department }}</span>
                 </div>
                 <ChevronDown
@@ -90,13 +93,16 @@
                         <label
                           :for="`submenu-collapse-${menu.name.replace(/\s+/g, '-')}`"
                           class="collapse-title px-2 py-2 cursor-pointer hover:bg-white/10 rounded-lg transition-colors duration-200 flex items-center justify-between min-h-0"
-                          style="position: relative; z-index: 1"
                         >
                           <div class="flex items-center space-x-3">
-                            <component
-                              :is="menu.icon"
-                              class="w-4 h-4 text-white"
-                            />
+                            <div
+                              class="w-4 flex items-center justify-center flex-shrink-0"
+                            >
+                              <component
+                                :is="menu.icon"
+                                class="w-4 h-4 text-white"
+                              />
+                            </div>
                             <span class="text-white text-sm font-medium">{{
                               menu.name
                             }}</span>
@@ -138,7 +144,14 @@
                             : 'text-white/80 hover:bg-white/10 hover:text-white',
                         ]"
                       >
-                        <component :is="menu.icon" class="w-4 h-4 text-white" />
+                        <div
+                          class="w-4 flex items-center justify-center flex-shrink-0"
+                        >
+                          <component
+                            :is="menu.icon"
+                            class="w-4 h-4 text-white"
+                          />
+                        </div>
                         <span>{{ menu.name }}</span>
                       </button>
                     </div>

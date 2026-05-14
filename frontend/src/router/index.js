@@ -338,6 +338,18 @@ const router = createRouter({
   },
 });
 
+// Map department names for normalization (handles DB vs Route Meta differences)
+const departmentMapping = {
+  'Supply Chain': 'SCM',
+  'Customer Relationship': 'CRM',
+  'Admin': 'Administration'
+};
+
+function normalizeDepartment(dept) {
+  if (!dept) return null;
+  return departmentMapping[dept] || dept;
+}
+
 // Helper function to check department access
 function canAccessDepartment(userRole, userDepartment, routeDepartment) {
   // Super Admin and Chairman can access everything
@@ -348,25 +360,26 @@ function canAccessDepartment(userRole, userDepartment, routeDepartment) {
   // Board of Directors can access Administration department
   if (
     userRole === 'Board of Directors' &&
-    routeDepartment === 'Administration'
+    normalizeDepartment(routeDepartment) === 'Administration'
   ) {
     return true;
   }
 
   // Allow access to HR routes for all users (for attendance records)
-  if (routeDepartment === 'Human Resource') {
+  if (normalizeDepartment(routeDepartment) === 'Human Resource') {
     return true;
   }
 
   // Users can access their own department routes (both Staff and Manager)
-  return userDepartment === routeDepartment;
+  return normalizeDepartment(userDepartment) === normalizeDepartment(routeDepartment);
 }
 
 // Helper function to check admin access
 function canAccessAdminRoutes(userRole, userDepartment) {
+  const dept = normalizeDepartment(userDepartment);
   // Super Admin, Chairman, and Board of Directors can access admin routes
   return (
-    (userRole === 'Super Admin' && userDepartment === 'System') ||
+    (userRole === 'Super Admin' && (dept === 'Administration' || dept === 'System' || dept === 'Admin')) ||
     userRole === 'Chairman of the Board' ||
     userRole === 'Board of Directors'
   );
@@ -431,11 +444,13 @@ function requiresManagerAccess(routePath) {
 
 // Helper function to check manager role access
 function canAccessManagerRoutes(userRole) {
-  // Super Admin, Chairman, and Manager roles can access manager routes
+  // Super Admin, Chairman, and Manager/Admin roles can access manager routes
+  // Note: 'Admin' is the top role for departments (e.g., HR Admin, CRM Admin)
   return (
     userRole === 'Super Admin' ||
     userRole === 'Chairman of the Board' ||
-    userRole === 'Manager'
+    userRole === 'Manager' ||
+    userRole === 'Admin'
   );
 }
 
@@ -619,18 +634,23 @@ router.beforeEach(async (to, from, next) => {
 
 // Helper function to get user's appropriate dashboard
 function getUserDashboardRoute(userDepartment) {
+  const dept = normalizeDepartment(userDepartment);
+
   const departmentRoutes = {
     'Human Resource': '/hr/attendance',
     Finance: '/finance/attendance',
-    SCM: '/scm/attendance',
+    'SCM': '/scm/attendance',
+    'Supply Chain': '/scm/attendance',
     Production: '/production/attendance',
-    CRM: '/crm/attendance',
+    'CRM': '/crm/attendance',
+    'Customer Relationship': '/crm/attendance',
     Branch: '/branch/dashboard',
     System: '/admin/dashboard',
+    Admin: '/admin/dashboard',
     Administration: '/admin/organizational-chart', // Board members go to org chart
   };
 
-  return departmentRoutes[userDepartment] || '/dashboard';
+  return departmentRoutes[dept] || departmentRoutes[userDepartment] || '/dashboard';
 }
 
 export default router;

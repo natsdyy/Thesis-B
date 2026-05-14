@@ -559,7 +559,7 @@ router.beforeEach(async (to, from, next) => {
 
     if (!canAccessDepartment(userRole, userDepartment, routeDepartment)) {
       // Redirect to their own department dashboard or main dashboard
-      const userDashboard = getUserDashboardRoute(userDepartment);
+      const userDashboard = getUserDashboardRoute(userDepartment, userRole);
 
       // Show an error message
       console.warn(
@@ -575,7 +575,7 @@ router.beforeEach(async (to, from, next) => {
   if (requiresManagerAccess(to.path)) {
     if (!canAccessManagerRoutes(userRole)) {
       // Redirect to their appropriate dashboard
-      const userDashboard = getUserDashboardRoute(userDepartment);
+      const userDashboard = getUserDashboardRoute(userDepartment, userRole);
 
       // Show an error message
       console.warn(
@@ -600,7 +600,7 @@ router.beforeEach(async (to, from, next) => {
       userRole !== 'Chairman of the Board'
     ) {
       // Redirect to their appropriate dashboard
-      const userDashboard = getUserDashboardRoute(userDepartment);
+      const userDashboard = getUserDashboardRoute(userDepartment, userRole);
 
       // Show an error message
       console.warn(
@@ -616,7 +616,7 @@ router.beforeEach(async (to, from, next) => {
   if (to.meta.adminOnly) {
     if (!canAccessAdminRoutes(userRole, userDepartment)) {
       // Redirect to their own department dashboard
-      const userDashboard = getUserDashboardRoute(userDepartment);
+      const userDashboard = getUserDashboardRoute(userDepartment, userRole);
 
       // Show an error message
       console.warn(
@@ -646,17 +646,18 @@ router.beforeEach(async (to, from, next) => {
 });
 
 // Helper function to get user's appropriate dashboard
-function getUserDashboardRoute(userDepartment) {
+function getUserDashboardRoute(userDepartment, userRole) {
   const dept = normalizeDepartment(userDepartment);
+  const isManagerOrAdmin = userRole === 'Manager' || userRole === 'Admin';
 
   const departmentRoutes = {
-    'HUMAN RESOURCE': '/hr/attendance',
-    'FINANCE': '/finance/attendance',
-    'SCM': '/scm/attendance',
-    'SUPPLY CHAIN': '/scm/attendance',
-    'PRODUCTION': '/production/attendance',
-    'CRM': '/crm/attendance',
-    'CUSTOMER RELATIONSHIP': '/crm/attendance',
+    'HUMAN RESOURCE': isManagerOrAdmin ? '/hr/employee-manager' : '/hr/attendance',
+    'FINANCE': isManagerOrAdmin ? '/finance/financial-management' : '/finance/attendance',
+    'SCM': isManagerOrAdmin ? '/scm/main-inventory' : '/scm/attendance',
+    'SUPPLY CHAIN': isManagerOrAdmin ? '/scm/main-inventory' : '/scm/attendance',
+    'PRODUCTION': isManagerOrAdmin ? '/production/recipes' : '/production/attendance',
+    'CRM': isManagerOrAdmin ? '/crm/dashboard' : '/crm/attendance',
+    'CUSTOMER RELATIONSHIP': isManagerOrAdmin ? '/crm/dashboard' : '/crm/attendance',
     'BRANCH': '/branch/dashboard',
     'SYSTEM': '/admin/dashboard',
     'ADMIN': '/admin/dashboard',

@@ -368,8 +368,11 @@ app.use("/api-docs", serve, setup);
 
 // (Duplicate /api/health removed — already defined above)
 
-// Debug endpoint for Railway environment variables
+// Debug endpoint for Railway environment variables (DEVELOPMENT ONLY)
 app.get("/api/debug-env", (req, res) => {
+  if (process.env.NODE_ENV === "production") {
+    return res.status(404).json({ message: "Not found" });
+  }
   const emailVars = {};
   Object.keys(process.env).forEach((key) => {
     if (
@@ -397,8 +400,11 @@ app.get("/api/debug-env", (req, res) => {
   });
 });
 
-// Email test endpoint
+// Email test endpoint (DEVELOPMENT ONLY)
 app.get("/api/test-email", async (req, res) => {
+  if (process.env.NODE_ENV === "production") {
+    return res.status(404).json({ message: "Not found" });
+  }
   try {
     const EmailService = require("./services/emailService");
 

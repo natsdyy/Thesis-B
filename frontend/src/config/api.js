@@ -6,29 +6,22 @@ function resolveBaseURL() {
   
   if (url && typeof url === 'string' && url.trim().length > 0) {
     url = url.trim();
-    console.log('Using API URL from environment:', url);
   } else {
     // Fallback logic for automatic resolution based on window.location
     if (typeof window !== 'undefined' && window.location?.origin) {
       const origin = window.location.origin;
       
-      // Local development
+      // Local development — use Vite proxy at same origin
       if (origin.includes('localhost') || origin.includes('127.0.0.1') || origin.includes('192.168')) {
         url = 'http://localhost:8080/api';
       }
-      // Custom production domain
+      // Production domain — use same-origin /api (nginx proxies to backend)
       else if (origin.includes('countryside-steakhouse.site')) {
-        url = 'https://thesis-b-productioncountryside.up.railway.app/api';
+        url = `${origin.replace(/\/$/, '')}/api`;
       }
-      // Railway specific handling
+      // Railway deployments — use same-origin /api
       else if (origin.includes('railway.app')) {
-        // If we're on a railway subdomain but it's not the primary one, 
-        // try to point to the production backend explicitly
-        if (origin.includes('countrysides')) {
-          url = 'https://thesis-b-productioncountryside.up.railway.app/api';
-        } else {
-          url = `${origin}/api`;
-        }
+        url = `${origin.replace(/\/$/, '')}/api`;
       }
       else {
         // Generic fallback: use current origin
@@ -49,8 +42,6 @@ function resolveBaseURL() {
 }
 
 const baseURL = resolveBaseURL();
-
-console.log('Resolved API baseURL:', baseURL);
 
 export const apiConfig = {
   baseURL,
@@ -73,12 +64,8 @@ export const axiosConfig = {
 export const formatImageUrl = (imageUrl) => {
   if (!imageUrl) return imageUrl;
 
-  console.log('formatImageUrl input:', imageUrl);
-
   // If it's already a full URL, handle HTTP to HTTPS conversion for production
   if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
-    console.log('Already full URL:', imageUrl);
-
     // In production environment, replace local IP URLs with production domain
     if (typeof window !== 'undefined' && window.location?.origin) {
       if (window.location.origin.includes('countryside-steakhouse.site')) {
@@ -89,19 +76,13 @@ export const formatImageUrl = (imageUrl) => {
         ) {
           const pathMatch = imageUrl.match(/\/uploads\/.*$/);
           if (pathMatch) {
-            const productionUrl = `https://www.countryside-steakhouse.site${pathMatch[0]}`;
-            console.log(
-              'Replaced local IP with production domain:',
-              productionUrl
-            );
-            return productionUrl;
+            // Use same-origin path — nginx will proxy to backend
+            return `${window.location.origin}${pathMatch[0]}`;
           }
         }
         // Convert HTTP URLs to HTTPS
         else if (imageUrl.startsWith('http://')) {
-          const httpsUrl = imageUrl.replace('http://', 'https://');
-          console.log('Converted HTTP to HTTPS:', httpsUrl);
-          return httpsUrl;
+          return imageUrl.replace('http://', 'https://');
         }
       }
     }
@@ -114,27 +95,19 @@ export const formatImageUrl = (imageUrl) => {
     imageUrl.startsWith('/uploads/') ||
     imageUrl.startsWith('/utility-receipts/')
   ) {
-    // Get the backend URL by removing /api from the API base URL
-    let backendUrl = apiConfig.baseURL.replace('/api', '');
+    let backendUrl;
 
-    // Special handling for environments
     if (typeof window !== 'undefined' && window.location?.origin) {
-      // Local dev: serve uploads from backend port directly (Vite proxy usually not set for /uploads)
+      // Local dev: serve uploads from backend port directly
       if (window.location.origin.includes(':8080')) {
         backendUrl = 'http://localhost:5000';
       }
-      // For countryside-steakhouse.site domain
-      else if (window.location.origin.includes('countryside-steakhouse.site')) {
-        backendUrl = 'https://thesis-b-productioncountryside.up.railway.app';
-      }
-      // For Railway production deployment, use the production backend
-      else if (window.location.origin.includes('countrysides.up.railway.app')) {
-        backendUrl = 'https://thesis-b-productioncountryside.up.railway.app';
-      }
-      // For other Railway deployments, use the current origin
-      else if (window.location.origin.includes('railway.app')) {
+      // Production: use same-origin (nginx proxies /uploads to backend)
+      else {
         backendUrl = window.location.origin;
       }
+    } else {
+      backendUrl = apiConfig.baseURL.replace('/api', '');
     }
 
     // Use URL API to safely join paths and avoid duplicate segments
@@ -142,13 +115,9 @@ export const formatImageUrl = (imageUrl) => {
     // Normalize any accidental repeated /uploads segments
     fullUrl = fullUrl.replace('/uploads/uploads/', '/uploads/');
 
-    console.log('Backend URL:', backendUrl);
-    console.log('Formatted URL:', fullUrl);
     return fullUrl;
   }
 
   // For other relative paths, assume they need the frontend base URL
-  const fullUrl = `${window.location.origin}${imageUrl.startsWith('/') ? imageUrl : '/' + imageUrl}`;
-  console.log('Formatted URL (other):', fullUrl);
-  return fullUrl;
+  return `${window.location.origin}${imageUrl.startsWith('/') ? imageUrl : '/' + imageUrl}`;
 };

@@ -3,6 +3,8 @@ const cron = require("node-cron");
 const Inventory = require("./models/Inventory");
 const cors = require("cors");
 require("dotenv").config();
+const helmet = require("helmet");
+const rateLimit = require("express-rate-limit");
 
 // Set timezone to Philippine Time (Asia/Manila)
 process.env.TZ = process.env.TZ || "Asia/Manila";
@@ -179,6 +181,27 @@ const corsConfig = {
 app.use(cors(corsConfig));
 
 app.use(express.json());
+
+// Security: Helmet for HTTP Headers (CSP disabled to avoid blocking frontend assets)
+app.use(helmet({ contentSecurityPolicy: false }));
+
+// Security: Rate Limiting
+const globalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // limit each IP to 100 requests per windowMs
+  message: "Too many requests from this IP, please try again after 15 minutes"
+});
+app.use(globalLimiter);
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20, // limit each IP to 20 requests per windowMs for auth routes
+  message: "Too many login attempts from this IP, please try again after 15 minutes"
+});
+app.use("/api/auth", authLimiter);
+app.use("/api/supplier-auth", authLimiter);
+app.use("/api/board-auth", authLimiter);
+
 // Serve uploads with proper CORS headers and content-type detection
 app.use(
   "/uploads",
